@@ -50,13 +50,5 @@ npm run lint
 - `ConceptTree-DEV-/spec/后端-我的学习页.md`
 - `ConceptTree-DEV-/spec/后端-认证与用户.md`
 
-## 推到 GitHub（推荐流程）
 
-本地已初始化 Git（main 分支）。在 GitHub 新建空仓库后，执行：
-
-```bash
-git add .
-git commit -m "chore: initial commit"
-git remote add origin https://github.com/<your-org-or-name>/<repo>.git
-git push -u origin main
 ```
