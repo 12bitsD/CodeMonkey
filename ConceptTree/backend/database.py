@@ -135,7 +135,7 @@ def seed_data(db: sqlite3.Connection):
 
     user_id = "user_default"
     db.execute(
-        "INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
+        "INSERT OR IGNORE INTO users (id, email, password_hash) VALUES (?, ?, ?)",
         (user_id, "test@example.com", "hashed_pw"),
     )
 
