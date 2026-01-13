@@ -9,6 +9,39 @@ class NodeStatus(str, Enum):
     skipped = "skipped"
 
 
+class BackgroundSummary(BaseModel):
+    text: str
+    source: str
+    isStrength: bool
+
+
+class SplitSuggestion(BaseModel):
+    title: str
+    description: str
+    estimatedNodes: int
+
+
+class Resource(BaseModel):
+    name: str
+    url: str
+    reason: str
+
+
+class NodeData(BaseModel):
+    id: str
+    name: str
+    status: NodeStatus
+    x: float
+    y: float
+    why: Optional[str] = None
+    what: List[str] = []
+    mastery: List[str] = []
+    prompt: Optional[str] = None
+    resources: List[Resource] = []
+    isTarget: bool = False
+    domain: Optional[str] = None
+
+
 class NodeBase(BaseModel):
     id: str
     name: str

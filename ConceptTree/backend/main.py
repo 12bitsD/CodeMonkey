@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_database
-from routers import graph, plans, notes, stats
+from routers import graph, plans, notes, stats, ai
 
 app = FastAPI(
     title="PathFinder API",
@@ -22,6 +22,7 @@ app.include_router(graph.router)
 app.include_router(plans.router)
 app.include_router(notes.router)
 app.include_router(stats.router)
+app.include_router(ai.router)
 
 
 @app.on_event("startup")
