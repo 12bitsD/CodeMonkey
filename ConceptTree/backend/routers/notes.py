@@ -23,7 +23,7 @@ def format_date(dt_str: str) -> str:
 def get_notes(
     planId: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    db=Depends(get_db)
+    db=Depends(get_db),
 ):
     query = """
         SELECT 
@@ -51,24 +51,20 @@ def get_notes(
 
     notes = []
     for row in rows:
-        notes.append({
-            "id": row["id"],
-            "planId": row["plan_id"],
-            "planTitle": row["plan_title"],
-            "nodeId": row["node_id"],
-            "nodeName": row["node_name"],
-            "content": row["content"],
-            "date": format_date(row["created_at"]),
-            "createdAt": row["created_at"]
-        })
+        notes.append(
+            {
+                "id": row["id"],
+                "planId": row["plan_id"],
+                "planTitle": row["plan_title"],
+                "nodeId": row["node_id"],
+                "nodeName": row["node_name"],
+                "content": row["content"],
+                "date": format_date(row["created_at"]),
+                "createdAt": row["created_at"],
+            }
+        )
 
-    return {
-        "success": True,
-        "data": {
-            "notes": notes,
-            "total": len(notes)
-        }
-    }
+    return {"success": True, "data": {"notes": notes, "total": len(notes)}}
 
 
 @router.post("/notes")
@@ -78,24 +74,35 @@ def create_note(body: dict, db=Depends(get_db)):
     content = body.get("content")
 
     if not content or not content.strip():
-        raise HTTPException(status_code=400, detail={
-            "code": "CONTENT_REQUIRED",
-            "message": "Content is required"
-        })
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": {"code": "CONTENT_REQUIRED", "message": "Content is required"},
+            },
+        )
 
     plan = db.execute("SELECT user_id FROM plans WHERE id = ?", (planId,)).fetchone()
     if not plan:
-        raise HTTPException(status_code=404, detail={
-            "code": "PLAN_NOT_FOUND",
-            "message": "Plan not found"
-        })
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            },
+        )
 
-    node = db.execute("SELECT id FROM nodes WHERE id = ? AND plan_id = ?", (nodeId, planId)).fetchone()
+    node = db.execute(
+        "SELECT id FROM nodes WHERE id = ? AND plan_id = ?", (nodeId, planId)
+    ).fetchone()
     if not node:
-        raise HTTPException(status_code=404, detail={
-            "code": "NODE_NOT_FOUND",
-            "message": "Node not found"
-        })
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "NODE_NOT_FOUND", "message": "Node not found"},
+            },
+        )
 
     note_id = f"note_{uuid.uuid4().hex[:12]}"
     user_id = plan["user_id"]
@@ -104,7 +111,7 @@ def create_note(body: dict, db=Depends(get_db)):
     db.execute(
         """INSERT INTO notes (id, plan_id, node_id, user_id, content, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (note_id, planId, nodeId, user_id, content, now, now)
+        (note_id, planId, nodeId, user_id, content, now, now),
     )
     db.commit()
 
@@ -116,8 +123,8 @@ def create_note(body: dict, db=Depends(get_db)):
             "nodeId": nodeId,
             "content": content,
             "date": format_date(now),
-            "createdAt": now
-        }
+            "createdAt": now,
+        },
     }
 
 
@@ -126,32 +133,34 @@ def update_note(note_id: str, body: dict, db=Depends(get_db)):
     content = body.get("content")
 
     if not content or not content.strip():
-        raise HTTPException(status_code=400, detail={
-            "code": "CONTENT_REQUIRED",
-            "message": "Content is required"
-        })
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": {"code": "CONTENT_REQUIRED", "message": "Content is required"},
+            },
+        )
 
     note = db.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
     if not note:
-        raise HTTPException(status_code=404, detail={
-            "code": "NOTE_NOT_FOUND",
-            "message": "Note not found"
-        })
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "NOTE_NOT_FOUND", "message": "Note not found"},
+            },
+        )
 
     now = datetime.utcnow().isoformat() + "Z"
     db.execute(
         "UPDATE notes SET content = ?, updated_at = ? WHERE id = ?",
-        (content, now, note_id)
+        (content, now, note_id),
     )
     db.commit()
 
     return {
         "success": True,
-        "data": {
-            "id": note_id,
-            "content": content,
-            "updatedAt": now
-        }
+        "data": {"id": note_id, "content": content, "updatedAt": now},
     }
 
 
@@ -159,15 +168,15 @@ def update_note(note_id: str, body: dict, db=Depends(get_db)):
 def delete_note(note_id: str, db=Depends(get_db)):
     note = db.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
     if not note:
-        raise HTTPException(status_code=404, detail={
-            "code": "NOTE_NOT_FOUND",
-            "message": "Note not found"
-        })
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "NOTE_NOT_FOUND", "message": "Note not found"},
+            },
+        )
 
     db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
     db.commit()
 
-    return {
-        "success": True,
-        "message": "笔记已删除"
-    }
+    return {"success": True, "message": "笔记已删除"}

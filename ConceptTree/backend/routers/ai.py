@@ -43,7 +43,11 @@ def parse_goal(request: ParseGoalRequest, db=Depends(get_db)):
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail={"code": "PARSE_GOAL_ERROR", "message": str(e)}
+            status_code=500,
+            detail={
+                "success": False,
+                "error": {"code": "PARSE_GOAL_ERROR", "message": str(e)},
+            },
         )
 
 
@@ -64,5 +68,9 @@ def generate_graph(request: GenerateGraphRequest, db=Depends(get_db)):
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail={"code": "GENERATE_GRAPH_ERROR", "message": str(e)}
+            status_code=500,
+            detail={
+                "success": False,
+                "error": {"code": "GENERATE_GRAPH_ERROR", "message": str(e)},
+            },
         )
