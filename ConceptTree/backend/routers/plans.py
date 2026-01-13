@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
+import uuid
+import json
+from fastapi import APIRouter, HTTPException, Depends
 
 from database import get_db
 from models import (
@@ -10,8 +12,6 @@ from models import (
     PlanUpdateResponse,
     ErrorResponse,
 )
-import uuid
-import json
 
 router = APIRouter(prefix="/api", tags=["plans"])
 
@@ -28,8 +28,8 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
 
         # 1. 创建计划
         db.execute(
-            """INSERT INTO plans (id, user_id, title, original_input, 
-               target_node_id, status) 
+            """INSERT INTO plans (id, user_id, title, original_input,
+               target_node_id, status)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 plan_id,
@@ -44,8 +44,8 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
         # 2. 批量创建节点
         for node in request.nodes:
             db.execute(
-                """INSERT INTO nodes (id, plan_id, name, status, x, y, why, 
-                   what, mastery, prompt, resources, is_target, domain) 
+                """INSERT INTO nodes (id, plan_id, name, status, x, y, why,
+                   what, mastery, prompt, resources, is_target, domain)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     node.id,
@@ -67,9 +67,9 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
         # 3. 批量创建边
         for edge in request.edges:
             db.execute(
-                """INSERT INTO edges (id, plan_id, source, target) 
+                """INSERT INTO edges (id, plan_id, from_node_id, to_node_id)
                    VALUES (?, ?, ?, ?)""",
-                (edge.id, plan_id, edge.source, edge.target),
+                (edge.id, plan_id, edge.from_node, edge.to_node),
             )
 
         db.commit()
@@ -85,7 +85,7 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
                 "success": False,
                 "error": {"code": "CREATE_PLAN_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.put(
@@ -96,13 +96,19 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
 def update_plan(plan_id: str, request: PlanUpdateRequest, db=Depends(get_db)):
     try:
         # 检查计划是否存在
-        plan = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        plan = db.execute(
+            "SELECT * FROM plans WHERE id = ?",
+            (plan_id,),
+        ).fetchone()
         if not plan:
             raise HTTPException(
                 status_code=404,
                 detail={
                     "success": False,
-                    "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+                    "error": {
+                        "code": "PLAN_NOT_FOUND",
+                        "message": "Plan not found",
+                    },
                 },
             )
 
@@ -128,7 +134,7 @@ def update_plan(plan_id: str, request: PlanUpdateRequest, db=Depends(get_db)):
                 "success": False,
                 "error": {"code": "UPDATE_PLAN_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.get(
@@ -140,7 +146,10 @@ def get_plans(status: Optional[str] = None, db=Depends(get_db)):
     try:
         if status:
             rows = db.execute(
-                "SELECT * FROM plans WHERE status = ? ORDER BY last_access_at DESC",
+                (
+                    "SELECT * FROM plans WHERE status = ? "
+                    "ORDER BY last_access_at DESC"
+                ),
                 (status,),
             ).fetchall()
         else:
@@ -152,16 +161,23 @@ def get_plans(status: Optional[str] = None, db=Depends(get_db)):
         for plan in rows:
             # 获取每个计划的统计数据
             stats = db.execute(
-                "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'learned' THEN 1 ELSE 0 END) as completed FROM nodes WHERE plan_id = ?",
+                """SELECT
+                       COUNT(*) as total
+                       ,SUM(CASE WHEN status = 'learned' THEN 1
+                           ELSE 0 END) as completed
+                   FROM nodes
+                   WHERE plan_id = ?""",
                 (plan["id"],),
             ).fetchone()
 
+            completed = stats["completed"] if stats["completed"] else 0
+            total = stats["total"] if stats["total"] else 0
             plans.append(
                 {
                     "id": plan["id"],
                     "title": plan["title"],
-                    "progress": stats["completed"] if stats["completed"] else 0,
-                    "total": stats["total"] if stats["total"] else 0,
+                    "progress": completed,
+                    "total": total,
                     "status": plan["status"],
                     "lastAccess": plan["last_access_at"],
                     "createdAt": plan["created_at"],
@@ -176,7 +192,7 @@ def get_plans(status: Optional[str] = None, db=Depends(get_db)):
                 "success": False,
                 "error": {"code": "GET_PLANS_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.put(
@@ -190,36 +206,58 @@ def get_plans(status: Optional[str] = None, db=Depends(get_db)):
 def archive_plan(plan_id: str, db=Depends(get_db)):
     try:
         # 检查计划是否存在
-        plan = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        plan = db.execute(
+            "SELECT * FROM plans WHERE id = ?",
+            (plan_id,),
+        ).fetchone()
         if not plan:
             raise HTTPException(
                 status_code=404,
+                detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            )
+
+        if plan["status"] == "archived":
+            raise HTTPException(
+                status_code=400,
                 detail={
-                    "success": False,
-                    "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+                    "code": "PLAN_ALREADY_ARCHIVED",
+                    "message": "Plan already archived",
                 },
             )
 
         # 更新状态为归档
-        db.execute("UPDATE plans SET status = 'archived' WHERE id = ?", (plan_id,))
+        db.execute(
+            "UPDATE plans SET status = 'archived' WHERE id = ?",
+            (plan_id,),
+        )
         db.commit()
 
         # 获取更新后的计划摘要
-        row = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
-
-        # 计算进度
-        stats = db.execute(
-            "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'learned' THEN 1 ELSE 0 END) as completed FROM nodes WHERE plan_id = ?",
+        row = db.execute(
+            "SELECT * FROM plans WHERE id = ?",
             (plan_id,),
         ).fetchone()
 
+        # 计算进度
+        stats = db.execute(
+            """SELECT
+                   COUNT(*) as total
+                   ,SUM(CASE WHEN status = 'learned' THEN 1
+                       ELSE 0 END) as completed
+               FROM nodes
+               WHERE plan_id = ?""",
+            (plan_id,),
+        ).fetchone()
+
+        completed = stats["completed"] if stats["completed"] else 0
+        total = stats["total"] if stats["total"] else 0
         return {
             "success": True,
             "data": {
                 "id": row["id"],
                 "title": row["title"],
-                "progress": stats["completed"] if stats["completed"] else 0,
-                "total": stats["total"] if stats["total"] else 0,
+                "progress": completed,
+                "total": total,
                 "status": row["status"],
                 "lastAccess": row["last_access_at"],
                 "createdAt": row["created_at"],
@@ -235,7 +273,7 @@ def archive_plan(plan_id: str, db=Depends(get_db)):
                 "success": False,
                 "error": {"code": "ARCHIVE_PLAN_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.put(
@@ -249,36 +287,58 @@ def archive_plan(plan_id: str, db=Depends(get_db)):
 def restore_plan(plan_id: str, db=Depends(get_db)):
     try:
         # 检查计划是否存在
-        plan = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        plan = db.execute(
+            "SELECT * FROM plans WHERE id = ?",
+            (plan_id,),
+        ).fetchone()
         if not plan:
             raise HTTPException(
                 status_code=404,
+                detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            )
+
+        if plan["status"] == "active":
+            raise HTTPException(
+                status_code=400,
                 detail={
-                    "success": False,
-                    "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+                    "code": "PLAN_ALREADY_ACTIVE",
+                    "message": "Plan already active",
                 },
             )
 
         # 更新状态为激活
-        db.execute("UPDATE plans SET status = 'active' WHERE id = ?", (plan_id,))
+        db.execute(
+            "UPDATE plans SET status = 'active' WHERE id = ?",
+            (plan_id,),
+        )
         db.commit()
 
         # 获取更新后的计划摘要
-        row = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
-
-        # 计算进度
-        stats = db.execute(
-            "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'learned' THEN 1 ELSE 0 END) as completed FROM nodes WHERE plan_id = ?",
+        row = db.execute(
+            "SELECT * FROM plans WHERE id = ?",
             (plan_id,),
         ).fetchone()
 
+        # 计算进度
+        stats = db.execute(
+            """SELECT
+                   COUNT(*) as total
+                   ,SUM(CASE WHEN status = 'learned' THEN 1
+                       ELSE 0 END) as completed
+               FROM nodes
+               WHERE plan_id = ?""",
+            (plan_id,),
+        ).fetchone()
+
+        completed = stats["completed"] if stats["completed"] else 0
+        total = stats["total"] if stats["total"] else 0
         return {
             "success": True,
             "data": {
                 "id": row["id"],
                 "title": row["title"],
-                "progress": stats["completed"] if stats["completed"] else 0,
-                "total": stats["total"] if stats["total"] else 0,
+                "progress": completed,
+                "total": total,
                 "status": row["status"],
                 "lastAccess": row["last_access_at"],
                 "createdAt": row["created_at"],
@@ -294,7 +354,7 @@ def restore_plan(plan_id: str, db=Depends(get_db)):
                 "success": False,
                 "error": {"code": "RESTORE_PLAN_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.delete(
@@ -308,22 +368,25 @@ def restore_plan(plan_id: str, db=Depends(get_db)):
 def delete_plan(plan_id: str, db=Depends(get_db)):
     try:
         # 检查计划是否存在
-        plan = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        plan = db.execute(
+            "SELECT * FROM plans WHERE id = ?",
+            (plan_id,),
+        ).fetchone()
         if not plan:
             raise HTTPException(
                 status_code=404,
-                detail={
-                    "success": False,
-                    "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
-                },
+                detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
             )
 
         # 级联删除由数据库外键约束处理，如果没开启则手动删除
         # 这里假设开启了 PRAGMA foreign_keys = ON;
-        db.execute("DELETE FROM plans WHERE id = ?", (plan_id,))
+        db.execute(
+            "DELETE FROM plans WHERE id = ?",
+            (plan_id,),
+        )
         db.commit()
 
-        return {"success": True}
+        return {"success": True, "message": "计划已删除"}
     except HTTPException:
         raise
     except Exception as e:
@@ -334,4 +397,4 @@ def delete_plan(plan_id: str, db=Depends(get_db)):
                 "success": False,
                 "error": {"code": "DELETE_PLAN_ERROR", "message": str(e)},
             },
-        )
+        ) from e
