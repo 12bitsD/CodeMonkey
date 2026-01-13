@@ -7,6 +7,7 @@ from models import (
     PlanCreateRequest,
     PlanCreateResponse,
     PlanUpdateRequest,
+    PlanUpdateResponse,
     ErrorResponse,
 )
 import uuid
@@ -27,7 +28,8 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
 
         # 1. 创建计划
         db.execute(
-            """INSERT INTO plans (id, user_id, title, original_input, target_node_id, status) 
+            """INSERT INTO plans (id, user_id, title, original_input, 
+               target_node_id, status) 
                VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 plan_id,
@@ -42,7 +44,8 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
         # 2. 批量创建节点
         for node in request.nodes:
             db.execute(
-                """INSERT INTO nodes (id, plan_id, name, status, x, y, why, what, mastery, prompt, resources, is_target, domain) 
+                """INSERT INTO nodes (id, plan_id, name, status, x, y, why, 
+                   what, mastery, prompt, resources, is_target, domain) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     node.id,
@@ -63,33 +66,18 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
 
         # 3. 批量创建边
         for edge in request.edges:
-            edge_id = "e_" + str(uuid.uuid4())[:8]
             db.execute(
-                "INSERT INTO edges (id, plan_id, from_node_id, to_node_id) VALUES (?, ?, ?, ?)",
-                (edge_id, plan_id, edge.from_node, edge.to_node),
+                """INSERT INTO edges (id, plan_id, source, target) 
+                   VALUES (?, ?, ?, ?)""",
+                (edge.id, plan_id, edge.source, edge.target),
             )
 
         db.commit()
-
-        # 获取创建后的计划摘要
-        row = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
-
         return {
             "success": True,
-            "data": {
-                "id": row["id"],
-                "title": row["title"],
-                "progress": 0,
-                "total": len(request.nodes),
-                "status": row["status"],
-                "lastAccess": row["last_access_at"],
-                "createdAt": row["created_at"],
-            },
+            "data": {"id": plan_id, "title": request.title},
         }
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
         db.rollback()
         raise HTTPException(
             status_code=500,
@@ -102,11 +90,8 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
 
 @router.put(
     "/plans/{plan_id}",
-    response_model=PlanCreateResponse,
-    responses={
-        404: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
+    response_model=PlanUpdateResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 def update_plan(plan_id: str, request: PlanUpdateRequest, db=Depends(get_db)):
     try:
@@ -122,29 +107,16 @@ def update_plan(plan_id: str, request: PlanUpdateRequest, db=Depends(get_db)):
             )
 
         # 更新标题
-        db.execute("UPDATE plans SET title = ? WHERE id = ?", (request.title, plan_id))
-        db.commit()
-
-        # 获取更新后的计划摘要
-        row = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
-
-        # 计算进度
-        stats = db.execute(
-            "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'learned' THEN 1 ELSE 0 END) as completed FROM nodes WHERE plan_id = ?",
-            (plan_id,),
-        ).fetchone()
+        if request.title:
+            db.execute(
+                "UPDATE plans SET title = ? WHERE id = ?",
+                (request.title, plan_id),
+            )
+            db.commit()
 
         return {
             "success": True,
-            "data": {
-                "id": row["id"],
-                "title": row["title"],
-                "progress": stats["completed"] if stats["completed"] else 0,
-                "total": stats["total"] if stats["total"] else 0,
-                "status": row["status"],
-                "lastAccess": row["last_access_at"],
-                "createdAt": row["created_at"],
-            },
+            "data": {"id": plan_id, "title": request.title or plan["title"]},
         }
     except HTTPException:
         raise

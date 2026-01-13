@@ -96,11 +96,11 @@ class GraphResponse(BaseModel):
 class PlanSummary(BaseModel):
     id: str
     title: str
-    progress: int
-    total: int
-    status: str
-    lastAccess: str
-    createdAt: str
+    progress: Optional[int] = 0
+    total: Optional[int] = 0
+    status: Optional[str] = "active"
+    lastAccess: Optional[str] = None
+    createdAt: Optional[str] = None
 
 
 class PlanCreateRequest(BaseModel):
@@ -118,6 +118,11 @@ class PlanCreateResponse(BaseModel):
 
 class PlanUpdateRequest(BaseModel):
     title: str
+
+
+class PlanUpdateResponse(BaseModel):
+    success: bool
+    data: Dict[str, Any]
 
 
 class PlanListResponse(BaseModel):
