@@ -159,25 +159,12 @@ def get_plans(status: Optional[str] = None, db=Depends(get_db)):
 
         plans = []
         for plan in rows:
-            # 获取每个计划的统计数据
-            stats = db.execute(
-                """SELECT
-                       COUNT(*) as total
-                       ,SUM(CASE WHEN status = 'learned' THEN 1
-                           ELSE 0 END) as completed
-                   FROM nodes
-                   WHERE plan_id = ?""",
-                (plan["id"],),
-            ).fetchone()
-
-            completed = stats["completed"] if stats["completed"] else 0
-            total = stats["total"] if stats["total"] else 0
             plans.append(
                 {
                     "id": plan["id"],
                     "title": plan["title"],
-                    "progress": completed,
-                    "total": total,
+                    "progress": plan["progress"] if plan["progress"] else 0,
+                    "total": plan["total"] if plan["total"] else 0,
                     "status": plan["status"],
                     "lastAccess": plan["last_access_at"],
                     "createdAt": plan["created_at"],
