@@ -6,7 +6,7 @@ from database import get_db
 
 router = APIRouter(prefix="/api", tags=["stats"])
 
-USER_ID = "u_test"
+USER_ID = "user_default"
 
 
 def parse_json_field(field_value, default=[]):

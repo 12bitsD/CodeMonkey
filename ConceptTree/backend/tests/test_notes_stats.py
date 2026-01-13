@@ -117,7 +117,7 @@ def client():
         )
     """)
 
-    user_id = "u_test"
+    user_id = "user_default"
     conn.execute("INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
                  (user_id, "test@example.com", "pw"))
     conn.execute("INSERT INTO user_profiles (id, user_id, mastered_knowledge) VALUES (?, ?, ?)",

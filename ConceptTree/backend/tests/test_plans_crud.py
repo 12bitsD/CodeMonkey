@@ -19,7 +19,7 @@ def client():
     import database
 
     database.DATABASE_PATH = TEST_DB
-    database.init_database()
+    database.init_database(run_seed=False)
 
     # 注入测试数据库连接
     def override_get_db():
@@ -48,7 +48,7 @@ class TestPlansCRUD:
             "originalInput": "我想学Python",
             "nodes": [
                 {
-                    "id": "n1",
+                    "id": "node_test_1",
                     "name": "Python基础",
                     "status": "unlearned",
                     "x": 0,
@@ -61,7 +61,7 @@ class TestPlansCRUD:
                 }
             ],
             "edges": [],
-            "targetNodeId": "n1",
+            "targetNodeId": "node_test_1",
         }
         response = client.post("/api/plans", json=plan_data)
         if response.status_code != 200:
@@ -82,7 +82,7 @@ class TestPlansCRUD:
                 "originalInput": "test",
                 "nodes": [
                     {
-                        "id": "n1",
+                        "id": "node_test_update_1",
                         "name": "node",
                         "status": "unlearned",
                         "x": 0,
@@ -91,7 +91,7 @@ class TestPlansCRUD:
                     }
                 ],
                 "edges": [],
-                "targetNodeId": "n1",
+                "targetNodeId": "node_test_update_1",
             },
         )
         plan_id = create_resp.json()["data"]["id"]

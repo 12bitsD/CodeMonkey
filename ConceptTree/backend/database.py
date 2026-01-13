@@ -15,7 +15,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-def init_database():
+def init_database(run_seed=True):
     with get_db() as db:
         db.execute(
             """
@@ -117,14 +117,14 @@ def init_database():
         """
         )
 
-        seed_data(db)
         db.execute(
             """
             INSERT OR IGNORE INTO users (id, email, password_hash)
-            VALUES ('user_default', 'test@example.com', 'mock_hash')
+            VALUES ('user_default', 'default@example.com', 'mock_hash')
         """
         )
-
+        if run_seed:
+            seed_data(db)
         db.commit()
 
 
@@ -133,7 +133,7 @@ def seed_data(db: sqlite3.Connection):
     if row["count"] > 0:
         return
 
-    user_id = "u_test"
+    user_id = "user_default"
     db.execute(
         "INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
         (user_id, "test@example.com", "hashed_pw"),
