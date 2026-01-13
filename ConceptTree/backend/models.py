@@ -103,6 +103,23 @@ class PlanSummary(BaseModel):
     createdAt: str
 
 
+class PlanCreateRequest(BaseModel):
+    title: str
+    originalInput: str
+    nodes: List[NodeData]
+    edges: List[Edge]
+    targetNodeId: str
+
+
+class PlanCreateResponse(BaseModel):
+    success: bool
+    data: PlanSummary
+
+
+class PlanUpdateRequest(BaseModel):
+    title: str
+
+
 class PlanListResponse(BaseModel):
     success: bool
     data: List[PlanSummary]

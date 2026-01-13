@@ -110,7 +110,7 @@ def generate_graph_service(
     target_node = NodeData(
         id="n1",
         name=interpretation,
-        status=NodeStatus.UNLEARNED,
+        status=NodeStatus.unlearned,
         x=0,
         y=-100,
         why="这是你的学习目标。",
@@ -122,12 +122,11 @@ def generate_graph_service(
         domain="核心",
     )
 
-    # 前置节点
     prerequisite_nodes = [
         NodeData(
             id="n2",
             name="基础概念",
-            status=NodeStatus.UNLEARNED,
+            status=NodeStatus.unlearned,
             x=-150,
             y=100,
             why=f"理解{interpretation}的前置知识，为后续学习打基础。",
@@ -141,7 +140,7 @@ def generate_graph_service(
         NodeData(
             id="n3",
             name="核心原理",
-            status=NodeStatus.UNLEARNED,
+            status=NodeStatus.unlearned,
             x=0,
             y=100,
             why="掌握核心原理是深入理解的关键。",
@@ -155,7 +154,7 @@ def generate_graph_service(
         NodeData(
             id="n4",
             name="实践应用",
-            status=NodeStatus.UNLEARNED,
+            status=NodeStatus.unlearned,
             x=150,
             y=100,
             why="将理论知识应用到实际场景。",
@@ -168,19 +167,18 @@ def generate_graph_service(
         ),
     ]
 
-    # 检查用户已掌握的知识，自动标记为skipped
     mastered = user_profile.get("masteredKnowledge", []) if user_profile else []
     all_nodes = [target_node] + prerequisite_nodes
 
     for node in all_nodes:
         if node.name in mastered:
-            node.status = NodeStatus.SKIPPED
+            node.status = NodeStatus.skipped
 
     # 构建依赖边
     edges = [
-        Edge(from_="n2", to="n1"),
-        Edge(from_="n3", to="n1"),
-        Edge(from_="n4", to="n1"),
+        Edge(from_node="n2", to_node="n1"),
+        Edge(from_node="n3", to_node="n1"),
+        Edge(from_node="n4", to_node="n1"),
     ]
 
     return {
