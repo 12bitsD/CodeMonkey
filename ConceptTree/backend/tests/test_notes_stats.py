@@ -118,7 +118,7 @@ def client():
     """)
 
     user_id = "user_default"
-    conn.execute("INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
+    conn.execute("INSERT OR IGNORE INTO users (id, email, password_hash) VALUES (?, ?, ?)",
                  (user_id, "test@example.com", "pw"))
     conn.execute("INSERT INTO user_profiles (id, user_id, mastered_knowledge) VALUES (?, ?, ?)",
                  ("profile_1", user_id, json.dumps(["知识点A", "知识点B"])))

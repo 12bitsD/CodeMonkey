@@ -1,14 +1,14 @@
 """AI服务API测试 - 简化版本"""
 
-import pytest
 import os
 import sys
 import sqlite3
+import pytest
 from fastapi.testclient import TestClient
-from main import app
-from database import get_db
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from main import app
+from database import get_db
 
 TEST_DB = "./test_ai.db"
 

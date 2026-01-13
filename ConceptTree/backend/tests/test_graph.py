@@ -128,7 +128,7 @@ def client():
     # Seed data
     user_id = "user_default"
     conn.execute(
-        "INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)",
+        "INSERT OR IGNORE INTO users (id, email, password_hash) VALUES (?, ?, ?)",
         (user_id, "test@example.com", "pw"),
     )
 

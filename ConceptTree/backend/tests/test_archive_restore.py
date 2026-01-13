@@ -1,13 +1,13 @@
+import os
+import sqlite3
+import sys
+
 import pytest
 from fastapi.testclient import TestClient
-import sys
-import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from database import get_db
 from main import app
-from database import get_db, init_database
-import sqlite3
-import os
 
 TEST_DB = "./test_database.sqlite"
 
@@ -20,7 +20,8 @@ def test_db():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     cursor = conn.cursor()
-    cursor.executescript("""
+    cursor.executescript(
+        """
         PRAGMA foreign_keys = ON;
         CREATE TABLE plans (
             id TEXT PRIMARY KEY,
@@ -65,15 +66,22 @@ def test_db():
             FOREIGN KEY (from_node_id) REFERENCES nodes(id) ON DELETE CASCADE,
             FOREIGN KEY (to_node_id) REFERENCES nodes(id) ON DELETE CASCADE
         );
-        INSERT INTO users (id, email, password_hash, name) VALUES 
-            ('u1', 'test@example.com', 'hash', 'Test User');
-        INSERT INTO plans (id, user_id, title, status) VALUES ('p_active', 'u1', 'Active Plan', 'active');
-        INSERT INTO plans (id, user_id, title, status) VALUES ('p_archived', 'u1', 'Archived Plan', 'archived');
-        INSERT INTO plans (id, user_id, title, status) VALUES ('p_with_graph', 'u1', 'Plan with Graph', 'active');
-        INSERT INTO nodes (id, plan_id, name, status) VALUES ('n1', 'p_with_graph', 'Node 1', 'unlearned');
-        INSERT INTO nodes (id, plan_id, name, status) VALUES ('n2', 'p_with_graph', 'Node 2', 'learned');
-        INSERT INTO edges (id, plan_id, from_node_id, to_node_id) VALUES ('e1', 'p_with_graph', 'n1', 'n2');
-    """)
+        INSERT OR IGNORE INTO users (id, email, password_hash, name) VALUES 
+            ('user_default', 'test@example.com', 'hash', 'Test User');
+        INSERT INTO plans (id, user_id, title, status) VALUES 
+            ('p_active', 'user_default', 'Active Plan', 'active');
+        INSERT INTO plans (id, user_id, title, status) VALUES 
+            ('p_archived', 'user_default', 'Archived Plan', 'archived');
+        INSERT INTO plans (id, user_id, title, status) VALUES 
+            ('p_with_graph', 'user_default', 'Plan with Graph', 'active');
+        INSERT INTO nodes (id, plan_id, name, status) VALUES 
+            ('n1', 'p_with_graph', 'Node 1', 'unlearned');
+        INSERT INTO nodes (id, plan_id, name, status) VALUES 
+            ('n2', 'p_with_graph', 'Node 2', 'learned');
+        INSERT INTO edges (id, plan_id, from_node_id, to_node_id) VALUES 
+            ('e1', 'p_with_graph', 'n1', 'n2');
+    """
+    )
     conn.commit()
     conn.close()
     yield TEST_DB
@@ -91,6 +99,7 @@ def client(test_db):
             yield conn
         finally:
             conn.close()
+
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
@@ -155,7 +164,7 @@ class TestArchiveRestoreAPI:
         data = response.json()
         assert data["success"] is True
         assert data["message"] == "计划已删除"
-        
+
         conn = sqlite3.connect(test_db)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
