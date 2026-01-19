@@ -21,6 +21,9 @@ const MyLearningPage = () => {
   
   const [activeTab, setActiveTab] = useState('profile');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isComposing, setIsComposing] = useState(false);
+  const [localOccupation, setLocalOccupation] = useState(userProfile?.occupation || '');
+  const [localEducation, setLocalEducation] = useState(userProfile?.education || '');
 
   const tabs = [
     { id: 'profile', label: '我的画像', icon: User },
@@ -47,6 +50,28 @@ const MyLearningPage = () => {
     const newAbilities = [...userProfile.abilities];
     newAbilities.splice(index, 1);
     actions.setUserProfile({ ...userProfile, abilities: newAbilities });
+  };
+
+  const handleOccupationChange = (e) => {
+    setLocalOccupation(e.target.value);
+    if (!isComposing) {
+      actions.setUserProfile({ ...userProfile, occupation: e.target.value });
+    }
+  };
+
+  const handleOccupationBlur = () => {
+    actions.setUserProfile({ ...userProfile, occupation: localOccupation });
+  };
+
+  const handleEducationChange = (e) => {
+    setLocalEducation(e.target.value);
+    if (!isComposing) {
+      actions.setUserProfile({ ...userProfile, education: e.target.value });
+    }
+  };
+
+  const handleEducationBlur = () => {
+    actions.setUserProfile({ ...userProfile, education: localEducation });
   };
 
   const archivedPlans = plans.filter(p => p.status === 'archived');
@@ -100,8 +125,11 @@ const MyLearningPage = () => {
                     <label className="text-xs font-semibold text-zinc-500">职业/身份</label>
                     <input 
                       type="text" 
-                      value={userProfile?.occupation || ''} 
-                      onChange={e => actions.setUserProfile({...userProfile, occupation: e.target.value})} 
+                      value={localOccupation}
+                      onChange={handleOccupationChange}
+                      onBlur={handleOccupationBlur}
+                      onCompositionStart={() => setIsComposing(true)}
+                      onCompositionEnd={() => setIsComposing(false)}
                       placeholder="例如：大三计算机学生"
                       className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-lg text-sm focus:bg-white focus:border-zinc-300 outline-none transition-colors" 
                     />
@@ -110,8 +138,11 @@ const MyLearningPage = () => {
                     <label className="text-xs font-semibold text-zinc-500">教育背景</label>
                     <input 
                       type="text" 
-                      value={userProfile?.education || ''} 
-                      onChange={e => actions.setUserProfile({...userProfile, education: e.target.value})} 
+                      value={localEducation}
+                      onChange={handleEducationChange}
+                      onBlur={handleEducationBlur}
+                      onCompositionStart={() => setIsComposing(true)}
+                      onCompositionEnd={() => setIsComposing(false)}
                       placeholder="例如：香港理工大学 计算机"
                       className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-lg text-sm focus:bg-white focus:border-zinc-300 outline-none transition-colors" 
                     />

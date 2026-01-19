@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
@@ -7,6 +7,41 @@ class NodeStatus(str, Enum):
     unlearned = "unlearned"
     learned = "learned"
     skipped = "skipped"
+
+
+# ========== 认证和用户相关模型 ==========
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    user: Dict[str, str]
+    token: str
+    expiresIn: Optional[int] = 604800
+
+
+class UserProfile(BaseModel):
+    occupation: Optional[str] = None
+    education: Optional[str] = None
+    programmingLevel: Optional[str] = "入门"
+    mathLevel: Optional[str] = "入门"
+    abilities: List[str] = []
+    masteredKnowledge: List[str] = []
+
+
+class UpdateProfileRequest(BaseModel):
+    occupation: Optional[str] = None
+    education: Optional[str] = None
+    programmingLevel: Optional[str] = None
+    mathLevel: Optional[str] = None
+    abilities: Optional[List[str]] = None
 
 
 class BackgroundSummary(BaseModel):

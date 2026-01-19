@@ -9,16 +9,19 @@ import {
   Circle,
   Edit3, 
   Archive, 
-  MoreVertical
+  MoreVertical,
+  LogOut
 } from 'lucide-react';
 import { Button, Modal } from '../components/ui';
 import { LOADING_TEXTS } from '../constants';
 import { useAppContext } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
 import { graphApi, aiApi } from '../services/api';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { userProfile, plans, actions } = useAppContext();
+  const { isAuthenticated, user, login, register, logout } = useAuth();
   
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -31,11 +34,10 @@ const HomePage = () => {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [planToRename, setPlanToRename] = useState(null);
   const [newName, setNewName] = useState('');
-
-  // 认证相关状态
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
-  const [isLoggedIn, setIsLoggedIn] = useState(false); // 模拟登录状态
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const handleStartAnalysis = async () => {
     if (!inputText.trim()) return;
@@ -108,9 +110,35 @@ const HomePage = () => {
     }
   };
 
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    setShowLoginModal(false);
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  const handleLogin = async () => {
+    try {
+      if (authMode === 'login') {
+        const result = await login(email, password);
+        if (result.success) {
+          setShowLoginModal(false);
+          setEmail('');
+          setPassword('');
+        } else {
+          alert(result.error || '登录失败');
+        }
+      } else {
+        const result = await register(email, password);
+        if (result.success) {
+          setShowLoginModal(false);
+          setEmail('');
+          setPassword('');
+        } else {
+          alert(result.error || '注册失败');
+        }
+      }
+    } catch (error) {
+      alert('操作失败，请重试');
+    }
   };
 
   const activePlans = plans.filter(p => p.status === 'active');
@@ -129,21 +157,31 @@ const HomePage = () => {
           <span className="font-semibold text-lg tracking-tight text-zinc-900">PathFinder</span>
         </div>
         <div className="flex items-center gap-4">
-          {!isLoggedIn ? (
+          {!isAuthenticated ? (
             <button 
-              onClick={() => setShowLoginModal(true)}
-              className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors px-4 py-2"
+              onClick={() => navigate('/auth')}
+              className="px-6 py-2.5 rounded-full bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
             >
               登录 / 注册
             </button>
           ) : (
-            <button 
-              onClick={() => navigate('/my-learning')} 
-              className="group flex items-center gap-2 text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors px-4 py-2 rounded-full hover:bg-zinc-100"
-            >
-              <User size={18} strokeWidth={1.5} className="group-hover:stroke-2" />
-              <span>我的学习</span>
-            </button>
+            <div className="flex items-center gap-2 bg-white p-1.5 rounded-full border border-zinc-100 shadow-sm">
+              <button 
+                onClick={() => navigate('/my-learning')} 
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 rounded-full transition-all duration-200"
+              >
+                <User size={16} strokeWidth={2} className="text-zinc-400 group-hover:text-zinc-900" />
+                我的学习
+              </button>
+              <div className="w-px h-4 bg-zinc-200" />
+              <button 
+                onClick={handleLogout} 
+                className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all duration-200"
+                title="登出"
+              >
+                <LogOut size={16} strokeWidth={2} />
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -348,9 +386,12 @@ const HomePage = () => {
         onClose={() => setShowLoginModal(false)}
         title={authMode === 'login' ? '欢迎回来' : '创建账号'}
         footer={
-          <Button onClick={handleLogin} className="w-full justify-center">
+          <button 
+            onClick={handleLogin}
+            className="w-full py-3.5 px-6 bg-green-500 text-white font-medium rounded-2xl shadow-md hover:shadow-lg hover:bg-green-600 active:bg-green-700 transition-all duration-200 text-sm"
+          >
             {authMode === 'login' ? '登录' : '注册'}
-          </Button>
+          </button>
         }
       >
         <div className="space-y-4">
@@ -359,7 +400,9 @@ const HomePage = () => {
             <input 
               type="email" 
               placeholder="name@example.com"
-              className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-lg text-sm focus:bg-white focus:border-zinc-300 outline-none transition-colors" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:bg-white focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 outline-none transition-all duration-200" 
             />
           </div>
           <div className="space-y-2">
@@ -367,7 +410,9 @@ const HomePage = () => {
             <input 
               type="password" 
               placeholder="••••••••"
-              className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-lg text-sm focus:bg-white focus:border-zinc-300 outline-none transition-colors" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:bg-white focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 outline-none transition-all duration-200" 
             />
           </div>
           

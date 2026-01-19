@@ -5,8 +5,17 @@ from typing import Generator
 DATABASE_PATH = "./database.sqlite"
 
 
+def get_db():
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 @contextmanager
-def get_db() -> Generator[sqlite3.Connection, None, None]:
+def get_db_context() -> Generator[sqlite3.Connection, None, None]:
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -16,7 +25,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 
 
 def init_database(run_seed=True):
-    with get_db() as db:
+    with get_db_context() as db:
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -24,6 +33,23 @@ def init_database(run_seed=True):
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id TEXT PRIMARY KEY,
+                user_id TEXT UNIQUE NOT NULL,
+                occupation TEXT,
+                education TEXT,
+                programming_level TEXT DEFAULT '入门',
+                math_level TEXT DEFAULT '入门',
+                abilities TEXT DEFAULT '[]',
+                mastered_knowledge TEXT DEFAULT '[]',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """
         )

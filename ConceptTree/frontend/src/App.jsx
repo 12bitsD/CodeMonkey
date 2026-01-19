@@ -1,21 +1,41 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import { AppProvider } from './contexts/AppContext';
 import { HomePage, GraphPage, MyLearningPage } from './pages';
+import AuthPage from './pages/AuthPage';
+import ProtectedRoute from './components/common/ProtectedRoute';
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans selection:bg-zinc-200 selection:text-zinc-900 antialiased overflow-hidden">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/graph/:planId" element={<GraphPage />} />
-            <Route path="/my-learning" element={<MyLearningPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
-      </BrowserRouter>
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <BrowserRouter>
+          <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans selection:bg-zinc-200 selection:text-zinc-900 antialiased overflow-hidden">
+            <Routes>
+              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/" element={<HomePage />} />
+              <Route 
+                path="/graph/:planId" 
+                element={
+                  <ProtectedRoute>
+                    <GraphPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/my-learning" 
+                element={
+                  <ProtectedRoute>
+                    <MyLearningPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+        </BrowserRouter>
+      </AppProvider>
+    </AuthProvider>
   );
 }

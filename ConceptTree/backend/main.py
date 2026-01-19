@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_database
-from routers import graph, plans, notes, stats, ai
+from routers import graph, plans, notes, stats, ai, auth, user
 
 app = FastAPI(
     title="PathFinder API",
@@ -18,6 +18,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(user.router)
 app.include_router(graph.router)
 app.include_router(plans.router)
 app.include_router(notes.router)

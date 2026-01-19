@@ -235,7 +235,7 @@ class TestNotesAPI:
             "content": ""
         })
         assert response.status_code == 400
-        assert response.json()["detail"]["code"] == "CONTENT_REQUIRED"
+        assert response.json()["detail"]["error"]["code"] == "CONTENT_REQUIRED"
 
     def test_create_note_plan_not_found(self, client):
         response = client.post("/api/notes", json={
@@ -244,7 +244,7 @@ class TestNotesAPI:
             "content": "test"
         })
         assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "PLAN_NOT_FOUND"
+        assert response.json()["detail"]["error"]["code"] == "PLAN_NOT_FOUND"
 
     def test_update_note(self, client):
         response = client.put("/api/notes/note_1", json={
@@ -260,7 +260,7 @@ class TestNotesAPI:
             "content": "test"
         })
         assert response.status_code == 404
-        assert response.json()["detail"]["code"] == "NOTE_NOT_FOUND"
+        assert response.json()["detail"]["error"]["code"] == "NOTE_NOT_FOUND"
 
     def test_delete_note(self, client):
         response = client.delete("/api/notes/note_1")

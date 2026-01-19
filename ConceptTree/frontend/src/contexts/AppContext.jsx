@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { userProfileApi, plansApi, notesApi } from '../services/api';
+import { userProfileApi, plansApi, notesApi, tokenManager } from '../services/api';
 import { createEmptyUserProfile } from '../types';
+import { useAuth } from './AuthContext';
 
 const AppContext = createContext();
 
@@ -13,26 +14,39 @@ export const useAppContext = () => {
 };
 
 export const AppProvider = ({ children }) => {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  
   // 全局状态
   const [userProfile, setUserProfile] = useState(createEmptyUserProfile());
   const [plans, setPlans] = useState([]);
   const [allNotes, setAllNotes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 初始化加载数据
+  // 初始化加载数据（仅在已登录时）
   useEffect(() => {
     const loadInitialData = async () => {
+      // 等待认证状态加载完成
+      if (authLoading) return;
+      
       setIsLoading(true);
       try {
-        const [profile, plansList, notesList] = await Promise.all([
-          userProfileApi.get(),
-          plansApi.list(),
-          notesApi.list()
-        ]);
-        
-        if (profile) setUserProfile(profile);
-        if (plansList) setPlans(plansList);
-        if (notesList) setAllNotes(notesList);
+        if (isAuthenticated) {
+          // 已登录，从后端加载数据
+          const [profile, plansList, notesList] = await Promise.all([
+            userProfileApi.get(),
+            plansApi.list(),
+            notesApi.list()
+          ]);
+          
+          if (profile) setUserProfile(profile);
+          if (plansList) setPlans(plansList);
+          if (notesList) setAllNotes(notesList);
+        } else {
+          // 未登录，使用默认数据
+          setUserProfile(createEmptyUserProfile());
+          setPlans([]);
+          setAllNotes([]);
+        }
       } catch (error) {
         console.error('初始化加载数据失败', error);
       } finally {
@@ -41,7 +55,7 @@ export const AppProvider = ({ children }) => {
     };
     
     loadInitialData();
-  }, []);
+  }, [isAuthenticated, authLoading]);
 
   // 业务逻辑 - 计划相关
   const createPlan = async (input, graphResult) => {

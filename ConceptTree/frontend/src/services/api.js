@@ -1,13 +1,33 @@
 
 import { createEmptyUserProfile } from '../types';
 
-const BASE_URL = 'http://localhost:3000/api';
+const BASE_URL = 'http://localhost:8000/api';
+
+// Token管理
+const TOKEN_KEY = 'concept_tree_token';
+
+export const tokenManager = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (token) => localStorage.setItem(TOKEN_KEY, token),
+  remove: () => localStorage.removeItem(TOKEN_KEY)
+};
 
 // Helper for fetch
 const fetchApi = async (endpoint, options = {}) => {
   try {
+    const headers = { 
+      'Content-Type': 'application/json', 
+      ...options.headers 
+    };
+    
+    // 自动添加认证token
+    const token = tokenManager.get();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     const res = await fetch(`${BASE_URL}${endpoint}`, {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
+      headers,
       ...options
     });
     const json = await res.json();
@@ -49,22 +69,47 @@ const storage = {
 // 模拟延迟
 const delay = (ms = 300) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 用户画像 API (Mock)
+// 认证 API (Real Backend)
+export const authApi = {
+  register: async (email, password) => {
+    return await fetchApi('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+  },
+  
+  login: async (email, password) => {
+    return await fetchApi('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+  },
+  
+  logout: async () => {
+    try {
+      await fetchApi('/auth/logout', { method: 'POST' });
+    } finally {
+      tokenManager.remove();
+    }
+  }
+};
+
+// 用户画像 API (Real Backend)
 export const userProfileApi = {
   get: async () => {
-    await delay();
-    let profile = storage.get(STORAGE_KEYS.PROFILE, null);
-    if (!profile) {
-      profile = createEmptyUserProfile();
-      storage.set(STORAGE_KEYS.PROFILE, profile);
+    try {
+      return await fetchApi('/user/profile');
+    } catch (error) {
+      console.warn('Failed to fetch profile from backend, using empty profile', error);
+      return createEmptyUserProfile();
     }
-    return profile;
   },
   
   update: async (profile) => {
-    await delay();
-    storage.set(STORAGE_KEYS.PROFILE, profile);
-    return profile;
+    return await fetchApi('/user/profile', {
+      method: 'PUT',
+      body: JSON.stringify(profile)
+    });
   }
 };
 
