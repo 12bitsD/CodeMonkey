@@ -1,193 +1,191 @@
-# PathFinder - 学习路径规划器
+<p align="center">
+  <img src="https://img.shields.io/badge/Built%20by-100%25%20AI-blueviolet?style=for-the-badge" alt="Built by AI">
+  <img src="https://img.shields.io/badge/Maintained%20by-AI%20Agents-success?style=for-the-badge" alt="Maintained by AI">
+  <img src="https://img.shields.io/badge/Human%20Code-0%25-lightgrey?style=for-the-badge" alt="Human Code 0%">
+</p>
 
-## 快速开始
+<h1 align="center">
+  <br>
+  <img src="https://api.iconify.design/fluent-emoji:brain.svg" width="80" alt="PathFinder Logo">
+  <br>
+  PathFinder
+  <br>
+</h1>
 
-### 方式 1: 使用启动脚本（推荐）
+<h4 align="center">
+  🧠 AI-Powered Learning Path Generator — Built & Maintained by AI
+</h4>
+
+<p align="center">
+  <em>Type what you want to learn. Get a knowledge dependency graph. Master anything, one node at a time.</em>
+</p>
+
+---
+
+## 🤖 This Project Is Different
+
+**No human wrote this code.** 
+
+This entire project — from architecture design to implementation — was created and is maintained by AI agents. The codebase structure, naming conventions, documentation, and even this README are all optimized for AI comprehension and modification.
+
+> "When AI builds for AI, everything becomes a specification."
+
+---
+
+## 🎯 What Is PathFinder?
+
+PathFinder is a **learning path generator** that transforms any learning goal into a visual knowledge graph with clear dependencies.
+
+**Input:** `"I want to understand backpropagation in deep learning. I know Python but my math is weak."`
+
+**Output:** A beautiful, interactive knowledge graph showing exactly what you need to learn, in what order, with resources and checkpoints.
+
+<p align="center">
+  <img src="https://api.iconify.design/fluent-emoji:world-map.svg" width="60">
+</p>
+
+### Core Features
+
+| Feature | Description |
+|---------|-------------|
+| **Smart Goal Parsing** | AI analyzes your input and extracts learning objectives + existing knowledge |
+| **Knowledge Graph Generation** | Creates dependency-aware learning paths down to formula level |
+| **Adaptive Learning** | Considers your background to skip what you already know |
+| **Progress Tracking** | Visual progress on each node: `unlearned → learned → mastered` |
+| **Personal Notes** | Markdown notes attached to each knowledge node |
+| **Resource Recommendations** | Curated learning materials for each concept |
+
+---
+
+## 🏗️ Architecture Philosophy
+
+This codebase is designed with one principle: **AI-first maintainability**.
+
+```
+📁 ConceptTree/
+├── 📁 spec/              ← Source of truth. AI reads this FIRST.
+│   ├── 前端-架构总览.md   ← Frontend architecture spec
+│   ├── 后端-通用规范.md   ← Backend conventions
+│   └── ...               ← Page-by-page specifications
+├── 📁 backend/           ← FastAPI application
+│   ├── routers/          ← API endpoints (1 file = 1 domain)
+│   ├── services/         ← Business logic
+│   ├── adapters/         ← Database abstraction
+│   └── tests/            ← Test-first development
+└── 📁 frontend/          ← React + Vite application
+    ├── pages/            ← Route components
+    ├── components/       ← Reusable UI
+    ├── services/         ← API client
+    └── contexts/         ← State management
+```
+
+### Why This Structure?
+
+1. **Specs Before Code** — Every feature is documented in `/spec` before implementation. AI reads specs, writes tests, then code.
+
+2. **Flat & Explicit** — No deeply nested folders. Each file has a clear, single responsibility.
+
+3. **Convention Over Configuration** — Naming patterns are strict and predictable. AI can infer file locations from names.
+
+4. **Test-Driven** — Tests serve as executable documentation. AI validates its own work.
+
+---
+
+## 🚀 Quick Start
 
 ```bash
+# One command to rule them all
 ./start-dev.sh
 ```
 
-这将同时启动前端和后端开发服务器。
+**That's it.** Frontend runs on `http://localhost:5173`, Backend on `http://localhost:8000`.
 
-### 方式 2: 使用 VS Code 调试配置
+<details>
+<summary>Manual setup (if you must)</summary>
 
-1. 打开 VS Code
-2. 按 `Cmd+Shift+D` (macOS) 或 `Ctrl+Shift+D` (Windows/Linux)
-3. 选择 `后端: FastAPI` 或 `前端: Vite 开发服务器`
-4. 按 `F5` 启动
-
-### 方式 3: 手动启动
-
-**后端:**
+**Backend:**
 ```bash
 cd ConceptTree/backend
 source venv/bin/activate
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
-**前端:**
+**Frontend:**
 ```bash
 cd ConceptTree/frontend
-npm install  # 首次运行
-npm run dev
+npm install && npm run dev
 ```
+</details>
 
-## 访问地址
+---
 
-- 前端应用: http://localhost:5173
-- 后端 API: http://localhost:8000
-- API 文档: http://localhost:8000/docs
-- 健康检查: http://localhost:8000/health
+## 🛠️ Tech Stack
 
-## 项目结构
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18 + Vite + Tailwind CSS |
+| **Backend** | FastAPI + Pydantic |
+| **Database** | SQLite (local) / Supabase (cloud) |
+| **AI Integration** | LLM-powered goal parsing & graph generation |
 
-```
-CodeMonkey/
-├── ConceptTree/
-│   ├── backend/          # 后端 FastAPI 应用
-│   │   ├── routers/      # API 路由
-│   │   ├── tests/        # 后端测试
-│   │   ├── main.py       # 应用入口
-│   │   ├── database.py   # 数据库配置
-│   │   └── models.py     # 数据模型
-│   ├── frontend/         # 前端 React 应用
-│   │   ├── src/
-│   │   │   ├── components/  # React 组件
-│   │   │   ├── pages/       # 页面组件
-│   │   │   ├── services/    # API 服务
-│   │   │   └── contexts/    # React Context
-│   │   └── package.json
-│   └── spec/            # 项目规范文档
-├── .vscode/             # VS Code 配置
-│   ├── launch.json      # 调试配置
-│   ├── settings.json    # 编辑器设置
-│   ├── tasks.json       # 任务配置
-│   └── extensions.json  # 推荐扩展
-├── .trae/               # Trae 项目配置
-│   ├── documents/       # 项目文档
-│   └── rules/           # 项目规则
-└── start-dev.sh         # 快速启动脚本
-```
+---
 
-## 开发指南
+## 📜 The Rules
 
-### 后端开发
+AI agents follow these rules when modifying this codebase:
 
-**安装依赖:**
-```bash
-cd ConceptTree/backend
-source venv/bin/activate
-pip install -r requirements.txt
-```
+1. **Read `/spec` before writing any code**
+2. **Update spec first, then write tests, then implement**
+3. **Never commit without passing tests**
+4. **Mark implementation status in specs** (`✅` / `❌`)
+5. **Keep the single source of truth in sync**
 
-**运行测试:**
-```bash
-pytest -v
-```
+These rules exist in `.trae/rules/project_rules.md` and are enforced by the AI development workflow.
 
-**代码格式化:**
-```bash
-black .
-```
+---
 
-**代码检查:**
-```bash
-flake8 .
-```
+## 🔮 Roadmap
 
-### 前端开发
+- [ ] Multi-user support with authentication
+- [ ] Cloud sync for learning progress
+- [ ] Export learning paths as shareable links
+- [ ] Mobile-responsive graph visualization
+- [ ] AI tutor integration for each knowledge node
 
-**安装依赖:**
-```bash
-cd ConceptTree/frontend
-npm install
-```
+---
 
-**运行测试:**
-```bash
-npm test
-```
+## 📊 Project Status
 
-**代码检查:**
-```bash
-npm run lint
-```
+| Component | Status |
+|-----------|--------|
+| Core Graph Engine | ✅ Complete |
+| Goal Parsing AI | ✅ Complete |
+| User Authentication | ✅ Complete |
+| Frontend UI | ✅ Complete |
+| Cloud Database | 🔄 In Progress |
+| Mobile Support | ⏳ Planned |
 
-**构建生产版本:**
-```bash
-npm run build
-```
+---
 
-## 调试
+## 🤝 Contributing
 
-详细的调试配置说明请查看 [调试环境配置说明.md](.trae/documents/调试环境配置说明.md)
+**Want to contribute?** Here's the twist — you can either:
 
-### VS Code 调试配置
+1. **Submit specs** — Write a feature specification in `/spec` format, and AI will implement it
+2. **Code directly** — Traditional PRs welcome, but please update specs accordingly
 
-项目已配置以下调试选项：
+Remember: In this repo, documentation IS the source code.
 
-**后端:**
-- `后端: FastAPI` - 启动 FastAPI 开发服务器
-- `后端: 当前 Python 文件` - 调试当前 Python 文件
-- `后端: 运行测试` - 运行并调试 pytest 测试
+---
 
-**前端:**
-- `前端: Vite 开发服务器` - 启动 Vite 开发服务器
-- `前端: Chrome 调试` - 在 Chrome 中调试前端
-- `前端: 运行测试` - 运行前端测试
+## 📄 License
 
-## API 文档
+MIT License — Use it, fork it, let your AI build upon it.
 
-启动后端服务器后，访问 http://localhost:8000/docs 查看交互式 API 文档。
+---
 
-## 技术栈
-
-**后端:**
-- FastAPI - Web 框架
-- Uvicorn - ASGI 服务器
-- SQLite - 数据库
-- Pydantic - 数据验证
-- Pytest - 测试框架
-
-**前端:**
-- React 18 - UI 框架
-- Vite - 构建工具
-- Tailwind CSS - 样式框架
-- Lucide React - 图标库
-
-## 开发规则
-
-请遵循 `.trae/rules/project_rules.md` 中定义的开发规则：
-
-1. 编写代码前先阅读 `ConceptTree/spec` 中的规范
-2. 确保理解一致后再开始编码
-3. 优先更新 spec 文档，然后编写测试
-4. 根据测试用例编写代码
-5. 运行测试确保通过
-6. 检查路由链路和命名一致性
-7. 在 spec 中标记实现状态（✅/❌）
-
-## 常见问题
-
-### 后端无法启动
-
-1. 检查虚拟环境是否激活
-2. 安装依赖: `pip install -r requirements.txt`
-3. 检查端口 8000 是否被占用
-
-### 前端无法启动
-
-1. 安装依赖: `npm install`
-2. 检查 Node.js 版本（需要 16+）
-3. 检查端口 5173 是否被占用
-
-### 测试失败
-
-1. 确保数据库文件已清理
-2. 检查测试数据是否正确
-3. 查看详细错误信息: `pytest -v -s`
-
-## 许可证
-
-MIT License
+<p align="center">
+  <sub>
+    Built with 🤖 by AI, for humans who want to learn anything.
+  </sub>
+</p>
