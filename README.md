@@ -1,116 +1,116 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Built%20by-100%25%20AI-blueviolet?style=for-the-badge" alt="Built by AI">
-  <img src="https://img.shields.io/badge/Maintained%20by-AI%20Agents-success?style=for-the-badge" alt="Maintained by AI">
-  <img src="https://img.shields.io/badge/Human%20Code-0%25-lightgrey?style=for-the-badge" alt="Human Code 0%">
+  <img src="https://img.shields.io/badge/由-100%25%20AI%20构建-blueviolet?style=for-the-badge" alt="由 AI 构建">
+  <img src="https://img.shields.io/badge/由-AI%20智能体维护-success?style=for-the-badge" alt="由 AI 维护">
+  <img src="https://img.shields.io/badge/人类代码-0%25-lightgrey?style=for-the-badge" alt="人类代码 0%">
 </p>
 
 <h1 align="center">
   <br>
-  <img src="https://api.iconify.design/fluent-emoji:brain.svg" width="80" alt="PathFinder Logo">
+  <img src="https://api.iconify.design/fluent-emoji:brain.svg" width="80" alt="ConceptTree Logo">
   <br>
   ConceptTree
   <br>
 </h1>
 
 <h4 align="center">
-  🧠 AI-Powered Learning Path Generator — Built & Maintained by AI
+  🧠 AI 驱动的学习路径生成器 — 由 AI 构建与维护
 </h4>
 
 <p align="center">
-  <em>Type what you want to learn. Get a knowledge dependency graph. Master anything, one node at a time.</em>
+  <em>输入你想学的内容，获得知识依赖图谱，一个节点一个节点地掌握任何知识。</em>
 </p>
 
 ---
 
-## 🤖 This Project Is Different
+## 🤖 这个项目不一样
 
-**No human wrote this code.** 
+**没有人类写过这些代码。**
 
-This entire project — from architecture design to implementation — was created and is maintained by AI agents. The codebase structure, naming conventions, documentation, and even this README are all optimized for AI comprehension and modification.
+这个项目的全部内容——从架构设计到具体实现——都由 AI 智能体创建和维护。代码结构、命名规范、文档，甚至这份 README，都是为 AI 理解和修改而优化的。
 
-> "When AI builds for AI, everything becomes a specification."
+> "当 AI 为 AI 构建时，一切都变成了规范。"
 
 ---
 
-## 🎯 What Is ConceptTree?
+## 🎯 ConceptTree 是什么？
 
-ConceptTree is a **learning path generator** that transforms any learning goal into a visual knowledge graph with clear dependencies.
+ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化为带有清晰依赖关系的可视化知识图谱。
 
-**Input:** `"I want to understand backpropagation in deep learning. I know Python but my math is weak."`
+**输入：** `"我想理解深度学习中的反向传播，我会 Python 但数学不太好"`
 
-**Output:** A beautiful, interactive knowledge graph showing exactly what you need to learn, in what order, with resources and checkpoints.
+**输出：** 一张漂亮的交互式知识图谱，清晰展示你需要学什么、按什么顺序学、配套资源和检验标准。
 
 <p align="center">
   <img src="https://api.iconify.design/fluent-emoji:world-map.svg" width="60">
 </p>
 
-### Core Features
+### 核心功能
 
-| Feature | Description |
-|---------|-------------|
-| **Smart Goal Parsing** | AI analyzes your input and extracts learning objectives + existing knowledge |
-| **Knowledge Graph Generation** | Creates dependency-aware learning paths down to formula level |
-| **Adaptive Learning** | Considers your background to skip what you already know |
-| **Progress Tracking** | Visual progress on each node: `unlearned → learned → mastered` |
-| **Personal Notes** | Markdown notes attached to each knowledge node |
-| **Resource Recommendations** | Curated learning materials for each concept |
+| 功能 | 描述 |
+|------|------|
+| **智能目标解析** | AI 分析你的输入，提取学习目标和已有知识背景 |
+| **知识图谱生成** | 创建精确到公式级别的依赖感知学习路径 |
+| **自适应学习** | 根据你的背景跳过已掌握的内容 |
+| **进度追踪** | 每个节点的可视化进度：`未学习 → 已学习 → 已掌握` |
+| **个人笔记** | 为每个知识节点附加 Markdown 笔记 |
+| **资源推荐** | 为每个概念精选学习材料 |
 
 ---
 
-## 🏗️ Architecture Philosophy
+## 🏗️ 架构哲学
 
-This codebase is designed with one principle: **AI-first maintainability**.
+这个代码库遵循一个原则：**AI 优先的可维护性**。
 
 ```
 📁 ConceptTree/
-├── 📁 spec/              ← Source of truth. AI reads this FIRST.
-│   ├── 前端-架构总览.md   ← Frontend architecture spec
-│   ├── 后端-通用规范.md   ← Backend conventions
-│   └── ...               ← Page-by-page specifications
-├── 📁 backend/           ← FastAPI application
-│   ├── routers/          ← API endpoints (1 file = 1 domain)
-│   ├── services/         ← Business logic
-│   ├── adapters/         ← Database abstraction
-│   └── tests/            ← Test-first development
-└── 📁 frontend/          ← React + Vite application
-    ├── pages/            ← Route components
-    ├── components/       ← Reusable UI
-    ├── services/         ← API client
-    └── contexts/         ← State management
+├── 📁 spec/              ← 真理之源。AI 首先读这里。
+│   ├── 前端-架构总览.md   ← 前端架构规范
+│   ├── 后端-通用规范.md   ← 后端通用约定
+│   └── ...               ← 逐页规范文档
+├── 📁 backend/           ← FastAPI 应用
+│   ├── routers/          ← API 端点 (一个文件 = 一个领域)
+│   ├── services/         ← 业务逻辑
+│   ├── adapters/         ← 数据库抽象层
+│   └── tests/            ← 测试先行开发
+└── 📁 frontend/          ← React + Vite 应用
+    ├── pages/            ← 路由组件
+    ├── components/       ← 可复用 UI
+    ├── services/         ← API 客户端
+    └── contexts/         ← 状态管理
 ```
 
-### Why This Structure?
+### 为什么这样设计？
 
-1. **Specs Before Code** — Every feature is documented in `/spec` before implementation. AI reads specs, writes tests, then code.
+1. **规范先于代码** — 每个功能在实现前都会先写入 `/spec`。AI 先读规范，再写测试，最后写代码。
 
-2. **Flat & Explicit** — No deeply nested folders. Each file has a clear, single responsibility.
+2. **扁平且明确** — 没有深层嵌套的文件夹。每个文件都有清晰、单一的职责。
 
-3. **Convention Over Configuration** — Naming patterns are strict and predictable. AI can infer file locations from names.
+3. **约定优于配置** — 命名模式严格且可预测。AI 可以从名称推断文件位置。
 
-4. **Test-Driven** — Tests serve as executable documentation. AI validates its own work.
+4. **测试驱动** — 测试即可执行的文档。AI 用测试验证自己的工作。
 
 ---
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
 ```bash
-# One command to rule them all
+# 一条命令搞定一切
 ./start-dev.sh
 ```
 
-**That's it.** Frontend runs on `http://localhost:5173`, Backend on `http://localhost:8000`.
+**就这样。** 前端运行在 `http://localhost:5173`，后端在 `http://localhost:8000`。
 
 <details>
-<summary>Manual setup (if you must)</summary>
+<summary>手动启动（如果你非要的话）</summary>
 
-**Backend:**
+**后端：**
 ```bash
 cd ConceptTree/backend
 source venv/bin/activate
 uvicorn main:app --reload --port 8000
 ```
 
-**Frontend:**
+**前端：**
 ```bash
 cd ConceptTree/frontend
 npm install && npm run dev
@@ -119,73 +119,73 @@ npm install && npm run dev
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ 技术栈
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | React 18 + Vite + Tailwind CSS |
-| **Backend** | FastAPI + Pydantic |
-| **Database** | SQLite (local) / Supabase (cloud) |
-| **AI Integration** | LLM-powered goal parsing & graph generation |
-
----
-
-## 📜 The Rules
-
-AI agents follow these rules when modifying this codebase:
-
-1. **Read `/spec` before writing any code**
-2. **Update spec first, then write tests, then implement**
-3. **Never commit without passing tests**
-4. **Mark implementation status in specs** (`✅` / `❌`)
-5. **Keep the single source of truth in sync**
-
-These rules exist in `.trae/rules/project_rules.md` and are enforced by the AI development workflow.
+| 层级 | 技术 |
+|------|------|
+| **前端** | React 18 + Vite + Tailwind CSS |
+| **后端** | FastAPI + Pydantic |
+| **数据库** | SQLite (本地) / Supabase (云端) |
+| **AI 集成** | LLM 驱动的目标解析与图谱生成 |
 
 ---
 
-## 🔮 Roadmap
+## 📜 开发规则
 
-- [ ] Multi-user support with authentication
-- [ ] Cloud sync for learning progress
-- [ ] Export learning paths as shareable links
-- [ ] Mobile-responsive graph visualization
-- [ ] AI tutor integration for each knowledge node
+AI 智能体在修改代码库时遵循这些规则：
 
----
+1. **写代码前先读 `/spec`**
+2. **先更新规范，再写测试，最后实现**
+3. **测试不通过不提交**
+4. **在规范中标记实现状态** (`✅` / `❌`)
+5. **保持真理之源同步**
 
-## 📊 Project Status
-
-| Component | Status |
-|-----------|--------|
-| Core Graph Engine | ✅ Complete |
-| Goal Parsing AI | ✅ Complete |
-| User Authentication | ✅ Complete |
-| Frontend UI | ✅ Complete |
-| Cloud Database | 🔄 In Progress |
-| Mobile Support | ⏳ Planned |
+这些规则定义在 `.trae/rules/project_rules.md` 中，由 AI 开发工作流强制执行。
 
 ---
 
-## 🤝 Contributing
+## 🔮 路线图
 
-**Want to contribute?** Here's the twist — you can either:
-
-1. **Submit specs** — Write a feature specification in `/spec` format, and AI will implement it
-2. **Code directly** — Traditional PRs welcome, but please update specs accordingly
-
-Remember: In this repo, documentation IS the source code.
+- [ ] 多用户支持与认证
+- [ ] 学习进度云同步
+- [ ] 导出学习路径为可分享链接
+- [ ] 移动端响应式图谱可视化
+- [ ] 为每个知识节点集成 AI 导师
 
 ---
 
-## 📄 License
+## 📊 项目状态
 
-MIT License — Use it, fork it, let your AI build upon it.
+| 组件 | 状态 |
+|------|------|
+| 核心图谱引擎 | ✅ 已完成 |
+| 目标解析 AI | ✅ 已完成 |
+| 用户认证 | ✅ 已完成 |
+| 前端 UI | ✅ 已完成 |
+| 云数据库 | 🔄 进行中 |
+| 移动端支持 | ⏳ 计划中 |
+
+---
+
+## 🤝 贡献指南
+
+**想要贡献？** 有点不一样——你可以：
+
+1. **提交规范** — 按 `/spec` 格式写功能规范，AI 会来实现
+2. **直接写代码** — 传统 PR 欢迎，但请同步更新规范
+
+记住：在这个仓库里，文档就是源代码。
+
+---
+
+## 📄 许可证
+
+MIT 许可证 — 随便用，随便改，让你的 AI 在此基础上继续构建。
 
 ---
 
 <p align="center">
   <sub>
-    Built with 🤖 by AI, for humans who want to learn anything.
+    由 🤖 AI 构建，为想学任何东西的人类服务。
   </sub>
 </p>
