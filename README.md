@@ -8,7 +8,7 @@
   <br>
   <img src="https://api.iconify.design/fluent-emoji:brain.svg" width="80" alt="PathFinder Logo">
   <br>
-  PathFinder
+  ConceptTree
   <br>
 </h1>
 
@@ -32,9 +32,9 @@ This entire project — from architecture design to implementation — was creat
 
 ---
 
-## 🎯 What Is PathFinder?
+## 🎯 What Is ConceptTree?
 
-PathFinder is a **learning path generator** that transforms any learning goal into a visual knowledge graph with clear dependencies.
+ConceptTree is a **learning path generator** that transforms any learning goal into a visual knowledge graph with clear dependencies.
 
 **Input:** `"I want to understand backpropagation in deep learning. I know Python but my math is weak."`
 
