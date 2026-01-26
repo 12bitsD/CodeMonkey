@@ -51,13 +51,14 @@ def get_stats_overview(
         mastered_knowledge = len(mastered_list)
 
     total_notes = db.execute(
-        "SELECT COUNT(*) as count FROM notes WHERE user_id = ?", (current_user_id,)
+        "SELECT COUNT(*) as count FROM notes WHERE user_id = ?",
+        (current_user_id,),
     ).fetchone()["count"]
 
     week_ago = datetime.utcnow() - timedelta(days=7)
 
     completed_nodes_this_week = db.execute(
-        """SELECT COUNT(*) as count FROM learning_sessions 
+        """SELECT COUNT(*) as count FROM learning_sessions
            WHERE user_id = ? AND action = 'learned' AND created_at >= ?""",
         (current_user_id, week_ago),
     ).fetchone()["count"]
@@ -116,4 +117,7 @@ def get_stats_distribution(
             }
         )
 
-    return {"success": True, "data": {"distribution": distribution, "total": total}}
+    return {
+        "success": True,
+        "data": {"distribution": distribution, "total": total},
+    }
