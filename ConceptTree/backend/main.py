@@ -1,19 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_database
-from routers import graph, plans, notes, stats, ai, auth, user
+from config import get_cors_origins, settings
+from routers import ai, auth, graph, notes, plans, stats, user
 
 app = FastAPI(
     title="PathFinder API",
     description="Learning Path Planner Backend",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=get_cors_origins(),
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -27,11 +27,6 @@ app.include_router(stats.router)
 app.include_router(ai.router)
 
 
-@app.on_event("startup")
-def startup():
-    init_database()
-
-
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -39,8 +34,4 @@ def health_check():
 
 @app.get("/")
 def root():
-    return {
-        "message": "PathFinder API",
-        "docs": "/docs",
-        "version": "1.0.0"
-    }
+    return {"message": "PathFinder API", "docs": "/docs", "version": "1.0.0"}
