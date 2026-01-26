@@ -9,15 +9,19 @@ from utils.auth import get_current_user_id
 router = APIRouter(prefix="/api", tags=["notes"])
 
 
-def format_date(dt_str: str) -> str:
+def format_date(dt_value) -> str:
     """Format datetime string to friendly date like '12/28'"""
-    if not dt_str:
+    if not dt_value:
         return ""
     try:
-        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        if isinstance(dt_value, datetime):
+            dt = dt_value
+        else:
+            dt = datetime.fromisoformat(str(dt_value).replace("Z", "+00:00"))
         return f"{dt.month}/{dt.day}"
     except (ValueError, TypeError):
-        return dt_str[:10] if dt_str else ""
+        raw = str(dt_value)
+        return raw[:10] if raw else ""
 
 
 @router.get("/notes")

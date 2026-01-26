@@ -25,18 +25,25 @@ def get_stats_overview(
     db=Depends(get_db),
 ):
     completed_plans = db.execute(
-        "SELECT COUNT(*) as count FROM plans WHERE user_id = ? AND status = 'archived' AND progress = total AND total > 0",
-        (current_user_id,)
+        (
+            "SELECT COUNT(*) as count FROM plans "
+            "WHERE user_id = ? AND status = 'archived' "
+            "AND progress = total AND total > 0"
+        ),
+        (current_user_id,),
     ).fetchone()["count"]
 
     active_plans = db.execute(
-        "SELECT COUNT(*) as count FROM plans WHERE user_id = ? AND status = 'active'",
-        (current_user_id,)
+        (
+            "SELECT COUNT(*) as count FROM plans "
+            "WHERE user_id = ? AND status = 'active'"
+        ),
+        (current_user_id,),
     ).fetchone()["count"]
 
     profile = db.execute(
         "SELECT mastered_knowledge FROM user_profiles WHERE user_id = ?",
-        (current_user_id,)
+        (current_user_id,),
     ).fetchone()
     mastered_knowledge = 0
     if profile:
@@ -44,21 +51,23 @@ def get_stats_overview(
         mastered_knowledge = len(mastered_list)
 
     total_notes = db.execute(
-        "SELECT COUNT(*) as count FROM notes WHERE user_id = ?",
-        (current_user_id,)
+        "SELECT COUNT(*) as count FROM notes WHERE user_id = ?", (current_user_id,)
     ).fetchone()["count"]
 
-    week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    week_ago = datetime.utcnow() - timedelta(days=7)
 
     completed_nodes_this_week = db.execute(
         """SELECT COUNT(*) as count FROM learning_sessions 
            WHERE user_id = ? AND action = 'learned' AND created_at >= ?""",
-        (current_user_id, week_ago)
+        (current_user_id, week_ago),
     ).fetchone()["count"]
 
     new_notes_this_week = db.execute(
-        "SELECT COUNT(*) as count FROM notes WHERE user_id = ? AND created_at >= ?",
-        (current_user_id, week_ago)
+        (
+            "SELECT COUNT(*) as count FROM notes "
+            "WHERE user_id = ? AND created_at >= ?"
+        ),
+        (current_user_id, week_ago),
     ).fetchone()["count"]
 
     return {
@@ -68,13 +77,13 @@ def get_stats_overview(
                 "completedPlans": completed_plans,
                 "activePlans": active_plans,
                 "masteredKnowledge": mastered_knowledge,
-                "totalNotes": total_notes
+                "totalNotes": total_notes,
             },
             "thisWeek": {
                 "completedNodes": completed_nodes_this_week,
-                "newNotes": new_notes_this_week
-            }
-        }
+                "newNotes": new_notes_this_week,
+            },
+        },
     }
 
 
@@ -87,10 +96,11 @@ def get_stats_distribution(
         """SELECT n.domain, COUNT(*) as count
            FROM nodes n
            JOIN plans p ON n.plan_id = p.id
-           WHERE p.user_id = ? AND n.status = 'learned' AND n.domain IS NOT NULL AND n.domain != ''
+           WHERE p.user_id = ? AND n.status = 'learned'
+             AND n.domain IS NOT NULL AND n.domain != ''
            GROUP BY n.domain
            ORDER BY count DESC""",
-        (current_user_id,)
+        (current_user_id,),
     ).fetchall()
 
     total = sum(row["count"] for row in rows)
@@ -98,16 +108,12 @@ def get_stats_distribution(
     distribution = []
     for row in rows:
         percentage = round(row["count"] * 100 / total) if total > 0 else 0
-        distribution.append({
-            "domain": row["domain"],
-            "count": row["count"],
-            "percentage": percentage
-        })
+        distribution.append(
+            {
+                "domain": row["domain"],
+                "count": row["count"],
+                "percentage": percentage,
+            }
+        )
 
-    return {
-        "success": True,
-        "data": {
-            "distribution": distribution,
-            "total": total
-        }
-    }
+    return {"success": True, "data": {"distribution": distribution, "total": total}}

@@ -2,11 +2,21 @@
 import json
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from database import get_db_context, get_db
-from models import UserProfile, UpdateProfileRequest
+from database import get_db_context
+from models import UpdateProfileRequest
 from utils.auth import get_current_user_id
 
 router = APIRouter(prefix="/api/user", tags=["用户"])
+
+
+def parse_json_field(field_value, default=None):
+    if default is None:
+        default = []
+    if not field_value:
+        return default
+    if isinstance(field_value, (list, dict)):
+        return field_value
+    return json.loads(field_value)
 
 
 @router.get("/profile")
@@ -32,9 +42,8 @@ def get_profile(user_id: str = Depends(get_current_user_id)):
                 }
             )
         
-        # 解析JSON字段
-        abilities = json.loads(profile["abilities"]) if profile["abilities"] else []
-        mastered_knowledge = json.loads(profile["mastered_knowledge"]) if profile["mastered_knowledge"] else []
+        abilities = parse_json_field(profile["abilities"])
+        mastered_knowledge = parse_json_field(profile["mastered_knowledge"])
         
         return {
             "success": True,
@@ -96,15 +105,16 @@ def update_profile(
         
         if req.abilities is not None:
             updates.append("abilities = ?")
-            params.append(json.dumps(req.abilities, ensure_ascii=False))
+            params.append(req.abilities)
         
         # masteredKnowledge字段不允许更新（只读）
         
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
             params.append(user_id)
-            
-            query = f"UPDATE user_profiles SET {', '.join(updates)} WHERE user_id = ?"
+
+            set_clause = ", ".join(updates)
+            query = f"UPDATE user_profiles SET {set_clause} WHERE user_id = ?"
             db.execute(query, params)
             db.commit()
         
@@ -116,8 +126,10 @@ def update_profile(
             (user_id,)
         ).fetchone()
         
-        abilities = json.loads(updated_profile["abilities"]) if updated_profile["abilities"] else []
-        mastered_knowledge = json.loads(updated_profile["mastered_knowledge"]) if updated_profile["mastered_knowledge"] else []
+        abilities = parse_json_field(updated_profile["abilities"])
+        mastered_knowledge = parse_json_field(
+            updated_profile["mastered_knowledge"]
+        )
         
         return {
             "success": True,
