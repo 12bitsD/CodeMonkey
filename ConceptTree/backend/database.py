@@ -47,6 +47,11 @@ class DbSession:
 def _connect() -> "psycopg2.extensions.connection":
     if not settings.DATABASE_URL:
         raise RuntimeError("DATABASE_URL is required")
+    if settings.DATABASE_SCHEMA:
+        return psycopg2.connect(
+            settings.DATABASE_URL,
+            options=f"-c search_path={settings.DATABASE_SCHEMA}",
+        )
     return psycopg2.connect(settings.DATABASE_URL)
 
 
@@ -68,4 +73,5 @@ def get_db_context() -> Generator[DbSession, None, None]:
 
 
 def init_database(*args: Any, **kwargs: Any) -> None:
-    raise NotImplementedError("Database schema is managed via Supabase migrations")
+    message = "Database schema is managed via Supabase migrations"
+    raise NotImplementedError(message)

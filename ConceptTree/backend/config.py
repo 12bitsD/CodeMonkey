@@ -27,6 +27,7 @@ class Settings:
     DEBUG: bool = _get_bool_env("DEBUG", True)
 
     DATABASE_URL: str = _get_env("DATABASE_URL", "")
+    DATABASE_SCHEMA: str = _get_env("DATABASE_SCHEMA", "")
 
     JWT_SECRET_KEY: str = _get_env(
         "JWT_SECRET_KEY", "your-secret-key-change-in-production"
