@@ -21,7 +21,7 @@ import { graphApi, aiApi } from '../services/api';
 const HomePage = () => {
   const navigate = useNavigate();
   const { userProfile, plans, actions } = useAppContext();
-  const { isAuthenticated, user, login, register, logout } = useAuth();
+  const { isAuthenticated, login, register, logout } = useAuth();
   
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);

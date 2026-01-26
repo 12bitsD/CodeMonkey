@@ -24,6 +24,14 @@ def get_db_context() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
+def ensure_table_columns(db: sqlite3.Connection, table: str, columns: dict):
+    rows = db.execute(f"PRAGMA table_info({table})").fetchall()
+    existing = {row["name"] for row in rows}
+    for name, ddl in columns.items():
+        if name not in existing:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 def init_database(run_seed=True):
     with get_db_context() as db:
         db.execute(
@@ -71,6 +79,19 @@ def init_database(run_seed=True):
             )
         """
         )
+        ensure_table_columns(
+            db,
+            "plans",
+            {
+                "original_input": "TEXT",
+                "target_node_id": "TEXT",
+                "progress": "INTEGER DEFAULT 0",
+                "total": "INTEGER DEFAULT 0",
+                "status": "TEXT DEFAULT 'active'",
+                "last_access_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
+                "created_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
+            },
+        )
 
         db.execute(
             """
@@ -102,8 +123,10 @@ def init_database(run_seed=True):
                 from_node_id TEXT NOT NULL,
                 to_node_id TEXT NOT NULL,
                 FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
-                FOREIGN KEY (from_node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-                FOREIGN KEY (to_node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+                FOREIGN KEY (from_node_id) REFERENCES nodes(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (to_node_id) REFERENCES nodes(id)
+                    ON DELETE CASCADE,
                 UNIQUE(plan_id, from_node_id, to_node_id)
             )
         """
@@ -136,9 +159,12 @@ def init_database(run_seed=True):
                 content TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
-                FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                FOREIGN KEY (plan_id) REFERENCES plans(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (node_id) REFERENCES nodes(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+                    ON DELETE CASCADE
             )
         """
         )
@@ -161,13 +187,19 @@ def seed_data(db: sqlite3.Connection):
 
     user_id = "user_default"
     db.execute(
-        "INSERT OR IGNORE INTO users (id, email, password_hash) VALUES (?, ?, ?)",
+        """
+        INSERT OR IGNORE INTO users (id, email, password_hash)
+        VALUES (?, ?, ?)
+        """,
         (user_id, "test@example.com", "hashed_pw"),
     )
 
     plan_id = "p_demo"
     db.execute(
-        "INSERT INTO plans (id, user_id, title, progress, total, status) VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            "INSERT INTO plans (id, user_id, title, progress, total, status) "
+            "VALUES (?, ?, ?, ?, ?, ?)"
+        ),
         (plan_id, user_id, "理解反向传播的数学原理", 0, 4, "active"),
     )
 
@@ -224,8 +256,13 @@ def seed_data(db: sqlite3.Connection):
 
     for n in nodes:
         db.execute(
-            """INSERT INTO nodes (id, plan_id, name, status, x, y, why, what, mastery, prompt, is_target)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """
+            INSERT INTO nodes (
+                id, plan_id, name, status, x, y, why, what,
+                mastery, prompt, is_target
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             (
                 n["id"],
                 plan_id,
@@ -249,6 +286,9 @@ def seed_data(db: sqlite3.Connection):
 
     for e in edges:
         db.execute(
-            "INSERT INTO edges (id, plan_id, from_node_id, to_node_id) VALUES (?, ?, ?, ?)",
+            (
+                "INSERT INTO edges (id, plan_id, from_node_id, to_node_id) "
+                "VALUES (?, ?, ?, ?)"
+            ),
             (e["id"], plan_id, e["from"], e["to"]),
         )
