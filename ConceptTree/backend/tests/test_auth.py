@@ -167,7 +167,7 @@ def test_logout_success():
 def test_logout_without_token():
     """测试无token登出"""
     response = client.post("/api/auth/logout")
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_register_creates_profile():
