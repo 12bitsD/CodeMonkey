@@ -47,8 +47,15 @@ def test_schema() -> str:
                 for stmt in statements:
                     cur.execute(stmt)
         os.environ["DATABASE_SCHEMA"] = schema
-        return schema
+        yield schema
     finally:
+        drop_conn = psycopg2.connect(database_url)
+        try:
+            with drop_conn:
+                with drop_conn.cursor() as cur:
+                    cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        finally:
+            drop_conn.close()
         conn.close()
 
 
