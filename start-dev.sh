@@ -22,7 +22,7 @@ cd ../..
 sleep 3
 
 # 启动前端服务器
-echo "🎨 启动前端服务器 (端口 5173)..."
+echo "🎨 启动前端服务器 (端口 3000)..."
 cd ConceptTree/frontend
 npm run dev &
 FRONTEND_PID=$!
@@ -31,7 +31,7 @@ cd ../..
 echo ""
 echo "✅ 开发环境已启动!"
 echo ""
-echo "📌 前端地址: http://localhost:5173"
+echo "📌 前端地址: http://localhost:3000"
 echo "📌 后端地址: http://localhost:8000"
 echo "📌 API 文档: http://localhost:8000/docs"
 echo ""
