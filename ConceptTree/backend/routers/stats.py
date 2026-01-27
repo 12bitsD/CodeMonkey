@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends
 from datetime import datetime, timedelta
 import json
+
+from fastapi import APIRouter, Depends
 
 from database import get_db
 from utils.auth import get_current_user_id
@@ -8,7 +9,9 @@ from utils.auth import get_current_user_id
 router = APIRouter(prefix="/api", tags=["stats"])
 
 
-def parse_json_field(field_value, default=[]):
+def parse_json_field(field_value, default=None):
+    if default is None:
+        default = []
     if not field_value:
         return default
     if isinstance(field_value, (list, dict)):

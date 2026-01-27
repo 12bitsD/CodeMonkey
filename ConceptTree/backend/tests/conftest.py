@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 def _require_database_url() -> str:
     database_url = os.getenv("DATABASE_URL", "").strip()
     if not database_url:
-        raise RuntimeError("DATABASE_URL is required for tests")
+        pytest.skip("DATABASE_URL is required for integration tests")
     return database_url
 
 
