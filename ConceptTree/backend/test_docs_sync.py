@@ -90,5 +90,7 @@ def test_openapi_contains_all_implemented_spec_routes():
     openapi_routes = _only_api_prefix(_extract_openapi_routes())
 
     missing_in_openapi = sorted(spec_routes - openapi_routes)
-    message = "Spec 标记为已实现(非❌)但 OpenAPI 不存在: " + str(missing_in_openapi)
+    message = "Spec 标记为已实现(非❌)但 OpenAPI 不存在: " + str(
+        missing_in_openapi
+    )
     assert not missing_in_openapi, message
