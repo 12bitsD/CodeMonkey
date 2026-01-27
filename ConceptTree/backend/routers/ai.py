@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from database import get_db
 from services.ai_service import parse_goal_service, generate_graph_service
 from models import ErrorResponse
+from utils.auth import get_current_user_id
 
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
@@ -33,7 +34,11 @@ class GenerateGraphResponse(BaseModel):
     response_model=ParseGoalResponse,
     responses={403: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-def parse_goal(request: ParseGoalRequest, db=Depends(get_db)):
+def parse_goal(
+    request: ParseGoalRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     """AI解析学习目标"""
     try:
         user_profile = {}
@@ -56,7 +61,11 @@ def parse_goal(request: ParseGoalRequest, db=Depends(get_db)):
     response_model=GenerateGraphResponse,
     responses={403: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-def generate_graph(request: GenerateGraphRequest, db=Depends(get_db)):
+def generate_graph(
+    request: GenerateGraphRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     """AI生成知识图谱"""
     try:
         user_profile = {}

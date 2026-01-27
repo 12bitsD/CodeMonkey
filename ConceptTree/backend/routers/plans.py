@@ -1,9 +1,9 @@
 from typing import Optional
 import uuid
-import json
 from fastapi import APIRouter, HTTPException, Depends
 
 from database import get_db
+from utils.auth import get_current_user_id
 from models import (
     PlanListResponse,
     PlanCreateRequest,
@@ -21,9 +21,13 @@ router = APIRouter(prefix="/api", tags=["plans"])
     response_model=PlanCreateResponse,
     responses={500: {"model": ErrorResponse}},
 )
-def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
+def create_plan(
+    request: PlanCreateRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     try:
-        user_id = "user_default"  # 模拟用户ID，后续接入认证后从token获取
+        user_id = current_user_id
         plan_id = "p_" + str(uuid.uuid4())[:8]
 
         # 1. 创建计划
@@ -55,21 +59,22 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
                     node.x,
                     node.y,
                     node.why,
-                    json.dumps(node.what),
-                    json.dumps(node.mastery),
+                    node.what,
+                    node.mastery,
                     node.prompt,
-                    json.dumps([r.model_dump() for r in node.resources]),
-                    1 if node.isTarget else 0,
+                    [r.model_dump() for r in node.resources],
+                    node.isTarget,
                     node.domain,
                 ),
             )
 
         # 3. 批量创建边
         for edge in request.edges:
+            edge_id = "e_" + uuid.uuid4().hex[:12]
             db.execute(
                 """INSERT INTO edges (id, plan_id, from_node_id, to_node_id)
                    VALUES (?, ?, ?, ?)""",
-                (edge.id, plan_id, edge.from_node, edge.to_node),
+                (edge_id, plan_id, edge.from_node, edge.to_node),
             )
 
         db.commit()
@@ -93,11 +98,16 @@ def create_plan(request: PlanCreateRequest, db=Depends(get_db)):
     response_model=PlanUpdateResponse,
     responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-def update_plan(plan_id: str, request: PlanUpdateRequest, db=Depends(get_db)):
+def update_plan(
+    plan_id: str,
+    request: PlanUpdateRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     try:
         # 检查计划是否存在
         plan = db.execute(
-            "SELECT * FROM plans WHERE id = ?",
+            "SELECT id, user_id FROM plans WHERE id = ?",
             (plan_id,),
         ).fetchone()
         if not plan:
@@ -110,6 +120,11 @@ def update_plan(plan_id: str, request: PlanUpdateRequest, db=Depends(get_db)):
                         "message": "Plan not found",
                     },
                 },
+            )
+        if plan["user_id"] != current_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Forbidden"},
             )
 
         # 更新标题
@@ -142,19 +157,27 @@ def update_plan(plan_id: str, request: PlanUpdateRequest, db=Depends(get_db)):
     response_model=PlanListResponse,
     responses={500: {"model": ErrorResponse}},
 )
-def get_plans(status: Optional[str] = None, db=Depends(get_db)):
+def get_plans(
+    status: Optional[str] = None,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     try:
         if status:
             rows = db.execute(
                 (
-                    "SELECT * FROM plans WHERE status = ? "
+                    "SELECT * FROM plans WHERE user_id = ? AND status = ? "
                     "ORDER BY last_access_at DESC"
                 ),
-                (status,),
+                (current_user_id, status),
             ).fetchall()
         else:
             rows = db.execute(
-                "SELECT * FROM plans ORDER BY last_access_at DESC"
+                (
+                    "SELECT * FROM plans WHERE user_id = ? "
+                    "ORDER BY last_access_at DESC"
+                ),
+                (current_user_id,),
             ).fetchall()
 
         plans = []
@@ -190,17 +213,26 @@ def get_plans(status: Optional[str] = None, db=Depends(get_db)):
         500: {"model": ErrorResponse},
     },
 )
-def archive_plan(plan_id: str, db=Depends(get_db)):
+def archive_plan(
+    plan_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     try:
         # 检查计划是否存在
         plan = db.execute(
-            "SELECT * FROM plans WHERE id = ?",
+            "SELECT id, user_id, status FROM plans WHERE id = ?",
             (plan_id,),
         ).fetchone()
         if not plan:
             raise HTTPException(
                 status_code=404,
                 detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            )
+        if plan["user_id"] != current_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Forbidden"},
             )
 
         if plan["status"] == "archived":
@@ -271,17 +303,26 @@ def archive_plan(plan_id: str, db=Depends(get_db)):
         500: {"model": ErrorResponse},
     },
 )
-def restore_plan(plan_id: str, db=Depends(get_db)):
+def restore_plan(
+    plan_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     try:
         # 检查计划是否存在
         plan = db.execute(
-            "SELECT * FROM plans WHERE id = ?",
+            "SELECT id, user_id, status FROM plans WHERE id = ?",
             (plan_id,),
         ).fetchone()
         if not plan:
             raise HTTPException(
                 status_code=404,
                 detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            )
+        if plan["user_id"] != current_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Forbidden"},
             )
 
         if plan["status"] == "active":
@@ -352,11 +393,15 @@ def restore_plan(plan_id: str, db=Depends(get_db)):
         500: {"model": ErrorResponse},
     },
 )
-def delete_plan(plan_id: str, db=Depends(get_db)):
+def delete_plan(
+    plan_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     try:
         # 检查计划是否存在
         plan = db.execute(
-            "SELECT * FROM plans WHERE id = ?",
+            "SELECT id, user_id FROM plans WHERE id = ?",
             (plan_id,),
         ).fetchone()
         if not plan:
@@ -364,16 +409,19 @@ def delete_plan(plan_id: str, db=Depends(get_db)):
                 status_code=404,
                 detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
             )
+        if plan["user_id"] != current_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Forbidden"},
+            )
 
-        # 级联删除由数据库外键约束处理，如果没开启则手动删除
-        # 这里假设开启了 PRAGMA foreign_keys = ON;
         db.execute(
             "DELETE FROM plans WHERE id = ?",
             (plan_id,),
         )
         db.commit()
 
-        return {"success": True, "message": "计划已删除"}
+        return {"success": True, "data": {"message": "计划已删除"}}
     except HTTPException:
         raise
     except Exception as e:

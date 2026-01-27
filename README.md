@@ -46,20 +46,28 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 
 ### 核心功能
 
-| 功能 | 描述 |
-|------|------|
-| **智能目标解析** | AI 分析你的输入，提取学习目标和已有知识背景 |
-| **知识图谱生成** | 创建精确到公式级别的依赖感知学习路径 |
-| **自适应学习** | 根据你的背景跳过已掌握的内容 |
-| **进度追踪** | 每个节点的可视化进度：`未学习 → 已学习 → 已掌握` |
-| **个人笔记** | 为每个知识节点附加 Markdown 笔记 |
-| **资源推荐** | 为每个概念精选学习材料 |
+| 功能             | 描述                                             |
+| ---------------- | ------------------------------------------------ |
+| **智能目标解析** | AI 分析你的输入，提取学习目标和已有知识背景      |
+| **知识图谱生成** | 创建精确到公式级别的依赖感知学习路径             |
+| **自适应学习**   | 根据你的背景跳过已掌握的内容                     |
+| **进度追踪**     | 每个节点的可视化进度：`未学习 → 已学习 → 已掌握` |
+| **个人笔记**     | 为每个知识节点附加 Markdown 笔记                 |
+| **资源推荐**     | 为每个概念精选学习材料                           |
 
 ---
 
 ## 🏗️ 架构哲学
 
 这个代码库遵循一个原则：**AI 优先的可维护性**。
+
+## 📚 文档入口
+
+- 规范与进度总览：[进度总览.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E8%BF%9B%E5%BA%A6%E6%80%BB%E8%A7%88.md)
+- 后端契约与通用约定：[后端-通用规范.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E5%90%8E%E7%AB%AF-%E9%80%9A%E7%94%A8%E8%A7%84%E8%8C%83.md)
+- 前端架构与 API 策略：[前端-架构总览.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E5%89%8D%E7%AB%AF-%E6%9E%B6%E6%9E%84%E6%80%BB%E8%A7%88.md)
+- Spec 变更日志：[变更日志.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%97.md)
+- 需求文档（PRD）：[学习路径规划器 - MVP PRD（最终版）.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/%E5%AD%A6%E4%B9%A0%E8%B7%AF%E5%BE%84%E8%A7%84%E5%88%92%E5%99%A8%20-%20MVP%20PRD%EF%BC%88%E6%9C%80%E7%BB%88%E7%89%88%EF%BC%89.md)
 
 ```
 📁 ConceptTree/
@@ -70,7 +78,7 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 ├── 📁 backend/           ← FastAPI 应用
 │   ├── routers/          ← API 端点 (一个文件 = 一个领域)
 │   ├── services/         ← 业务逻辑
-│   ├── adapters/         ← 数据库抽象层
+│   ├── utils/            ← 鉴权/密码/ID 等通用能力
 │   └── tests/            ← 测试先行开发
 └── 📁 frontend/          ← React + Vite 应用
     ├── pages/            ← 路由组件
@@ -98,12 +106,13 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 ./start-dev.sh
 ```
 
-**就这样。** 前端运行在 `http://localhost:5173`，后端在 `http://localhost:8000`。
+**就这样。** 前端运行在 `http://localhost:3000`，后端在 `http://localhost:8000`。
 
 <details>
 <summary>手动启动（如果你非要的话）</summary>
 
 **后端：**
+
 ```bash
 cd ConceptTree/backend
 source venv/bin/activate
@@ -111,22 +120,24 @@ uvicorn main:app --reload --port 8000
 ```
 
 **前端：**
+
 ```bash
 cd ConceptTree/frontend
 npm install && npm run dev
 ```
+
 </details>
 
 ---
 
 ## 🛠️ 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| **前端** | React 18 + Vite + Tailwind CSS |
-| **后端** | FastAPI + Pydantic |
-| **数据库** | SQLite (本地) / Supabase (云端) |
-| **AI 集成** | LLM 驱动的目标解析与图谱生成 |
+| 层级        | 技术                            |
+| ----------- | ------------------------------- |
+| **前端**    | React 18 + Vite + Tailwind CSS  |
+| **后端**    | FastAPI + Pydantic              |
+| **数据库**  | SQLite (本地) / Supabase (云端) |
+| **AI 集成** | LLM 驱动的目标解析与图谱生成    |
 
 ---
 
@@ -142,11 +153,21 @@ AI 智能体在修改代码库时遵循这些规则：
 
 这些规则定义在 `.trae/rules/project_rules.md` 中，由 AI 开发工作流强制执行。
 
+## ✅ 文档同步机制（防止再次脱节）
+
+- 后端接口变更后，必须同步更新 [后端-通用规范.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E5%90%8E%E7%AB%AF-%E9%80%9A%E7%94%A8%E8%A7%84%E8%8C%83.md) 的“接口完整清单”表格
+- 通过自动化校验确认 spec 与 OpenAPI 一致（无需数据库即可跑）：
+
+```bash
+cd ConceptTree/backend
+python -m pytest -q test_docs_sync.py
+```
+
 ---
 
 ## 🔮 路线图
 
-- [ ] 多用户支持与认证
+- [ ] 完善认证机制（刷新/吊销/黑名单）
 - [ ] 学习进度云同步
 - [ ] 导出学习路径为可分享链接
 - [ ] 移动端响应式图谱可视化
@@ -156,14 +177,14 @@ AI 智能体在修改代码库时遵循这些规则：
 
 ## 📊 项目状态
 
-| 组件 | 状态 |
-|------|------|
+| 组件         | 状态      |
+| ------------ | --------- |
 | 核心图谱引擎 | ✅ 已完成 |
-| 目标解析 AI | ✅ 已完成 |
-| 用户认证 | ✅ 已完成 |
-| 前端 UI | ✅ 已完成 |
-| 云数据库 | 🔄 进行中 |
-| 移动端支持 | ⏳ 计划中 |
+| 目标解析 AI  | ✅ 已完成 |
+| 用户认证     | ✅ 已完成 |
+| 前端 UI      | ✅ 已完成 |
+| 云数据库     | 🔄 进行中 |
+| 移动端支持   | ⏳ 计划中 |
 
 ---
 

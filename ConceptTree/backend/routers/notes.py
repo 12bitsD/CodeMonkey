@@ -4,25 +4,31 @@ from datetime import datetime
 import uuid
 
 from database import get_db
+from utils.auth import get_current_user_id
 
 router = APIRouter(prefix="/api", tags=["notes"])
 
 
-def format_date(dt_str: str) -> str:
+def format_date(dt_value) -> str:
     """Format datetime string to friendly date like '12/28'"""
-    if not dt_str:
+    if not dt_value:
         return ""
     try:
-        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        if isinstance(dt_value, datetime):
+            dt = dt_value
+        else:
+            dt = datetime.fromisoformat(str(dt_value).replace("Z", "+00:00"))
         return f"{dt.month}/{dt.day}"
     except (ValueError, TypeError):
-        return dt_str[:10] if dt_str else ""
+        raw = str(dt_value)
+        return raw[:10] if raw else ""
 
 
 @router.get("/notes")
 def get_notes(
     planId: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
     query = """
@@ -33,9 +39,9 @@ def get_notes(
         FROM notes n
         JOIN plans p ON n.plan_id = p.id
         JOIN nodes nd ON n.node_id = nd.id
-        WHERE 1=1
+        WHERE n.user_id = ?
     """
-    params = []
+    params = [current_user_id]
 
     if planId:
         query += " AND n.plan_id = ?"
@@ -68,7 +74,11 @@ def get_notes(
 
 
 @router.post("/notes")
-def create_note(body: dict, db=Depends(get_db)):
+def create_note(
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     planId = body.get("planId")
     nodeId = body.get("nodeId")
     content = body.get("content")
@@ -100,6 +110,11 @@ def create_note(body: dict, db=Depends(get_db)):
                 },
             },
         )
+    if plan["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
+        )
 
     node = db.execute(
         "SELECT id FROM nodes WHERE id = ? AND plan_id = ?", (nodeId, planId)
@@ -117,7 +132,7 @@ def create_note(body: dict, db=Depends(get_db)):
         )
 
     note_id = f"note_{uuid.uuid4().hex[:12]}"
-    user_id = plan["user_id"]
+    user_id = current_user_id
     now = datetime.utcnow().isoformat() + "Z"
 
     db.execute(
@@ -142,7 +157,12 @@ def create_note(body: dict, db=Depends(get_db)):
 
 
 @router.put("/notes/{note_id}")
-def update_note(note_id: str, body: dict, db=Depends(get_db)):
+def update_note(
+    note_id: str,
+    body: dict,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     content = body.get("content")
 
     if not content or not content.strip():
@@ -158,7 +178,7 @@ def update_note(note_id: str, body: dict, db=Depends(get_db)):
         )
 
     note = db.execute(
-        "SELECT id FROM notes WHERE id = ?",
+        "SELECT id, user_id FROM notes WHERE id = ?",
         (note_id,),
     ).fetchone()
     if not note:
@@ -171,6 +191,11 @@ def update_note(note_id: str, body: dict, db=Depends(get_db)):
                     "message": "Note not found",
                 },
             },
+        )
+    if note["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
     now = datetime.utcnow().isoformat() + "Z"
@@ -187,9 +212,13 @@ def update_note(note_id: str, body: dict, db=Depends(get_db)):
 
 
 @router.delete("/notes/{note_id}")
-def delete_note(note_id: str, db=Depends(get_db)):
+def delete_note(
+    note_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     note = db.execute(
-        "SELECT id FROM notes WHERE id = ?",
+        "SELECT id, user_id FROM notes WHERE id = ?",
         (note_id,),
     ).fetchone()
     if not note:
@@ -203,8 +232,13 @@ def delete_note(note_id: str, db=Depends(get_db)):
                 },
             },
         )
+    if note["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
+        )
 
     db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
     db.commit()
 
-    return {"success": True, "message": "笔记已删除"}
+    return {"success": True, "data": {"message": "笔记已删除"}}

@@ -3,6 +3,7 @@ import json
 import uuid
 
 from database import get_db
+from utils.auth import get_current_user_id
 from models import (
     GraphApiResponse,
     NodeStatusUpdateRequest,
@@ -20,6 +21,8 @@ router = APIRouter(prefix="/api", tags=["graph"])
 def parse_json_field(field_value, default=[]):
     if not field_value:
         return default
+    if isinstance(field_value, (list, dict)):
+        return field_value
     try:
         return json.loads(field_value)
     except json.JSONDecodeError:
@@ -31,8 +34,15 @@ def parse_json_field(field_value, default=[]):
     response_model=GraphApiResponse,
     responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-def get_graph(plan_id: str, db=Depends(get_db)):
-    plan = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+def get_graph(
+    plan_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    plan = db.execute(
+        "SELECT id, user_id, title, target_node_id FROM plans WHERE id = ?",
+        (plan_id,),
+    ).fetchone()
     if not plan:
         raise HTTPException(
             status_code=404,
@@ -40,6 +50,11 @@ def get_graph(plan_id: str, db=Depends(get_db)):
                 "success": False,
                 "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
             },
+        )
+    if plan["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
     nodes = db.execute("SELECT * FROM nodes WHERE plan_id = ?", (plan_id,)).fetchall()
@@ -93,7 +108,11 @@ def get_graph(plan_id: str, db=Depends(get_db)):
     },
 )
 def update_node_status(
-    plan_id: str, node_id: str, req: NodeStatusUpdateRequest, db=Depends(get_db)
+    plan_id: str,
+    node_id: str,
+    req: NodeStatusUpdateRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
 ):
     valid_statuses = ["unlearned", "learned", "skipped"]
     if req.status.value not in valid_statuses:
@@ -106,7 +125,10 @@ def update_node_status(
         )
 
     # Get plan and user_id first
-    plan = db.execute("SELECT user_id FROM plans WHERE id = ?", (plan_id,)).fetchone()
+    plan = db.execute(
+        "SELECT user_id FROM plans WHERE id = ?",
+        (plan_id,),
+    ).fetchone()
     if not plan:
         raise HTTPException(
             status_code=404,
@@ -116,6 +138,11 @@ def update_node_status(
             },
         )
     user_id = plan["user_id"]
+    if user_id != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
+        )
 
     # Check node existence
     node = db.execute(
@@ -171,7 +198,7 @@ def update_node_status(
                 mastered_list.append(node_name)
                 db.execute(
                     "UPDATE user_profiles SET mastered_knowledge = ? WHERE user_id = ?",
-                    (json.dumps(mastered_list), user_id),
+                    (mastered_list, user_id),
                 )
         else:
             # Create profile if not exists (though it should usually exist)
@@ -179,7 +206,7 @@ def update_node_status(
             mastered_list = [node_name]
             db.execute(
                 "INSERT INTO user_profiles (id, user_id, mastered_knowledge) VALUES (?, ?, ?)",
-                (profile_id, user_id, json.dumps(mastered_list)),
+                (profile_id, user_id, mastered_list),
             )
 
     db.commit()
@@ -204,7 +231,11 @@ def update_node_status(
     },
 )
 def update_node_position(
-    plan_id: str, node_id: str, req: NodePositionUpdateRequest, db=Depends(get_db)
+    plan_id: str,
+    node_id: str,
+    req: NodePositionUpdateRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
 ):
     if req.x is None or req.y is None:
         raise HTTPException(
@@ -216,6 +247,24 @@ def update_node_position(
                     "message": "x and y are required",
                 },
             },
+        )
+
+    plan = db.execute(
+        "SELECT user_id FROM plans WHERE id = ?",
+        (plan_id,),
+    ).fetchone()
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            },
+        )
+    if plan["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
     result = db.execute(
@@ -242,9 +291,15 @@ def update_node_position(
     responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 def update_nodes_positions(
-    plan_id: str, req: BulkPositionUpdateRequest, db=Depends(get_db)
+    plan_id: str,
+    req: BulkPositionUpdateRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
 ):
-    plan = db.execute("SELECT id FROM plans WHERE id = ?", (plan_id,)).fetchone()
+    plan = db.execute(
+        "SELECT id, user_id FROM plans WHERE id = ?",
+        (plan_id,),
+    ).fetchone()
     if not plan:
         raise HTTPException(
             status_code=404,
@@ -252,6 +307,11 @@ def update_nodes_positions(
                 "success": False,
                 "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
             },
+        )
+    if plan["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
     updated = 0

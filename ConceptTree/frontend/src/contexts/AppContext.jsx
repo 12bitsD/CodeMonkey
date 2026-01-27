@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { userProfileApi, plansApi, notesApi, tokenManager } from '../services/api';
+import { userProfileApi, plansApi, notesApi } from '../services/api';
 import { createEmptyUserProfile } from '../types';
 import { useAuth } from './AuthContext';
 
