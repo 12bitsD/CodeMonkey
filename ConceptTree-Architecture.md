@@ -153,7 +153,14 @@ flowchart LR
 前端API层采用"混合策略"：
 - **已完成对接**：认证、用户画像、计划列表、图谱获取
 - **部分Mock**：计划创建、图谱生成
-- **完全Mock**：笔记、AI解析（后端已实现但前端未对接）
+- **后端完成前端未对接**：笔记、统计（后端已实现，前端仍为LocalStorage Mock）
+- **完全Mock**：AI解析（后端为Mock实现）
+
+### 关键对齐缺口
+| 缺口 | 后端字段 | 前端期望 | 影响 |
+|------|---------|---------|------|
+| edges字段 | `from_node`/`to_node` | `from`/`to` | 图谱连线可能失败 |
+| createPlan参数 | 需`originalInput`/`targetNodeId` | 未传 | 创建计划可能失败 |
 
 ---
 
@@ -526,8 +533,8 @@ flowchart TB
 | 认证与用户 | ✅ 完成 | logout无token黑名单 |
 | 计划CRUD | ✅ 完成 | edges字段映射不一致 |
 | 图谱获取/更新 | ✅ 完成 | 前端edges用`from/to`，后端用`from_node/to_node` |
-| 笔记 | ✅ 后端完成 | 前端仍为LocalStorage Mock |
-| AI服务 | ⚠️ Mock | 未接入真实LLM |
+| 笔记 | ⚠️ 后端完成 | 前端未对接，仍为LocalStorage Mock |
+| AI服务 | ⚠️ Mock | 后端为Mock实现，未接入真实LLM |
 | 统计 | ✅ 完成 | 前端未对接 |
 
 ---
