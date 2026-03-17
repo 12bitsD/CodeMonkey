@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { userProfileApi, plansApi, notesApi } from '../services/api';
 import { createEmptyUserProfile } from '../types';
 import { useAuth } from './AuthContext';
+import { useToast } from './ToastContext';
 
 const AppContext = createContext();
 
@@ -15,6 +16,7 @@ export const useAppContext = () => {
 
 export const AppProvider = ({ children }) => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const toast = useToast();
   
   // 全局状态
   const [userProfile, setUserProfile] = useState(createEmptyUserProfile());
@@ -48,7 +50,7 @@ export const AppProvider = ({ children }) => {
           setAllNotes([]);
         }
       } catch (error) {
-        console.error('初始化加载数据失败', error);
+        toast.error('加载数据失败，请刷新重试');
       } finally {
         setIsLoading(false);
       }
@@ -70,7 +72,7 @@ export const AppProvider = ({ children }) => {
       setPlans(prev => [newPlan, ...prev]);
       return newPlan;
     } catch (error) {
-      console.error('创建计划失败', error);
+      toast.error('创建计划失败');
       throw error;
     }
   };
@@ -81,7 +83,7 @@ export const AppProvider = ({ children }) => {
       setPlans(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
       return updated;
     } catch (error) {
-      console.error('更新计划失败', error);
+      toast.error('更新计划失败');
     }
   };
   
@@ -90,7 +92,7 @@ export const AppProvider = ({ children }) => {
       await plansApi.archive(id);
       setPlans(prev => prev.map(p => p.id === id ? { ...p, status: 'archived' } : p));
     } catch (error) {
-      console.error('归档计划失败', error);
+      toast.error('归档计划失败');
     }
   };
 
@@ -99,7 +101,7 @@ export const AppProvider = ({ children }) => {
       await plansApi.delete(id);
       setPlans(prev => prev.filter(p => p.id !== id));
     } catch (error) {
-      console.error('删除计划失败', error);
+      toast.error('删除计划失败');
     }
   };
 
@@ -110,7 +112,7 @@ export const AppProvider = ({ children }) => {
       setAllNotes(prev => [newNote, ...prev]);
       return newNote;
     } catch (error) {
-      console.error('添加笔记失败', error);
+      toast.error('添加笔记失败');
     }
   };
 
@@ -120,7 +122,7 @@ export const AppProvider = ({ children }) => {
       const updated = await userProfileApi.update(newProfile);
       setUserProfile(updated);
     } catch (error) {
-      console.error('更新用户画像失败', error);
+      toast.error('更新用户画像失败');
     }
   };
 
