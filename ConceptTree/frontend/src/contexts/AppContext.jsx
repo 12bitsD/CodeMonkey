@@ -62,8 +62,10 @@ export const AppProvider = ({ children }) => {
     try {
       const newPlan = await plansApi.create({
         title: graphResult.interpretation || input,
+        originalInput: input,
+        targetNodeId: graphResult.targetNodeId,
         nodes: graphResult.nodes,
-        edges: graphResult.edges
+        edges: graphResult.edges,
       });
       setPlans(prev => [newPlan, ...prev]);
       return newPlan;

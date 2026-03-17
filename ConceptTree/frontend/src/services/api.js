@@ -1,7 +1,6 @@
 import { createEmptyUserProfile } from "../types";
 import { buildApiUrl } from "../config/api";
 
-// Token管理
 const TOKEN_KEY = "concept_tree_token";
 
 export const tokenManager = {
@@ -10,7 +9,6 @@ export const tokenManager = {
   remove: () => localStorage.removeItem(TOKEN_KEY),
 };
 
-// Helper for fetch
 const fetchApi = async (endpoint, options = {}) => {
   try {
     const headers = {
@@ -18,7 +16,6 @@ const fetchApi = async (endpoint, options = {}) => {
       ...options.headers,
     };
 
-    // 自动添加认证token
     const token = tokenManager.get();
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -39,35 +36,21 @@ const fetchApi = async (endpoint, options = {}) => {
   }
 };
 
-const STORAGE_KEYS = {
-  PROFILE: "concept_tree_profile",
-  NOTES: "concept_tree_notes",
-};
+// edges 字段映射：后端 {from_node, to_node} ↔ 前端 {from, to}
+const mapEdgesFromBackend = (edges) =>
+  (edges || []).map((e) => ({
+    from: e.from_node || e.from,
+    to: e.to_node || e.to,
+  }));
 
-// 本地存储帮助函数 (保留用于 UserProfile 和 Notes)
-const storage = {
-  get: (key, defaultValue) => {
-    try {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : defaultValue;
-    } catch (e) {
-      console.error(`Error reading ${key} from localStorage`, e);
-      return defaultValue;
-    }
-  },
-  set: (key, value) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {
-      console.error(`Error writing ${key} to localStorage`, e);
-    }
-  },
-};
+const mapEdgesToBackend = (edges) =>
+  (edges || []).map((e) => ({
+    from_node: e.from_node || e.from,
+    to_node: e.to_node || e.to,
+  }));
 
-// 模拟延迟
-const delay = (ms = 300) => new Promise((resolve) => setTimeout(resolve, ms));
+// ─── 认证 API (Real Backend) ───
 
-// 认证 API (Real Backend)
 export const authApi = {
   register: async (email, password) => {
     return await fetchApi("/auth/register", {
@@ -92,7 +75,8 @@ export const authApi = {
   },
 };
 
-// 用户画像 API (Real Backend)
+// ─── 用户画像 API (Real Backend) ───
+
 export const userProfileApi = {
   get: async () => {
     try {
@@ -114,10 +98,10 @@ export const userProfileApi = {
   },
 };
 
-// 学习计划 API (Hybrid: List/Get from Backend, Create/Update Mocked/Partial)
+// ─── 学习计划 API (Real Backend) ───
+
 export const plansApi = {
   list: async () => {
-    // 替换为真实后端调用
     try {
       return await fetchApi("/plans");
     } catch (e) {
@@ -126,58 +110,65 @@ export const plansApi = {
     }
   },
 
-  create: async (input) => {
-    // 暂时保持 Mock，因为后端还没有 /api/plans 的 POST 实现
-    // TODO: Implement POST /api/plans in backend
-    console.warn("create plan is still mocked client-side");
-    return {
-      id: `p${Date.now()}`,
-      title: input.title || "前端Mock计划",
-      progress: 0,
-      total: 0,
-      status: "active",
-      lastAccess: "刚刚",
-      createdAt: new Date().toISOString(),
-    };
+  create: async ({ title, originalInput, targetNodeId, nodes, edges }) => {
+    return await fetchApi("/plans", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        originalInput,
+        targetNodeId,
+        nodes,
+        edges: mapEdgesToBackend(edges),
+      }),
+    });
   },
 
   update: async (id, data) => {
-    // Mock
-    return { ...data, id };
+    return await fetchApi(`/plans/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
   },
 
   archive: async (id) => {
-    // Mock
-    return { id, status: "archived" };
+    return await fetchApi(`/plans/${id}/archive`, {
+      method: "PUT",
+    });
   },
 
   restore: async (id) => {
-    // Mock
-    return { id, status: "active" };
+    return await fetchApi(`/plans/${id}/restore`, {
+      method: "PUT",
+    });
   },
 
   delete: async (id) => {
-    // Mock
-    return { id, success: true };
+    return await fetchApi(`/plans/${id}`, {
+      method: "DELETE",
+    });
   },
 };
 
-// 图谱 API (Real Backend)
+// ─── 图谱 API (Real Backend) ───
+
 export const graphApi = {
-  generate: async (input, userProfile) => {
-    void userProfile;
-    // 后端尚未实现 AI 生成，保持 Mock
-    await delay(1500);
+  generate: async (input) => {
+    const result = await fetchApi("/ai/generate-graph", {
+      method: "POST",
+      body: JSON.stringify({ input, interpretation: input }),
+    });
     return {
-      interpretation: input,
-      nodes: [],
-      edges: [],
-      targetNodeId: "n1",
+      ...result,
+      edges: mapEdgesFromBackend(result.edges),
     };
   },
 
   get: async (planId) => {
-    return await fetchApi(`/plans/${planId}/graph`);
+    const result = await fetchApi(`/plans/${planId}/graph`);
+    return {
+      ...result,
+      edges: mapEdgesFromBackend(result.edges),
+    };
   },
 
   updateNodeStatus: async (planId, nodeId, status) => {
@@ -195,73 +186,59 @@ export const graphApi = {
   },
 };
 
-// 笔记 API (Mock)
+// ─── 笔记 API (Real Backend) ───
+
 export const notesApi = {
   list: async (planId = null) => {
-    await delay();
-    const notes = storage.get(STORAGE_KEYS.NOTES, []);
-    if (planId) {
-      return notes.filter((n) => n.planId === planId);
-    }
-    return notes;
+    const params = planId ? `?planId=${planId}` : "";
+    return await fetchApi(`/notes${params}`);
   },
 
   create: async (planId, nodeId, content) => {
-    await delay();
-    const notes = storage.get(STORAGE_KEYS.NOTES, []);
-    const newNote = {
-      id: `n${Date.now()}`,
-      planId,
-      nodeId,
-      content,
-      date: new Date().toLocaleDateString("zh-CN", {
-        month: "numeric",
-        day: "numeric",
-      }),
-      createdAt: new Date().toISOString(),
-    };
-
-    const updatedNotes = [newNote, ...notes];
-    storage.set(STORAGE_KEYS.NOTES, updatedNotes);
-    return newNote;
+    return await fetchApi("/notes", {
+      method: "POST",
+      body: JSON.stringify({ planId, nodeId, content }),
+    });
   },
 
   update: async (noteId, content) => {
-    await delay();
-    const notes = storage.get(STORAGE_KEYS.NOTES, []);
-    const updatedNotes = notes.map((n) =>
-      n.id === noteId ? { ...n, content } : n,
-    );
-    storage.set(STORAGE_KEYS.NOTES, updatedNotes);
-    return { id: noteId, content };
+    return await fetchApi(`/notes/${noteId}`, {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    });
   },
 
   delete: async (noteId) => {
-    await delay();
-    const notes = storage.get(STORAGE_KEYS.NOTES, []);
-    const updatedNotes = notes.filter((n) => n.id !== noteId);
-    storage.set(STORAGE_KEYS.NOTES, updatedNotes);
-    return { success: true };
+    return await fetchApi(`/notes/${noteId}`, {
+      method: "DELETE",
+    });
   },
 };
 
-// AI API (Mock)
+// ─── AI API (Real Backend) ───
+
 export const aiApi = {
-  parseGoal: async (input, userProfile) => {
-    void userProfile;
-    await delay(1000);
-    return {
-      interpretation: input,
-      backgroundSummary: [],
-      suggestedNodeCount: 5,
-      shouldSplit: false,
-      splitSuggestions: null,
-    };
+  parseGoal: async (input) => {
+    return await fetchApi("/ai/parse-goal", {
+      method: "POST",
+      body: JSON.stringify({ input }),
+    });
   },
 
   recommendNext: async (planId) => {
     void planId;
-    await delay(500);
-    return { recommendedNodeId: null, reason: "后端暂未集成AI推荐" };
+    return { recommendedNodeId: null, reason: "后端暂未实现AI推荐" };
+  },
+};
+
+// ─── 统计 API (Real Backend) ───
+
+export const statsApi = {
+  getOverview: async () => {
+    return await fetchApi("/stats/overview");
+  },
+
+  getDistribution: async () => {
+    return await fetchApi("/stats/distribution");
   },
 };
