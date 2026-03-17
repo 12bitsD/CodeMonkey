@@ -28,6 +28,7 @@ const GraphPage = () => {
   const { planId } = useParams();
   const navigate = useNavigate();
   const containerRef = useRef(null);
+  const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
   const { plans, allNotes, actions } = useAppContext();
   
   const plan = plans.find(p => p.id === planId);
@@ -97,6 +98,38 @@ const GraphPage = () => {
     navigator.clipboard.writeText(prompt);
   };
 
+  const handleNodeStatusChange = async (nodeId, newStatus) => {
+    setNodeStatus(nodeId, newStatus);
+    try {
+      await graphApi.updateNodeStatus(planId, nodeId, newStatus);
+    } catch (err) {
+      console.error('Failed to save node status', err);
+    }
+  };
+
+  const handleContainerMouseMove = (e) => {
+    handleMouseMove(e, containerRef);
+    if (draggingNodeId && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      draggingPosRef.current = {
+        id: draggingNodeId,
+        x: (e.clientX - rect.left - position.x) / scale,
+        y: (e.clientY - rect.top - position.y) / scale,
+      };
+    }
+  };
+
+  const handleContainerMouseUp = () => {
+    const { id, x, y } = draggingPosRef.current;
+    handleMouseUp();
+    if (id) {
+      graphApi.updateNodePosition(planId, id, x, y).catch(err => {
+        console.error('Failed to save node position', err);
+      });
+      draggingPosRef.current = { id: null, x: 0, y: 0 };
+    }
+  };
+
   if (!plan && !loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#FAFAFA]">
@@ -154,9 +187,9 @@ const GraphPage = () => {
         className="flex-1 cursor-grab active:cursor-grabbing" 
         ref={containerRef}
         onMouseDown={(e) => handleMouseDown(e, containerRef)} 
-        onMouseMove={(e) => handleMouseMove(e, containerRef)} 
-        onMouseUp={handleMouseUp} 
-        onMouseLeave={handleMouseUp} 
+        onMouseMove={handleContainerMouseMove} 
+        onMouseUp={handleContainerMouseUp} 
+        onMouseLeave={handleContainerMouseUp} 
         onWheel={handleWheel}
       >
         <div 
@@ -288,29 +321,29 @@ const GraphPage = () => {
               {/* Actions */}
               <div className="flex gap-3">
                 {selectedNode.status === 'learned' ? (
-                  <Button 
-                    variant="secondary" 
-                    className="flex-1 border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100" 
-                    onClick={() => setNodeStatus(selectedNode.id, 'unlearned')}
-                  >
-                    <Check size={16} className="mr-2"/> 已学习
-                  </Button>
-                ) : (
-                  <Button 
-                    variant="primary" 
-                    className="flex-1 shadow-none" 
-                    onClick={() => setNodeStatus(selectedNode.id, 'learned')}
-                  >
-                    标记已学
-                  </Button>
-                )}
-                <Button 
-                  variant="secondary" 
-                  className="px-3" 
-                  onClick={() => setNodeStatus(selectedNode.id, selectedNode.status === 'skipped' ? 'unlearned' : 'skipped')}
-                >
-                  {selectedNode.status === 'skipped' ? <RotateCcw size={16}/> : <Minus size={16}/>}
-                </Button>
+                   <Button 
+                     variant="secondary" 
+                     className="flex-1 border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100" 
+                     onClick={() => handleNodeStatusChange(selectedNode.id, 'unlearned')}
+                   >
+                     <Check size={16} className="mr-2"/> 已学习
+                   </Button>
+                 ) : (
+                   <Button 
+                     variant="primary" 
+                     className="flex-1 shadow-none" 
+                     onClick={() => handleNodeStatusChange(selectedNode.id, 'learned')}
+                   >
+                     标记已学
+                   </Button>
+                 )}
+                 <Button 
+                   variant="secondary" 
+                   className="px-3" 
+                   onClick={() => handleNodeStatusChange(selectedNode.id, selectedNode.status === 'skipped' ? 'unlearned' : 'skipped')}
+                 >
+                   {selectedNode.status === 'skipped' ? <RotateCcw size={16}/> : <Minus size={16}/>}
+                 </Button>
               </div>
 
               <div className="space-y-6">
