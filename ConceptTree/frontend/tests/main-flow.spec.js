@@ -228,6 +228,73 @@ test.describe('ConceptTree Main Flow', () => {
     expect(page.url()).not.toContain('/graph');
   });
 
+  test('generate-graph request includes userBackground when profile has abilities', async ({ page }) => {
+    const fakeToken = makeFakeToken();
+    await page.addInitScript((token) => {
+      localStorage.setItem('concept_tree_token', token);
+    }, fakeToken);
+
+    await page.route('**/api/user/profile', async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            occupation: '学生', education: '本科',
+            programmingLevel: '入门', mathLevel: '无基础',
+            abilities: ['JavaScript入门'],
+            masteredKnowledge: ['变量', '函数'],
+          },
+        },
+      });
+    });
+    await page.route('**/api/plans', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ json: { success: true, data: [] } });
+      } else {
+        await route.fulfill({ json: { success: true, data: { id: 'p_bg_test', title: '测试' } } });
+      }
+    });
+    await page.route('**/api/notes', async (route) => {
+      await route.fulfill({ json: { success: true, data: [] } });
+    });
+    await page.route('**/api/ai/parse-goal', async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: { interpretation: '掌握React', backgroundSummary: [], suggestedNodeCount: 5, shouldSplit: false, splitSuggestions: null },
+        },
+      });
+    });
+
+    let capturedBody = null;
+    await page.route('**/api/ai/generate-graph', async (route) => {
+      capturedBody = JSON.parse(route.request().postData());
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            interpretation: '掌握React',
+            nodes: [{ id: 'n1', name: 'JSX', status: 'unlearned', x: 0, y: 0, why: '', what: [], mastery: [], prompt: '', resources: [], isTarget: true, domain: '编程' }],
+            edges: [],
+            targetNodeId: 'n1',
+          },
+        },
+      });
+    });
+
+    await page.goto('/');
+    await page.locator('textarea').fill('我想学React');
+    await page.click('button:has-text("生成图谱")');
+    await expect(page.locator('text=掌握React')).toBeVisible({ timeout: 8000 });
+    await page.click('button:has-text("确认生成")');
+    await page.waitForURL('**/graph/p_bg_test', { timeout: 15000 });
+
+    expect(capturedBody).not.toBeNull();
+    expect(capturedBody.userBackground).toBeDefined();
+    expect(capturedBody.userBackground.abilities).toContain('JavaScript入门');
+    expect(capturedBody.userBackground.masteredKnowledge).toContain('变量');
+  });
+
   test('toast appears when AI parse-goal returns 500 error', async ({ page }) => {
     await mockCommonApis(page);
 
