@@ -37,7 +37,7 @@ const fetchApi = async (endpoint, options = {}) => {
 };
 
 // edges 字段映射：后端 {from_node, to_node} ↔ 前端 {from, to}
-const mapEdgesFromBackend = (edges) =>
+export const mapEdgesFromBackend = (edges) =>
   (edges || []).map((e) => {
     const { from_node, to_node, ...rest } = e;
     return {
@@ -47,7 +47,7 @@ const mapEdgesFromBackend = (edges) =>
     };
   });
 
-const mapEdgesToBackend = (edges) =>
+export const mapEdgesToBackend = (edges) =>
   (edges || []).map((e) => {
     const { from, to, ...rest } = e;
     return {
