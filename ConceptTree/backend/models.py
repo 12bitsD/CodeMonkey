@@ -309,3 +309,12 @@ class GenerateGraphAIResult(BaseModel):
     success: bool
     data: Optional[GenerateGraphResponse] = None
     error: Optional[ApiError] = None
+
+
+class UserBackgroundInput(BaseModel):
+    occupation: str = ""
+    education: str = ""
+    programmingLevel: str = ""
+    mathLevel: str = ""
+    abilities: List[str] = []
+    masteredKnowledge: List[str] = []

@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
+from typing import Optional
 
 from database import get_db
 from services.ai_service import get_ai_service
-from models import ErrorResponse
+from models import ErrorResponse, UserBackgroundInput
 from utils.auth import get_current_user_id
 
 
@@ -26,6 +27,7 @@ class ParseGoalRequest(BaseModel):
 class GenerateGraphRequest(BaseModel):
     input: str
     interpretation: str
+    userBackground: Optional[UserBackgroundInput] = None
 
 
 class ParseGoalResponseWrapper(BaseModel):
@@ -76,10 +78,11 @@ async def generate_graph(
 ):
     """AI生成知识图谱"""
     ai_service = get_ai_service()
+    user_bg = request.userBackground.model_dump() if request.userBackground else None
     result = await ai_service.generate_graph(
         interpretation=request.interpretation,
         original_input=request.input,
-        user_background=None,
+        user_background=user_bg,
     )
 
     if not result.success:

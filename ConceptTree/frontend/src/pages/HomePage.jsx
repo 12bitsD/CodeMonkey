@@ -16,12 +16,14 @@ import { Button, Modal } from '../components/ui';
 import { LOADING_TEXTS } from '../constants';
 import { useAppContext } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { graphApi, aiApi } from '../services/api';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { userProfile, plans, actions } = useAppContext();
   const { isAuthenticated, login, register, logout } = useAuth();
+  const toast = useToast();
   
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -49,7 +51,7 @@ const HomePage = () => {
       setParsedGoal(result);
       setShowConfirmModal(true);
     } catch (error) {
-      console.error("Analysis failed", error);
+      toast.error('解析目标失败，请稍后重试');
     } finally {
       setIsAnalyzing(false);
     }
@@ -85,7 +87,7 @@ const HomePage = () => {
       }, 500);
       
     } catch (error) {
-      console.error("Generation failed", error);
+      toast.error('生成图谱失败，请稍后重试');
       clearInterval(interval);
       setIsGenerating(false);
     }
@@ -124,7 +126,7 @@ const HomePage = () => {
           setEmail('');
           setPassword('');
         } else {
-          alert(result.error || '登录失败');
+          toast.error(result.error || '登录失败');
         }
       } else {
         const result = await register(email, password);
@@ -133,11 +135,11 @@ const HomePage = () => {
           setEmail('');
           setPassword('');
         } else {
-          alert(result.error || '注册失败');
+          toast.error(result.error || '注册失败');
         }
       }
     } catch (error) {
-      alert('操作失败，请重试');
+      toast.error('操作失败，请重试');
     }
   };
 

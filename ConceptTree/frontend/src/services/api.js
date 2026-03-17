@@ -165,10 +165,21 @@ export const plansApi = {
 // ─── 图谱 API (Real Backend) ───
 
 export const graphApi = {
-  generate: async (input) => {
+  generate: async (input, userProfile = null) => {
+    const body = { input, interpretation: input };
+    if (userProfile) {
+      body.userBackground = {
+        occupation: userProfile.occupation || "",
+        education: userProfile.education || "",
+        programmingLevel: userProfile.programmingLevel || "",
+        mathLevel: userProfile.mathLevel || "",
+        abilities: userProfile.abilities || [],
+        masteredKnowledge: userProfile.masteredKnowledge || [],
+      };
+    }
     const result = await fetchApi("/ai/generate-graph", {
       method: "POST",
-      body: JSON.stringify({ input, interpretation: input }),
+      body: JSON.stringify(body),
     });
     return {
       ...result,
