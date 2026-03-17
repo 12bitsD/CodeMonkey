@@ -22,7 +22,8 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'node',
-      globals: true
+      globals: true,
+      include: ['src/**/*.test.{js,ts,jsx,tsx}']
     }
   }
 })
