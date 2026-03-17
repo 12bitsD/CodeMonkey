@@ -11,6 +11,12 @@
 
 **Tech Stack:** React 18 + Vite + FastAPI + Pydantic + Kimi LLM
 
+**TDD 约定：**
+- 每个 Chunk 的第一个 Task 是写失败的测试（RED）
+- 后续 Task 写实现，每次实现后立即运行对应测试（GREEN）
+- 后端：pytest 单元测试（纯 model 验证，无需 DB）+ 集成测试（TestClient + monkeypatch mock AI）
+- 前端：vitest 单元测试（纯函数）+ Playwright E2E 测试（含网络拦截验证请求体）
+
 ---
 
 ## 当前状态 Baseline
@@ -26,6 +32,52 @@
 ---
 
 ## Chunk 1: 全局 Toast 通知系统
+
+### Task 1.0: 写失败的 E2E 测试（TDD RED）
+
+**Files:**
+- Modify: `ConceptTree/frontend/tests/main-flow.spec.js`
+
+在现有 E2E 测试末尾追加一个 Toast 可见性测试。此测试现在应该 **失败**，因为 Toast 组件尚不存在。
+
+- [ ] **Step 1: 在 main-flow.spec.js 末尾追加测试**
+
+```javascript
+test('toast appears when AI parse-goal returns 500 error', async ({ page }) => {
+  await mockCommonApis(page);
+
+  await page.route('**/api/ai/parse-goal', async (route) => {
+    await route.fulfill({
+      status: 500,
+      json: { success: false, error: { code: 'AI_SERVICE_ERROR', message: 'Service unavailable' } },
+    });
+  });
+
+  await page.goto('/');
+  await page.locator('textarea').fill('触发错误');
+  await page.click('button:has-text("生成图谱")');
+
+  await expect(page.locator('text=解析目标失败，请稍后重试')).toBeVisible({ timeout: 5000 });
+});
+```
+
+- [ ] **Step 2: 运行测试，确认它失败（RED）**
+
+```bash
+cd ConceptTree/frontend
+npx playwright test tests/main-flow.spec.js -k "toast appears" --project=chromium
+```
+
+Expected: **1 failed** — "解析目标失败，请稍后重试" 文本不存在（当前只有 console.error）
+
+- [ ] **Step 3: Commit 失败的测试**
+
+```bash
+git add ConceptTree/frontend/tests/main-flow.spec.js
+git commit -m "test(frontend): add failing E2E test for toast notification on AI error"
+```
+
+---
 
 ### Task 1.1: 创建 ToastContext
 
@@ -191,16 +243,24 @@ alert('操作失败，请重试');
 toast.error('操作失败，请重试');
 ```
 
-- [ ] **Step 3: 验证 E2E 错误状态测试仍通过**
+- [ ] **Step 3: 运行 Toast E2E 测试（TDD GREEN）**
 
 ```bash
 cd ConceptTree/frontend
-npx playwright test tests/main-flow.spec.js -k "error state" --project=chromium
+npx playwright test tests/main-flow.spec.js -k "toast appears" --project=chromium
 ```
 
-Expected: 1 passed
+Expected: **1 passed** — Toast 文本可见
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: 运行全量 E2E 确认无回归**
+
+```bash
+npx playwright test tests/main-flow.spec.js --project=chromium
+```
+
+Expected: 5 passed
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add ConceptTree/frontend/src/pages/HomePage.jsx
@@ -246,7 +306,7 @@ cd ConceptTree/frontend
 npx playwright test tests/main-flow.spec.js --project=chromium
 ```
 
-Expected: 4 passed
+Expected: 5 passed（含 toast 测试）
 
 - [ ] **Step 3: Commit**
 
@@ -258,6 +318,167 @@ git commit -m "fix(frontend): replace console.error with toast notifications in 
 ---
 
 ## Chunk 2: 用户画像传入图谱生成
+
+### Task 2.0: 写失败的测试（TDD RED）
+
+**Files:**
+- Create: `ConceptTree/backend/tests/test_user_background.py`
+- Modify: `ConceptTree/frontend/tests/main-flow.spec.js`
+
+**后端单元测试（无需 DB，纯 model 验证）**
+
+- [ ] **Step 1: 创建 `ConceptTree/backend/tests/test_user_background.py`**
+
+```python
+"""Unit tests for UserBackgroundInput model and generate-graph request."""
+import pytest
+
+
+def test_user_background_input_defaults():
+    from models import UserBackgroundInput
+    bg = UserBackgroundInput()
+    assert bg.occupation == ""
+    assert bg.abilities == []
+    assert bg.masteredKnowledge == []
+
+
+def test_user_background_input_accepts_lists():
+    from models import UserBackgroundInput
+    bg = UserBackgroundInput(abilities=["JavaScript", "Python"], masteredKnowledge=["变量", "循环"])
+    assert len(bg.abilities) == 2
+    assert "变量" in bg.masteredKnowledge
+
+
+def test_generate_graph_request_with_user_background():
+    from routers.ai import GenerateGraphRequest
+    from models import UserBackgroundInput
+    req = GenerateGraphRequest(
+        input="学Python",
+        interpretation="掌握Python基础",
+        userBackground=UserBackgroundInput(abilities=["JS入门"], masteredKnowledge=["变量"]),
+    )
+    assert req.userBackground.abilities == ["JS入门"]
+    assert req.userBackground is not None
+
+
+def test_generate_graph_request_without_user_background():
+    from routers.ai import GenerateGraphRequest
+    req = GenerateGraphRequest(input="学Python", interpretation="掌握Python基础")
+    assert req.userBackground is None
+
+
+def test_clarify_goal_endpoint_requires_auth(client):
+    resp = client.post(
+        "/api/ai/clarify-goal",
+        json={"originalGoal": "学Python", "newGoal": "学Python数据分析"},
+    )
+    assert resp.status_code == 401
+```
+
+注意：前四个 test 是纯 model 验证，**无需 `DATABASE_URL`**，直接可运行。最后一个 `test_clarify_goal_endpoint_requires_auth` 是集成测试，需要 DB。
+
+- [ ] **Step 2: 运行纯 model 测试，确认它们失败（RED）**
+
+```bash
+cd ConceptTree/backend
+source venv/bin/activate
+python3 -m pytest tests/test_user_background.py::test_user_background_input_defaults tests/test_user_background.py::test_generate_graph_request_with_user_background -v 2>&1 | tail -15
+```
+
+Expected: **2 failed** — `ImportError: cannot import name 'UserBackgroundInput' from 'models'`
+
+**前端 E2E 测试：验证 userBackground 在请求体中**
+
+- [ ] **Step 3: 在 main-flow.spec.js 追加 userBackground 请求体验证测试**
+
+```javascript
+test('generate-graph request includes userBackground when profile has abilities', async ({ page }) => {
+  const fakeToken = makeFakeToken();
+  await page.addInitScript((token) => {
+    localStorage.setItem('concept_tree_token', token);
+  }, fakeToken);
+
+  await page.route('**/api/user/profile', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          occupation: '学生', education: '本科',
+          programmingLevel: '入门', mathLevel: '无基础',
+          abilities: ['JavaScript入门'],
+          masteredKnowledge: ['变量', '函数'],
+        },
+      },
+    });
+  });
+  await page.route('**/api/plans', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { success: true, data: [] } });
+    } else {
+      await route.fulfill({ json: { success: true, data: { id: 'p_bg_test', title: '测试' } } });
+    }
+  });
+  await page.route('**/api/notes', async (route) => {
+    await route.fulfill({ json: { success: true, data: [] } });
+  });
+  await page.route('**/api/ai/parse-goal', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: { interpretation: '掌握React', backgroundSummary: [], suggestedNodeCount: 5, shouldSplit: false, splitSuggestions: null },
+      },
+    });
+  });
+
+  let capturedBody = null;
+  await page.route('**/api/ai/generate-graph', async (route) => {
+    capturedBody = JSON.parse(route.request().postData());
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          interpretation: '掌握React',
+          nodes: [
+            { id: 'n1', name: 'JSX', status: 'unlearned', x: 0, y: 0, why: '', what: [], mastery: [], prompt: '', resources: [], isTarget: true, domain: '编程' },
+          ],
+          edges: [],
+          targetNodeId: 'n1',
+        },
+      },
+    });
+  });
+
+  await page.goto('/');
+  await page.locator('textarea').fill('我想学React');
+  await page.click('button:has-text("生成图谱")');
+  await expect(page.locator('text=掌握React')).toBeVisible({ timeout: 8000 });
+  await page.click('button:has-text("确认生成")');
+  await page.waitForURL('**/graph/p_bg_test', { timeout: 15000 });
+
+  expect(capturedBody).not.toBeNull();
+  expect(capturedBody.userBackground).toBeDefined();
+  expect(capturedBody.userBackground.abilities).toContain('JavaScript入门');
+  expect(capturedBody.userBackground.masteredKnowledge).toContain('变量');
+});
+```
+
+- [ ] **Step 4: 运行前端测试，确认它失败（RED）**
+
+```bash
+cd ConceptTree/frontend
+npx playwright test tests/main-flow.spec.js -k "userBackground" --project=chromium
+```
+
+Expected: **1 failed** — `capturedBody.userBackground` 为 `undefined`（当前 `graphApi.generate` 不传）
+
+- [ ] **Step 5: Commit 失败的测试**
+
+```bash
+git add ConceptTree/backend/tests/test_user_background.py ConceptTree/frontend/tests/main-flow.spec.js
+git commit -m "test: add failing tests for userBackground in generate-graph request (RED)"
+```
+
+---
 
 ### Task 2.1: 前端 graphApi.generate 传递 userProfile
 
@@ -317,7 +538,16 @@ parseGoal: async (input, userProfile = null) => {
 },
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: 运行 E2E 测试（TDD GREEN — 前端部分）**
+
+```bash
+cd ConceptTree/frontend
+npx playwright test tests/main-flow.spec.js -k "userBackground" --project=chromium
+```
+
+Expected: **1 passed** — `capturedBody.userBackground.abilities` 包含用户数据
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add ConceptTree/frontend/src/services/api.js
@@ -401,7 +631,17 @@ print('Request OK:', req.userBackground.abilities)
 
 Expected: `Request OK: ['JavaScript入门']`
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: 运行后端 model 单元测试（TDD GREEN — 后端部分）**
+
+```bash
+cd ConceptTree/backend
+source venv/bin/activate
+python3 -m pytest tests/test_user_background.py::test_user_background_input_defaults tests/test_user_background.py::test_user_background_input_accepts_lists tests/test_user_background.py::test_generate_graph_request_with_user_background tests/test_user_background.py::test_generate_graph_request_without_user_background -v
+```
+
+Expected: **4 passed**
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add ConceptTree/backend/routers/ai.py ConceptTree/backend/models.py
@@ -439,17 +679,26 @@ python3 -c "import json; json.load(open('services/llm/configs/generate_graph.jso
 
 Expected: `JSON valid`
 
-- [ ] **Step 3: 运行后端测试（无 API Key skip）**
+- [ ] **Step 3: 运行全量后端 model 测试（无 API Key skip）**
 
 ```bash
 cd ConceptTree/backend
 source venv/bin/activate
-python3 -m pytest tests/test_ai_integration.py -v -q 2>&1 | head -20
+python3 -m pytest tests/test_user_background.py -v -q 2>&1 | tail -10
 ```
 
-Expected: tests skip or pass (no import errors)
+Expected: 4 passed（model 测试），1 skip（需要 DB 的集成测试）
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: 运行全量前端测试确认无回归**
+
+```bash
+cd ConceptTree/frontend
+npx vitest run && npx playwright test tests/main-flow.spec.js --project=chromium
+```
+
+Expected: vitest 6 passed，playwright 7 passed
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add ConceptTree/backend/services/llm/configs/generate_graph.json
@@ -459,6 +708,178 @@ git commit -m "feat(llm): update generate-graph prompt to personalize based on u
 ---
 
 ## Chunk 3: clarify-goal — 目标调整功能
+
+### Task 3.0: 写失败的测试（TDD RED）
+
+**Files:**
+- Modify: `ConceptTree/backend/tests/test_user_background.py`（复用文件追加）
+- Modify: `ConceptTree/frontend/tests/main-flow.spec.js`
+
+**后端单元测试 + 集成测试**
+
+- [ ] **Step 1: 追加 clarify-goal 相关测试到 `test_user_background.py`**
+
+```python
+def test_clarify_goal_request_valid():
+    from routers.ai import ClarifyGoalRequest
+    req = ClarifyGoalRequest(originalGoal="学Python", newGoal="学Python数据分析")
+    assert req.newGoal == "学Python数据分析"
+    assert req.originalGoal == "学Python"
+
+
+def test_clarify_goal_request_new_goal_too_short():
+    from routers.ai import ClarifyGoalRequest
+    import pytest
+    with pytest.raises(Exception):
+        ClarifyGoalRequest(originalGoal="学Python", newGoal="学")
+
+
+def test_clarify_goal_response_model():
+    from models import ClarifyGoalResponse
+    resp = ClarifyGoalResponse(
+        interpretation="用Python进行数据分析",
+        isLargeChange=False,
+        suggestion="modify",
+        reason="新目标是原目标的细化方向",
+    )
+    assert resp.suggestion == "modify"
+    assert resp.isLargeChange is False
+    assert resp.reason != ""
+
+
+def test_clarify_goal_response_large_change():
+    from models import ClarifyGoalResponse
+    resp = ClarifyGoalResponse(
+        interpretation="使用Java构建后端服务",
+        isLargeChange=True,
+        suggestion="create_new",
+        reason="编程语言完全不同",
+    )
+    assert resp.isLargeChange is True
+    assert resp.suggestion == "create_new"
+
+
+def test_clarify_goal_endpoint_success(client, auth_headers_a, monkeypatch):
+    from services.ai_service import AIService
+    from models import ClarifyGoalResponse, ClarifyGoalAIResult
+
+    async def mock_clarify(self, original_goal, new_goal):
+        return ClarifyGoalAIResult(
+            success=True,
+            data=ClarifyGoalResponse(
+                interpretation="用Python做数据分析，掌握pandas",
+                isLargeChange=False,
+                suggestion="modify",
+                reason="新目标是原目标的具体化",
+            ),
+        )
+
+    monkeypatch.setattr(AIService, "clarify_goal", mock_clarify)
+
+    resp = client.post(
+        "/api/ai/clarify-goal",
+        json={"originalGoal": "学Python", "newGoal": "学Python数据分析"},
+        headers=auth_headers_a,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["data"]["isLargeChange"] is False
+    assert data["data"]["suggestion"] == "modify"
+
+
+def test_clarify_goal_endpoint_validates_short_goal(client, auth_headers_a):
+    resp = client.post(
+        "/api/ai/clarify-goal",
+        json={"originalGoal": "学Python", "newGoal": "学"},
+        headers=auth_headers_a,
+    )
+    assert resp.status_code == 422
+```
+
+- [ ] **Step 2: 运行测试，确认失败（RED）**
+
+```bash
+cd ConceptTree/backend
+source venv/bin/activate
+python3 -m pytest tests/test_user_background.py::test_clarify_goal_request_valid tests/test_user_background.py::test_clarify_goal_response_model -v 2>&1 | tail -10
+```
+
+Expected: **2 failed** — `ImportError: cannot import name 'ClarifyGoalRequest'` / `'ClarifyGoalResponse'`
+
+**前端 E2E 测试：clarify-goal 流程**
+
+- [ ] **Step 3: 在 main-flow.spec.js 追加 clarify-goal E2E 测试**
+
+```javascript
+test('clarify-goal: small change shows modify suggestion', async ({ page }) => {
+  const fakeToken = makeFakeToken();
+  await page.addInitScript((token) => {
+    localStorage.setItem('concept_tree_token', token);
+  }, fakeToken);
+
+  await page.route('**/api/user/profile', async (route) => {
+    await route.fulfill({
+      json: { success: true, data: { occupation: '', education: '', programmingLevel: '入门', mathLevel: '入门', abilities: [], masteredKnowledge: [] } },
+    });
+  });
+  await page.route('**/api/plans/**/graph', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          nodes: [{ id: 'n1', name: 'Python基础', status: 'unlearned', x: 0, y: 0, why: '', what: [], mastery: [], prompt: '', resources: [], isTarget: true, domain: '编程' }],
+          edges: [],
+          targetNodeId: 'n1',
+        },
+      },
+    });
+  });
+  await page.route('**/api/plans', async (route) => {
+    await route.fulfill({ json: { success: true, data: [{ id: 'p_test_plan', title: '学Python', status: 'active', progress: 0, total: 1 }] } });
+  });
+  await page.route('**/api/notes', async (route) => {
+    await route.fulfill({ json: { success: true, data: [] } });
+  });
+  await page.route('**/api/ai/clarify-goal', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: { interpretation: '用Python做数据分析', isLargeChange: false, suggestion: 'modify', reason: '新目标是原目标的具体化' },
+      },
+    });
+  });
+
+  await page.goto('/graph/p_test_plan');
+  await page.click('button:has-text("修改目标")');
+
+  await expect(page.locator('text=修改学习目标')).toBeVisible({ timeout: 5000 });
+
+  await page.locator('textarea[placeholder*="输入修改后"]').fill('学Python数据分析');
+  await page.click('button:has-text("分析变更")');
+
+  await expect(page.locator('text=小幅调整')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('text=新目标是原目标的具体化')).toBeVisible();
+});
+```
+
+- [ ] **Step 4: 运行前端测试，确认失败（RED）**
+
+```bash
+cd ConceptTree/frontend
+npx playwright test tests/main-flow.spec.js -k "clarify-goal" --project=chromium 2>&1 | tail -10
+```
+
+Expected: **1 failed** — "修改目标" 按钮不存在
+
+- [ ] **Step 5: Commit 失败的测试**
+
+```bash
+git add ConceptTree/backend/tests/test_user_background.py ConceptTree/frontend/tests/main-flow.spec.js
+git commit -m "test: add failing tests for clarify-goal backend models, endpoint, and E2E flow (RED)"
+```
+
+---
 
 ### Task 3.1: 后端 clarify-goal 端点
 
@@ -620,7 +1041,27 @@ print('clarify-goal endpoint registered OK')
 
 Expected: `clarify-goal endpoint registered OK`
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 运行后端单元测试（TDD GREEN — model 部分）**
+
+```bash
+cd ConceptTree/backend
+source venv/bin/activate
+python3 -m pytest tests/test_user_background.py::test_clarify_goal_request_valid tests/test_user_background.py::test_clarify_goal_request_new_goal_too_short tests/test_user_background.py::test_clarify_goal_response_model tests/test_user_background.py::test_clarify_goal_response_large_change -v
+```
+
+Expected: **4 passed**
+
+- [ ] **Step 6: 运行集成测试（需要 DATABASE_URL）**
+
+```bash
+cd ConceptTree/backend
+source venv/bin/activate
+python3 -m pytest tests/test_user_background.py::test_clarify_goal_endpoint_requires_auth tests/test_user_background.py::test_clarify_goal_endpoint_success tests/test_user_background.py::test_clarify_goal_endpoint_validates_short_goal -v 2>&1 | tail -15
+```
+
+Expected: 3 passed（有 DB 时），3 skip（无 DB 时）
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add ConceptTree/backend/routers/ai.py ConceptTree/backend/services/ai_service.py ConceptTree/backend/models.py ConceptTree/backend/services/llm/configs/clarify_goal.json
@@ -746,16 +1187,24 @@ const handleApplyClarify = () => {
 </Modal>
 ```
 
-- [ ] **Step 3: 验证 E2E 全量测试**
+- [ ] **Step 3: 运行 clarify-goal E2E 测试（TDD GREEN — 前端部分）**
 
 ```bash
 cd ConceptTree/frontend
+npx playwright test tests/main-flow.spec.js -k "clarify-goal" --project=chromium
+```
+
+Expected: **1 passed** — 弹窗出现，"小幅调整" 结果可见
+
+- [ ] **Step 4: 运行全量 E2E 测试确认无回归**
+
+```bash
 npx playwright test tests/main-flow.spec.js --project=chromium
 ```
 
-Expected: 4 passed（已有测试不受影响）
+Expected: 9 passed（含全部新增测试）
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add ConceptTree/frontend/src/services/api.js ConceptTree/frontend/src/pages/GraphPage.jsx
@@ -768,18 +1217,27 @@ git commit -m "feat(frontend): add clarify-goal UI with change analysis and new-
 
 ### Chunk 1 Done
 - [ ] `alert()` 从全局消失，替换为右下角 Toast
-- [ ] 错误状态（AI 500）用户可见 Toast 提示
-- [ ] E2E 4 测试全通过
+- [ ] E2E `toast appears` 测试通过
+- [ ] Playwright 全量：5 passed
 
 ### Chunk 2 Done
-- [ ] 前端 `graphApi.generate` 将 `userProfile` 序列化到请求体
-- [ ] 后端 `generate-graph` 接收 `userBackground` 并传给 AI Service
-- [ ] 有用户画像时生成的图谱已掌握节点标为 `skipped`
+- [ ] 后端 model 单元测试：4 passed（无 DB 即可运行）
+- [ ] 前端 E2E `userBackground` 测试通过，`capturedBody.userBackground.abilities` 有值
+- [ ] Playwright 全量：7 passed，vitest 6 passed
 
 ### Chunk 3 Done
-- [ ] `POST /api/ai/clarify-goal` 返回 `{isLargeChange, suggestion, interpretation, reason}`
-- [ ] GraphPage 有"修改目标"按钮 + 分析弹窗
-- [ ] 大变更引导新建计划，小变更提示应用修改
+- [ ] 后端 model 单元测试：4 passed（`ClarifyGoalRequest`/`Response` 验证）
+- [ ] 后端集成测试：3 passed（endpoint auth / success / validation）
+- [ ] 前端 E2E `clarify-goal` 测试通过
+- [ ] Playwright 全量：9 passed
+
+### 总测试数量（全部完成后）
+| 测试套件 | 数量 | 运行方式 |
+|---------|------|---------|
+| vitest 单元测试 | 6 | `npx vitest run` |
+| Playwright E2E | 9 | `npx playwright test` |
+| pytest model 单元测试 | 8 | `pytest tests/test_user_background.py -k "not endpoint"` |
+| pytest 集成测试 | 5+ | 需要 DATABASE_URL |
 
 ---
 
