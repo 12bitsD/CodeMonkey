@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 
 from database import get_db
-from services.ai_service import parse_goal_service, generate_graph_service
+from services.ai_service import get_ai_service
 from models import ErrorResponse
 from utils.auth import get_current_user_id
+from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
@@ -14,72 +14,72 @@ class ParseGoalRequest(BaseModel):
     input: str
 
 
-class ParseGoalResponse(BaseModel):
-    success: bool
-    data: dict
-
-
 class GenerateGraphRequest(BaseModel):
     input: str
     interpretation: str
 
 
-class GenerateGraphResponse(BaseModel):
+class ParseGoalResponseWrapper(BaseModel):
+    success: bool
+    data: dict
+
+
+class GenerateGraphResponseWrapper(BaseModel):
     success: bool
     data: dict
 
 
 @router.post(
     "/parse-goal",
-    response_model=ParseGoalResponse,
+    response_model=ParseGoalResponseWrapper,
     responses={403: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-def parse_goal(
+async def parse_goal(
     request: ParseGoalRequest,
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
     """AI解析学习目标"""
-    try:
-        user_profile = {}
+    ai_service = get_ai_service()
+    result = await ai_service.parse_goal(request.input)
 
-        result = parse_goal_service(request.input, user_profile)
-
-        return {"success": True, "data": result}
-    except Exception as e:
+    if not result.success:
         raise HTTPException(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "PARSE_GOAL_ERROR", "message": str(e)},
+                "error": result.error.model_dump() if result.error else {},
             },
         )
+
+    return {"success": True, "data": result.data.model_dump() if result.data else {}}
 
 
 @router.post(
     "/generate-graph",
-    response_model=GenerateGraphResponse,
+    response_model=GenerateGraphResponseWrapper,
     responses={403: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-def generate_graph(
+async def generate_graph(
     request: GenerateGraphRequest,
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
     """AI生成知识图谱"""
-    try:
-        user_profile = {}
+    ai_service = get_ai_service()
+    result = await ai_service.generate_graph(
+        interpretation=request.interpretation,
+        original_input=request.input,
+        user_background=None,
+    )
 
-        result = generate_graph_service(
-            request.input, request.interpretation, user_profile
-        )
-
-        return {"success": True, "data": result}
-    except Exception as e:
+    if not result.success:
         raise HTTPException(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "GENERATE_GRAPH_ERROR", "message": str(e)},
+                "error": result.error.model_dump() if result.error else {},
             },
         )
+
+    return {"success": True, "data": result.data.model_dump() if result.data else {}}

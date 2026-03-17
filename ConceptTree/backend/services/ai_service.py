@@ -1,189 +1,160 @@
-"""AI服务实现 - Mock版本"""
+"""AI Service - Real LLM Integration"""
 
-from models import BackgroundSummary, SplitSuggestion, NodeData, Edge, NodeStatus
+import json
+from typing import Optional
+from jinja2 import Template
+
+from models import (
+    ParseGoalResponse,
+    ParseGoalAIResult,
+    GenerateGraphResponse,
+    GenerateGraphAIResult,
+    ApiError,
+)
+from services.llm import get_llm_client, LLMServiceError
+from services.llm.prompts import load_prompt, PARSE_GOAL_V1, GENERATE_GRAPH_V1
 
 
-def parse_goal_service(user_input: str, user_profile: dict) -> dict:
-    """解析学习目标
+class AIService:
+    """AI service for learning goal parsing and graph generation"""
 
-    Args:
-        user_input: 用户输入的学习目标
-        user_profile: 用户画像数据
+    def __init__(self):
+        self.llm_client = get_llm_client()
 
-    Returns:
-        解析结果，包含interpretation, backgroundSummary等
-    """
-    # Mock实现：简单的规则提取
-    interpretation = user_input.strip()
+    async def parse_goal(self, user_input: str) -> ParseGoalAIResult:
+        """
+        Parse user learning goal using LLM.
 
-    # 构建背景摘要
-    background_summary = []
+        Args:
+            user_input: Raw user input describing what they want to learn
 
-    # 从用户画像中提取相关能力（取前2个）
-    if user_profile and user_profile.get("abilities"):
-        for ability in user_profile["abilities"][:2]:
-            background_summary.append(
-                BackgroundSummary(text=ability, source="profile", isStrength=True)
+        Returns:
+            ParseGoalAIResult with structured data or error
+        """
+        try:
+            # Load and render prompt
+            prompt_template = load_prompt(PARSE_GOAL_V1)
+            prompt = Template(prompt_template).render(user_input=user_input)
+
+            # Call LLM
+            result = await self.llm_client.chat_json(
+                system_prompt="You are a helpful learning assistant.",
+                user_prompt=prompt,
+                temperature=0.7,
             )
 
-    # 从输入中提取背景信息
-    if "不好" in user_input or "薄弱" in user_input or "不会" in user_input:
-        # 提取弱项
-        if "数学" in user_input:
-            background_summary.append(
-                BackgroundSummary(text="数学基础薄弱", source="input", isStrength=False)
+            # Validate with Pydantic
+            parsed = ParseGoalResponse(**result)
+
+            return ParseGoalAIResult(success=True, data=parsed)
+
+        except LLMServiceError as e:
+            return ParseGoalAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR", message=f"AI service error: {str(e)}"
+                ),
             )
-        elif "编程" in user_input:
-            background_summary.append(
-                BackgroundSummary(text="编程基础薄弱", source="input", isStrength=False)
+        except Exception as e:
+            return ParseGoalAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR", message=f"Failed to parse goal: {str(e)}"
+                ),
             )
 
-    if "基础" in user_input or "会" in user_input or "熟悉" in user_input:
-        # 提取优势
-        if "Python" in user_input:
-            background_summary.append(
-                BackgroundSummary(text="有Python基础", source="input", isStrength=True)
+    async def generate_graph(
+        self,
+        interpretation: str,
+        original_input: str,
+        user_background: Optional[dict] = None,
+    ) -> GenerateGraphAIResult:
+        """
+        Generate knowledge graph using LLM.
+
+        Args:
+            interpretation: Parsed learning goal
+            original_input: Original user input
+            user_background: Optional user profile data
+
+        Returns:
+            GenerateGraphAIResult with graph data or error
+        """
+        try:
+            # Format background for prompt
+            background_str = (
+                json.dumps(user_background, ensure_ascii=False)
+                if user_background
+                else "无"
             )
 
-    # 判断是否需要拆分（简单规则：目标太宽泛）
-    should_split = False
-    split_suggestions = None
+            # Load and render prompt
+            prompt_template = load_prompt(GENERATE_GRAPH_V1)
+            prompt = Template(prompt_template).render(
+                interpretation=interpretation,
+                original_input=original_input,
+                background=background_str,
+            )
 
-    # 如果输入很短且很宽泛，建议拆分
-    broad_keywords = ["深度学习", "机器学习", "人工智能", "数据科学", "算法", "编程"]
-    if (
-        any(keyword in user_input for keyword in broad_keywords)
-        and len(user_input) < 15
-    ):
-        should_split = True
-        suggested_node_count = 20
+            # Call LLM
+            result = await self.llm_client.chat_json(
+                system_prompt="You are a helpful learning assistant.",
+                user_prompt=prompt,
+                temperature=0.7,
+            )
 
-        # 生成拆分建议
-        topic = next((kw for kw in broad_keywords if kw in user_input), "该主题")
-        split_suggestions = [
-            SplitSuggestion(
-                title=f"{topic} - 基础入门",
-                description="从基础概念开始，建立初步认知",
-                estimatedNodes=5,
-            ),
-            SplitSuggestion(
-                title=f"{topic} - 核心原理",
-                description="深入理解核心算法和原理",
-                estimatedNodes=7,
-            ),
-            SplitSuggestion(
-                title=f"{topic} - 实践应用",
-                description="动手实践，掌握应用技巧",
-                estimatedNodes=6,
-            ),
-        ]
-    else:
-        suggested_node_count = 5
+            # Validate with Pydantic
+            parsed = GenerateGraphResponse(**result)
 
-    return {
-        "interpretation": interpretation,
-        "backgroundSummary": [bg.model_dump() for bg in background_summary],
-        "suggestedNodeCount": suggested_node_count,
-        "shouldSplit": should_split,
-        "splitSuggestions": (
-            [s.model_dump() for s in split_suggestions] if split_suggestions else None
-        ),
-    }
+            # Validate target node exists
+            target_exists = any(node.id == parsed.targetNodeId for node in parsed.nodes)
+            if not target_exists:
+                return GenerateGraphAIResult(
+                    success=False,
+                    error=ApiError(
+                        code="AI_SERVICE_ERROR",
+                        message="Generated graph has invalid target node",
+                    ),
+                )
+
+            # Validate edge references
+            node_ids = {node.id for node in parsed.nodes}
+            for edge in parsed.edges:
+                if edge.from_node not in node_ids or edge.to_node not in node_ids:
+                    return GenerateGraphAIResult(
+                        success=False,
+                        error=ApiError(
+                            code="AI_SERVICE_ERROR",
+                            message="Generated graph has invalid edge references",
+                        ),
+                    )
+
+            return GenerateGraphAIResult(success=True, data=parsed)
+
+        except LLMServiceError as e:
+            return GenerateGraphAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR", message=f"AI service error: {str(e)}"
+                ),
+            )
+        except Exception as e:
+            return GenerateGraphAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR",
+                    message=f"Failed to generate graph: {str(e)}",
+                ),
+            )
 
 
-def generate_graph_service(
-    user_input: str, interpretation: str, user_profile: dict
-) -> dict:
-    """生成知识图谱
+# Singleton instance
+_ai_service: Optional[AIService] = None
 
-    Args:
-        user_input: 原始输入
-        interpretation: AI解释的学习目标
-        user_profile: 用户画像
 
-    Returns:
-        图谱数据，包含nodes, edges, targetNodeId
-    """
-    # Mock实现：生成简单的图谱结构
-
-    # 目标节点
-    target_node = NodeData(
-        id="n1",
-        name=interpretation,
-        status=NodeStatus.unlearned,
-        x=0,
-        y=-100,
-        why="这是你的学习目标。",
-        what=["核心概念理解", "实际应用场景", "常见问题解决"],
-        mastery=["能够清晰解释核心概念", "能够独立完成基础应用"],
-        prompt=f"请帮我讲解{interpretation}，我的背景是：{', '.join(user_profile.get('abilities', [])) if user_profile else '无特殊背景'}。请用简单的例子说明。",
-        resources=[],
-        isTarget=True,
-        domain="核心",
-    )
-
-    prerequisite_nodes = [
-        NodeData(
-            id="n2",
-            name="基础概念",
-            status=NodeStatus.unlearned,
-            x=-150,
-            y=100,
-            why=f"理解{interpretation}的前置知识，为后续学习打基础。",
-            what=["基本定义", "核心术语", "基础原理"],
-            mastery=["能够准确描述基本定义", "理解基础术语含义"],
-            prompt="请帮我讲解相关的基础概念...",
-            resources=[],
-            isTarget=False,
-            domain="基础",
-        ),
-        NodeData(
-            id="n3",
-            name="核心原理",
-            status=NodeStatus.unlearned,
-            x=0,
-            y=100,
-            why="掌握核心原理是深入理解的关键。",
-            what=["工作原理", "内部机制", "理论依据"],
-            mastery=["能够解释工作原理", "理解内部机制"],
-            prompt="请帮我讲解核心原理...",
-            resources=[],
-            isTarget=False,
-            domain="原理",
-        ),
-        NodeData(
-            id="n4",
-            name="实践应用",
-            status=NodeStatus.unlearned,
-            x=150,
-            y=100,
-            why="将理论知识应用到实际场景。",
-            what=["应用场景", "实践技巧", "案例分析"],
-            mastery=["能够在实际场景中应用", "完成基础项目"],
-            prompt="请帮我讲解实践应用...",
-            resources=[],
-            isTarget=False,
-            domain="应用",
-        ),
-    ]
-
-    mastered = user_profile.get("masteredKnowledge", []) if user_profile else []
-    all_nodes = [target_node] + prerequisite_nodes
-
-    for node in all_nodes:
-        if node.name in mastered:
-            node.status = NodeStatus.skipped
-
-    # 构建依赖边
-    edges = [
-        Edge(from_node="n2", to_node="n1"),
-        Edge(from_node="n3", to_node="n1"),
-        Edge(from_node="n4", to_node="n1"),
-    ]
-
-    return {
-        "interpretation": interpretation,
-        "nodes": [node.model_dump() for node in all_nodes],
-        "edges": [edge.model_dump(by_alias=True) for edge in edges],
-        "targetNodeId": "n1",
-    }
+def get_ai_service() -> AIService:
+    """Get or create AI service singleton"""
+    global _ai_service
+    if _ai_service is None:
+        _ai_service = AIService()
+    return _ai_service
