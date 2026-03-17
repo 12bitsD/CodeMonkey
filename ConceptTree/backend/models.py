@@ -267,7 +267,7 @@ class ParseGoalAIResult(BaseModel):
 
     success: bool
     data: Optional[ParseGoalResponse] = None
-    error: Optional[Dict[str, Any]] = None
+    error: Optional[ApiError] = None
 
 
 class GraphNode(BaseModel):
@@ -308,4 +308,4 @@ class GenerateGraphAIResult(BaseModel):
 
     success: bool
     data: Optional[GenerateGraphResponse] = None
-    error: Optional[Dict[str, Any]] = None
+    error: Optional[ApiError] = None
