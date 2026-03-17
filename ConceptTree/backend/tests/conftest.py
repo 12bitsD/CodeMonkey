@@ -133,3 +133,15 @@ def auth_headers_b():
 
     token = create_access_token({"sub": "u_b"})
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def db(test_schema: str):
+    database_url = _require_database_url()
+    conn = psycopg2.connect(database_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{test_schema}"')
+        yield conn
+    finally:
+        conn.close()
