@@ -167,7 +167,7 @@ def get_llm_client() -> UnifiedLLMClient:
     return _llm_client
 
 
-async def close_llm_client():
+def close_llm_client():
     """Close LLM client connections"""
     global _llm_client
     _llm_client = None

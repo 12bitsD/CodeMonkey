@@ -58,8 +58,15 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
             response = await self.client.chat.completions.create(**request_kwargs)
 
+            # Validate response
+            if not response.choices:
+                raise LLMProviderError("Empty response from API")
+            content = response.choices[0].message.content
+            if content is None:
+                raise LLMProviderError("API returned empty content")
+
             return LLMResponse(
-                content=response.choices[0].message.content,
+                content=content,
                 usage={
                     "prompt_tokens": response.usage.prompt_tokens,
                     "completion_tokens": response.usage.completion_tokens,
