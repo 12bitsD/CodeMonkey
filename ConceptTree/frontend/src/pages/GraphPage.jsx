@@ -38,6 +38,7 @@ const GraphPage = () => {
   
   const plan = plans.find(p => p.id === planId);
   const [loading, setLoading] = useState(true);
+  const [aiRecommendation, setAiRecommendation] = useState(null);
 
   const {
     nodes,
@@ -59,9 +60,8 @@ const GraphPage = () => {
     resetView,
     zoomIn,
     zoomOut
-  } = useGraphInteraction([], []);
+  } = useGraphInteraction([], [], aiRecommendation);
 
-  // 加载图谱数据
   useEffect(() => {
     const loadGraph = async () => {
       if (!planId) return;
@@ -88,6 +88,17 @@ const GraphPage = () => {
       setSelectedNodeId(nodeId);
     }
   }, [searchParams, loading, nodes.length]);
+
+  useEffect(() => {
+    if (!planId || loading) return;
+    aiApi.recommendNext(planId)
+      .then(data => {
+        if (data?.recommended_node_id) {
+          setAiRecommendation(data);
+        }
+      })
+      .catch(() => {});
+  }, [planId, loading]);
 
   const [showGoalClarification, setShowGoalClarification] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState('');
@@ -343,6 +354,9 @@ const GraphPage = () => {
           <div className="flex flex-col">
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">推荐下一步</span>
             <span className="text-sm font-semibold text-zinc-800">{recommendedNode.name}</span>
+            {recommendedNode.recommendReason && (
+              <span className="text-[11px] text-zinc-400 mt-0.5 max-w-[200px] truncate">{recommendedNode.recommendReason}</span>
+            )}
           </div>
           <ChevronRight size={16} className="text-zinc-400 ml-2" />
         </div>

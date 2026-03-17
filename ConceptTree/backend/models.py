@@ -338,3 +338,14 @@ class ClarifyGoalAIResult(BaseModel):
     success: bool
     data: Optional[ClarifyGoalResponse] = None
     error: Optional[ApiError] = None
+
+
+class RecommendNextResponse(BaseModel):
+    recommended_node_id: Optional[str] = None
+    reason: str
+
+
+class RecommendNextAIResult(BaseModel):
+    success: bool
+    data: Optional[RecommendNextResponse] = None
+    error: Optional[ApiError] = None

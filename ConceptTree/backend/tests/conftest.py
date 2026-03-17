@@ -68,7 +68,10 @@ def client(test_schema: str):
 
 
 @pytest.fixture(autouse=True)
-def reset_database(test_schema: str):
+def reset_database(request, test_schema: str):
+    if request.node.get_closest_marker("no_db"):
+        yield
+        return
     database_url = _require_database_url()
     conn = psycopg2.connect(database_url)
     try:

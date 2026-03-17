@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from typing import Optional
+import json
 
 from database import get_db
 from services.ai_service import get_ai_service
+from services.learning_history import get_learning_history
 from models import ErrorResponse, UserBackgroundInput
 from utils.auth import get_current_user_id
 
@@ -147,6 +149,111 @@ async def clarify_goal(
         new_goal=request.newGoal,
         existing_nodes=existing_nodes,
     )
+    if not result.success:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "error": result.error.model_dump() if result.error else {},
+            },
+        )
+    return {"success": True, "data": result.data.model_dump() if result.data else {}}
+
+
+class RecommendNextRequest(BaseModel):
+    planId: str
+
+
+class RecommendNextResponseWrapper(BaseModel):
+    success: bool
+    data: dict
+
+
+@router.post(
+    "/recommend-next",
+    response_model=RecommendNextResponseWrapper,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def recommend_next(
+    request: RecommendNextRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    plan = db.execute(
+        "SELECT id, user_id, title, target_node_id FROM plans WHERE id = ?",
+        (request.planId,),
+    ).fetchone()
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            },
+        )
+    if plan["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
+        )
+
+    nodes = db.execute(
+        "SELECT id, name, status, is_target FROM nodes WHERE plan_id = ?",
+        (request.planId,),
+    ).fetchall()
+    edges = db.execute(
+        "SELECT from_node_id, to_node_id FROM edges WHERE plan_id = ?",
+        (request.planId,),
+    ).fetchall()
+    profile_row = db.execute(
+        "SELECT occupation, math_level, programming_level, abilities FROM user_profiles WHERE user_id = ?",
+        (current_user_id,),
+    ).fetchone()
+
+    graph = {
+        "nodes": [
+            {
+                "id": n["id"],
+                "name": n["name"],
+                "status": n["status"],
+                "isTarget": bool(n["is_target"]),
+            }
+            for n in nodes
+        ],
+        "edges": [
+            {"from_node": e["from_node_id"], "to_node": e["to_node_id"]} for e in edges
+        ],
+        "target_node_id": plan["target_node_id"],
+    }
+
+    user_profile = {}
+    if profile_row:
+        abilities = profile_row["abilities"]
+        if isinstance(abilities, str):
+            abilities = json.loads(abilities)
+        user_profile = {
+            "occupation": profile_row["occupation"] or "",
+            "math_level": profile_row["math_level"] or "入门",
+            "programming_level": profile_row["programming_level"] or "入门",
+            "abilities": abilities or [],
+        }
+
+    history = get_learning_history(
+        user_id=current_user_id, plan_id=request.planId, db=db
+    )
+
+    ai_service = get_ai_service()
+    result = await ai_service.recommend_next(
+        graph=graph,
+        user_profile=user_profile,
+        learning_history=history,
+        learning_goal=plan["title"],
+    )
+
     if not result.success:
         raise HTTPException(
             status_code=500,

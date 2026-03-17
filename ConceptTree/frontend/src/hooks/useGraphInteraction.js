@@ -1,10 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 
-/**
- * 图谱画布交互 Hook
- * 处理缩放、平移、节点拖拽等交互逻辑
- */
-export const useGraphInteraction = (initialNodes = [], initialEdges = []) => {
+export const useGraphInteraction = (initialNodes = [], initialEdges = [], aiRecommendation = null) => {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -20,13 +16,17 @@ export const useGraphInteraction = (initialNodes = [], initialEdges = []) => {
   );
 
   const recommendedNode = useMemo(() => {
-    return nodes.find(n => 
-      n.status === 'unlearned' && 
+    if (aiRecommendation?.recommended_node_id) {
+      const aiNode = nodes.find(n => n.id === aiRecommendation.recommended_node_id);
+      if (aiNode) return { ...aiNode, recommendReason: aiRecommendation.reason };
+    }
+    return nodes.find(n =>
+      n.status === 'unlearned' &&
       edges
         .filter(e => e.to === n.id)
         .every(e => nodes.find(fn => fn.id === e.from)?.status !== 'unlearned')
     );
-  }, [nodes, edges]);
+  }, [nodes, edges, aiRecommendation]);
 
   const handleWheel = useCallback((e) => {
     // 允许 Ctrl/Meta + 滚轮 或 双指触控板缩放

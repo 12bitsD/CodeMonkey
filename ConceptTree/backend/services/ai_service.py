@@ -1,8 +1,8 @@
 """AI Service - Real LLM Integration"""
 
-import json
 from typing import Optional
 
+import json
 from models import (
     ParseGoalResponse,
     ParseGoalAIResult,
@@ -10,6 +10,8 @@ from models import (
     GenerateGraphAIResult,
     ClarifyGoalResponse,
     ClarifyGoalAIResult,
+    RecommendNextResponse,
+    RecommendNextAIResult,
     ApiError,
 )
 from services.llm import get_llm_client, LLMServiceError
@@ -196,8 +198,51 @@ class AIService:
                 ),
             )
 
+    async def recommend_next(
+        self,
+        graph: dict,
+        user_profile: dict,
+        learning_history: dict,
+        learning_goal: str,
+    ) -> RecommendNextAIResult:
+        try:
+            context = json.dumps(
+                {
+                    "graph": graph,
+                    "user_profile": user_profile,
+                    "learning_history": learning_history,
+                    "learning_goal": learning_goal,
+                },
+                ensure_ascii=False,
+            )
+            params, sys_prompt, usr_prompt = load_ai_config("recommend_next", context)
 
-# Singleton instance
+            result = await self.llm_client.chat_json(
+                system_prompt=sys_prompt,
+                user_prompt=usr_prompt,
+                temperature=params.get("temperature", 0.5),
+                max_tokens=params.get("max_tokens", 1024),
+            )
+
+            parsed = RecommendNextResponse(**result)
+            return RecommendNextAIResult(success=True, data=parsed)
+
+        except (LLMServiceError, ConfigLoadError) as e:
+            return RecommendNextAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR", message=f"AI service error: {str(e)}"
+                ),
+            )
+        except Exception as e:
+            return RecommendNextAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR", message=f"Failed to recommend: {str(e)}"
+                ),
+            )
+
+
 _ai_service: Optional[AIService] = None
 
 
