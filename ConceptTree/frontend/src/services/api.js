@@ -38,16 +38,24 @@ const fetchApi = async (endpoint, options = {}) => {
 
 // edges 字段映射：后端 {from_node, to_node} ↔ 前端 {from, to}
 const mapEdgesFromBackend = (edges) =>
-  (edges || []).map((e) => ({
-    from: e.from_node || e.from,
-    to: e.to_node || e.to,
-  }));
+  (edges || []).map((e) => {
+    const { from_node, to_node, ...rest } = e;
+    return {
+      ...rest,
+      from: from_node || e.from,
+      to: to_node || e.to,
+    };
+  });
 
 const mapEdgesToBackend = (edges) =>
-  (edges || []).map((e) => ({
-    from_node: e.from_node || e.from,
-    to_node: e.to_node || e.to,
-  }));
+  (edges || []).map((e) => {
+    const { from, to, ...rest } = e;
+    return {
+      ...rest,
+      from_node: from || e.from_node,
+      to_node: to || e.to_node,
+    };
+  });
 
 // ─── 认证 API (Real Backend) ───
 
@@ -124,9 +132,14 @@ export const plansApi = {
   },
 
   update: async (id, data) => {
+    const updateData = { ...data };
+    if (updateData.edges) {
+      updateData.edges = mapEdgesToBackend(updateData.edges);
+    }
+    
     return await fetchApi(`/plans/${id}`, {
       method: "PUT",
-      body: JSON.stringify(data),
+      body: JSON.stringify(updateData),
     });
   },
 
