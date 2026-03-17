@@ -227,4 +227,21 @@ test.describe('ConceptTree Main Flow', () => {
 
     expect(page.url()).not.toContain('/graph');
   });
+
+  test('toast appears when AI parse-goal returns 500 error', async ({ page }) => {
+    await mockCommonApis(page);
+
+    await page.route('**/api/ai/parse-goal', async (route) => {
+      await route.fulfill({
+        status: 500,
+        json: { success: false, error: { code: 'AI_SERVICE_ERROR', message: 'Service unavailable' } },
+      });
+    });
+
+    await page.goto('/');
+    await page.locator('textarea').fill('触发错误');
+    await page.click('button:has-text("生成图谱")');
+
+    await expect(page.locator('text=解析目标失败，请稍后重试')).toBeVisible({ timeout: 5000 });
+  });
 });
