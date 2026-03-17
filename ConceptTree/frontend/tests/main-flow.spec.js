@@ -295,6 +295,55 @@ test.describe('ConceptTree Main Flow', () => {
     expect(capturedBody.userBackground.masteredKnowledge).toContain('变量');
   });
 
+  test('clarify-goal: small change shows modify suggestion', async ({ page }) => {
+    const fakeToken = makeFakeToken();
+    await page.addInitScript((token) => {
+      localStorage.setItem('concept_tree_token', token);
+    }, fakeToken);
+
+    await page.route('**/api/user/profile', async (route) => {
+      await route.fulfill({
+        json: { success: true, data: { occupation: '', education: '', programmingLevel: '入门', mathLevel: '入门', abilities: [], masteredKnowledge: [] } },
+      });
+    });
+    await page.route('**/api/plans', async (route) => {
+      await route.fulfill({ json: { success: true, data: [{ id: 'p_test_plan', title: '学Python', status: 'active', progress: 0, total: 1 }] } });
+    });
+    await page.route('**/api/plans/**/graph', async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            nodes: [{ id: 'n1', name: 'Python基础', status: 'unlearned', x: 0, y: 0, why: '', what: [], mastery: [], prompt: '', resources: [], isTarget: true, domain: '编程' }],
+            edges: [],
+            targetNodeId: 'n1',
+          },
+        },
+      });
+    });
+    await page.route('**/api/notes', async (route) => {
+      await route.fulfill({ json: { success: true, data: [] } });
+    });
+    await page.route('**/api/ai/clarify-goal', async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: { interpretation: '用Python做数据分析', isLargeChange: false, suggestion: 'modify', reason: '新目标是原目标的具体化' },
+        },
+      });
+    });
+
+    await page.goto('/graph/p_test_plan');
+    await page.click('button[title="Edit Goal"]');
+
+    await expect(page.locator('text=修改学习目标')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea[placeholder*="输入修改后"]').fill('学Python数据分析');
+    await page.click('button:has-text("分析变更")');
+
+    await expect(page.locator('text=小幅调整')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('text=新目标是原目标的具体化')).toBeVisible();
+  });
+
   test('toast appears when AI parse-goal returns 500 error', async ({ page }) => {
     await mockCommonApis(page);
 
