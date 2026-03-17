@@ -22,7 +22,8 @@ import { Button, Modal } from '../components/ui';
 import { InfoSection } from '../components/common';
 import { useGraphInteraction } from '../hooks/useGraphInteraction';
 import { useAppContext } from '../contexts/AppContext';
-import { graphApi } from '../services/api';
+import { useToast } from '../contexts/ToastContext';
+import { graphApi, aiApi } from '../services/api';
 
 const GraphPage = () => {
   const { planId } = useParams();
@@ -30,6 +31,7 @@ const GraphPage = () => {
   const containerRef = useRef(null);
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
   const { plans, allNotes, actions } = useAppContext();
+  const toast = useToast();
   
   const plan = plans.find(p => p.id === planId);
   const [loading, setLoading] = useState(true);
@@ -78,6 +80,9 @@ const GraphPage = () => {
   }, [planId, setNodes, setEdges]);
 
   const [showGoalClarification, setShowGoalClarification] = useState(false);
+  const [newGoalInput, setNewGoalInput] = useState('');
+  const [clarifyResult, setClarifyResult] = useState(null);
+  const [isClarifying, setIsClarifying] = useState(false);
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const [noteContent, setNoteContent] = useState('');
 
@@ -96,6 +101,25 @@ const GraphPage = () => {
 
   const handleCopyPrompt = (prompt) => {
     navigator.clipboard.writeText(prompt);
+  };
+
+  const handleClarifyGoal = async () => {
+    if (!newGoalInput.trim() || !plan) return;
+    setIsClarifying(true);
+    try {
+      const result = await aiApi.clarifyGoal(plan.title, newGoalInput);
+      setClarifyResult(result);
+    } catch (err) {
+      toast.error('分析失败，请重试');
+    } finally {
+      setIsClarifying(false);
+    }
+  };
+
+  const handleApplyClarify = () => {
+    setShowGoalClarification(false);
+    setClarifyResult(null);
+    navigate(`/?goal=${encodeURIComponent(newGoalInput)}`);
   };
 
   const handleNodeStatusChange = async (nodeId, newStatus) => {
@@ -174,7 +198,7 @@ const GraphPage = () => {
             <button 
               className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all" 
               title="Edit Goal" 
-              onClick={() => setShowGoalClarification(true)}
+                onClick={() => { setNewGoalInput(''); setClarifyResult(null); setShowGoalClarification(true); }}
             >
               <Edit3 size={18} strokeWidth={1.5}/>
             </button>
@@ -424,16 +448,48 @@ const GraphPage = () => {
       </div>
 
       {/* Goal Clarification Modal */}
-      <Modal 
-        isOpen={showGoalClarification} 
-        onClose={() => setShowGoalClarification(false)} 
-        title="调整范围"
-        footer={<Button onClick={() => setShowGoalClarification(false)}>更新计划</Button>}
+      <Modal
+        isOpen={showGoalClarification}
+        onClose={() => setShowGoalClarification(false)}
+        title="修改学习目标"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowGoalClarification(false)}>取消</Button>
+            {!clarifyResult ? (
+              <Button onClick={handleClarifyGoal} disabled={isClarifying || !newGoalInput.trim()}>
+                {isClarifying ? '分析中...' : '分析变更'}
+              </Button>
+            ) : (
+              <Button onClick={handleApplyClarify}>
+                {clarifyResult.isLargeChange ? '新建计划' : '应用修改'}
+              </Button>
+            )}
+          </>
+        }
       >
-        <textarea 
-          className="w-full h-40 p-4 bg-zinc-50 border border-zinc-100 rounded-xl outline-none resize-none focus:bg-white focus:border-zinc-300 transition-colors text-sm" 
-          placeholder="描述你希望如何调整侧重点..." 
-        />
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs text-zinc-400 mb-2">当前目标</p>
+            <p className="text-sm text-zinc-600 bg-zinc-50 px-3 py-2 rounded-lg">{plan?.title}</p>
+          </div>
+          <div>
+            <p className="text-xs text-zinc-400 mb-2">新目标</p>
+            <textarea
+              className="w-full h-24 p-3 text-sm border border-zinc-200 rounded-lg resize-none outline-none focus:border-zinc-400 transition-colors"
+              placeholder="输入修改后的学习目标..."
+              value={newGoalInput}
+              onChange={e => { setNewGoalInput(e.target.value); setClarifyResult(null); }}
+            />
+          </div>
+          {clarifyResult && (
+            <div className={`p-4 rounded-xl border ${clarifyResult.isLargeChange ? 'bg-amber-50 border-amber-200' : 'bg-teal-50 border-teal-200'}`}>
+              <p className="text-sm font-medium mb-1">
+                {clarifyResult.isLargeChange ? '🔄 目标变化较大，建议新建计划' : '✏️ 小幅调整，将更新现有图谱'}
+              </p>
+              <p className="text-xs text-zinc-500">{clarifyResult.reason}</p>
+            </div>
+          )}
+        </div>
       </Modal>
 
       {/* Note Editor Modal */}

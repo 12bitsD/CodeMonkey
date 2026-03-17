@@ -95,3 +95,48 @@ async def generate_graph(
         )
 
     return {"success": True, "data": result.data.model_dump() if result.data else {}}
+
+
+class ClarifyGoalRequest(BaseModel):
+    originalGoal: str
+    newGoal: str
+
+    @field_validator("newGoal")
+    @classmethod
+    def validate_new_goal_length(cls, v: str) -> str:
+        if len(v.strip()) < 5:
+            raise ValueError("New goal must be at least 5 characters")
+        if len(v) > 2000:
+            raise ValueError("New goal must be less than 2000 characters")
+        return v
+
+
+class ClarifyGoalResponseWrapper(BaseModel):
+    success: bool
+    data: dict
+
+
+@router.post(
+    "/clarify-goal",
+    response_model=ClarifyGoalResponseWrapper,
+    responses={403: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
+async def clarify_goal(
+    request: ClarifyGoalRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    ai_service = get_ai_service()
+    result = await ai_service.clarify_goal(
+        original_goal=request.originalGoal,
+        new_goal=request.newGoal,
+    )
+    if not result.success:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "error": result.error.model_dump() if result.error else {},
+            },
+        )
+    return {"success": True, "data": result.data.model_dump() if result.data else {}}

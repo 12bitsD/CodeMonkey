@@ -8,6 +8,8 @@ from models import (
     ParseGoalAIResult,
     GenerateGraphResponse,
     GenerateGraphAIResult,
+    ClarifyGoalResponse,
+    ClarifyGoalAIResult,
     ApiError,
 )
 from services.llm import get_llm_client, LLMServiceError
@@ -144,6 +146,42 @@ class AIService:
                 error=ApiError(
                     code="AI_SERVICE_ERROR",
                     message=f"Failed to generate graph: {str(e)}",
+                ),
+            )
+
+    async def clarify_goal(
+        self,
+        original_goal: str,
+        new_goal: str,
+    ) -> ClarifyGoalAIResult:
+        try:
+            combined_input = f"original: {original_goal}, new: {new_goal}"
+            params, sys_prompt, usr_prompt = load_ai_config(
+                "clarify_goal", combined_input
+            )
+
+            result = await self.llm_client.chat_json(
+                system_prompt=sys_prompt,
+                user_prompt=usr_prompt,
+                temperature=params.get("temperature", 0.3),
+                max_tokens=params.get("max_tokens", 800),
+            )
+
+            parsed = ClarifyGoalResponse(**result)
+            return ClarifyGoalAIResult(success=True, data=parsed)
+
+        except (LLMServiceError, ConfigLoadError) as e:
+            return ClarifyGoalAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR", message=f"AI service error: {str(e)}"
+                ),
+            )
+        except Exception as e:
+            return ClarifyGoalAIResult(
+                success=False,
+                error=ApiError(
+                    code="AI_SERVICE_ERROR", message=f"Failed to clarify goal: {str(e)}"
                 ),
             )
 

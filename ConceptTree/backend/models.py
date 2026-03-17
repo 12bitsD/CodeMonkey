@@ -318,3 +318,16 @@ class UserBackgroundInput(BaseModel):
     mathLevel: str = ""
     abilities: List[str] = []
     masteredKnowledge: List[str] = []
+
+
+class ClarifyGoalResponse(BaseModel):
+    interpretation: str
+    isLargeChange: bool
+    suggestion: str
+    reason: str
+
+
+class ClarifyGoalAIResult(BaseModel):
+    success: bool
+    data: Optional[ClarifyGoalResponse] = None
+    error: Optional[ApiError] = None
