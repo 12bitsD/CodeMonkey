@@ -101,8 +101,24 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 
 ## 🚀 快速开始
 
+### 1. 配置 LLM API Key
+
+本项目使用 Kimi 2.5 (moonshot-v1-8k) 作为 AI 服务的大脑。请在 `ConceptTree/backend` 目录下创建 `.env` 文件：
+
 ```bash
-# 一条命令搞定一切
+cd ConceptTree/backend
+cp .env.example .env
+```
+
+并在 `.env` 中填入你的 API Key：
+```env
+LLM_API_KEY=sk-your-kimi-api-key
+```
+
+### 2. 启动服务
+
+```bash
+# 一条命令启动前后端
 ./start-dev.sh
 ```
 
