@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -14,6 +14,7 @@ import {
 import { Button, Badge } from '../components/ui';
 import { StatCard, ChartBar } from '../components/common';
 import { useAppContext } from '../contexts/AppContext';
+import { statsApi } from '../services/api';
 
 const MyLearningPage = () => {
   const navigate = useNavigate();
@@ -24,6 +25,21 @@ const MyLearningPage = () => {
   const [isComposing, setIsComposing] = useState(false);
   const [localOccupation, setLocalOccupation] = useState(userProfile?.occupation || '');
   const [localEducation, setLocalEducation] = useState(userProfile?.education || '');
+
+  const [statsData, setStatsData] = useState(null);
+  const [distributionData, setDistributionData] = useState([]);
+
+  useEffect(() => {
+    if (activeTab === 'stats') {
+      Promise.all([
+        statsApi.getOverview().catch(() => null),
+        statsApi.getDistribution().catch(() => []),
+      ]).then(([overview, distribution]) => {
+        if (overview) setStatsData(overview);
+        if (distribution) setDistributionData(distribution);
+      });
+    }
+  }, [activeTab]);
 
   const tabs = [
     { id: 'profile', label: '我的画像', icon: User },
@@ -259,23 +275,39 @@ const MyLearningPage = () => {
               <section>
                 <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">总览</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard label="已完成计划" value={completedPlansCount} />
-                  <StatCard label="进行中" value={activePlans.length} />
-                  <StatCard label="掌握知识点" value={masteredKnowledgeCount} />
-                  <StatCard label="学习笔记" value={allNotes.length} />
+                  <StatCard label="已完成计划" value={statsData?.completedPlans ?? completedPlansCount} />
+                  <StatCard label="进行中" value={statsData?.activePlans ?? activePlans.length} />
+                  <StatCard label="掌握知识点" value={statsData?.masteredNodes ?? masteredKnowledgeCount} />
+                  <StatCard label="学习笔记" value={statsData?.totalNotes ?? allNotes.length} />
                 </div>
               </section>
 
               <section>
                 <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">知识领域分布</h2>
                 <div className="bg-zinc-50 p-8 rounded-2xl border border-zinc-100 space-y-6">
-                  {masteredKnowledgeCount > 0 ? (
-                    <>
-                      <ChartBar label="深度学习" value={0} color="bg-teal-500" count={0} />
-                      <ChartBar label="数学基础" value={0} color="bg-blue-500" count={0} />
-                      <ChartBar label="编程" value={0} color="bg-amber-500" count={0} />
-                    </>
-                  ) : (
+                   {distributionData.length > 0 ? (
+                     distributionData.map((item, i) => (
+                       <ChartBar
+                         key={item.domain || i}
+                         label={item.domain || '未知'}
+                         value={item.percentage || 0}
+                         color={
+                           item.domain?.includes('数学')
+                             ? 'bg-blue-500'
+                             : item.domain?.includes('编程')
+                               ? 'bg-amber-500'
+                               : 'bg-teal-500'
+                         }
+                         count={item.count || 0}
+                       />
+                     ))
+                   ) : masteredKnowledgeCount > 0 ? (
+                     <>
+                       <ChartBar label="深度学习" value={0} color="bg-teal-500" count={0} />
+                       <ChartBar label="数学基础" value={0} color="bg-blue-500" count={0} />
+                       <ChartBar label="编程" value={0} color="bg-amber-500" count={0} />
+                     </>
+                   ) : (
                     <div className="text-center py-8 text-zinc-400 text-sm">
                       开始学习后，这里将显示你的知识领域分布
                     </div>
