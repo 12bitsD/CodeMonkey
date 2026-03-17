@@ -2,7 +2,6 @@
 
 import json
 from typing import Optional
-from jinja2 import Template, StrictUndefined
 
 from models import (
     ParseGoalResponse,
@@ -12,7 +11,7 @@ from models import (
     ApiError,
 )
 from services.llm import get_llm_client, LLMServiceError
-from services.llm.prompts import load_prompt, PARSE_GOAL_V1, GENERATE_GRAPH_V1
+from services.llm.configs import load_ai_config, ConfigLoadError
 
 
 class AIService:
@@ -32,17 +31,15 @@ class AIService:
             ParseGoalAIResult with structured data or error
         """
         try:
-            # Load and render prompt
-            prompt_template = load_prompt(PARSE_GOAL_V1)
-            prompt = Template(prompt_template, undefined=StrictUndefined).render(
-                user_input=user_input
-            )
+            # Load config and build prompt
+            params, sys_prompt, usr_prompt = load_ai_config("parse_goal", user_input)
 
-            # Call LLM
+            # Call LLM with config-driven parameters
             result = await self.llm_client.chat_json(
-                system_prompt="You are a helpful learning assistant.",
-                user_prompt=prompt,
-                temperature=0.7,
+                system_prompt=sys_prompt,
+                user_prompt=usr_prompt,
+                temperature=params.get("temperature", 0.7),
+                max_tokens=params.get("max_tokens", 4096),
             )
 
             # Validate with Pydantic
@@ -50,7 +47,7 @@ class AIService:
 
             return ParseGoalAIResult(success=True, data=parsed)
 
-        except LLMServiceError as e:
+        except (LLMServiceError, ConfigLoadError) as e:
             return ParseGoalAIResult(
                 success=False,
                 error=ApiError(
@@ -90,19 +87,20 @@ class AIService:
                 else "无"
             )
 
-            # Load and render prompt
-            prompt_template = load_prompt(GENERATE_GRAPH_V1)
-            prompt = Template(prompt_template, undefined=StrictUndefined).render(
-                interpretation=interpretation,
+            # Load config and build prompt
+            params, sys_prompt, usr_prompt = load_ai_config(
+                "generate_graph",
+                interpretation,
                 original_input=original_input,
                 background=background_str,
             )
 
-            # Call LLM
+            # Call LLM with config-driven parameters
             result = await self.llm_client.chat_json(
-                system_prompt="You are a helpful learning assistant.",
-                user_prompt=prompt,
-                temperature=0.7,
+                system_prompt=sys_prompt,
+                user_prompt=usr_prompt,
+                temperature=params.get("temperature", 0.7),
+                max_tokens=params.get("max_tokens", 4096),
             )
 
             # Validate with Pydantic
@@ -133,7 +131,7 @@ class AIService:
 
             return GenerateGraphAIResult(success=True, data=parsed)
 
-        except LLMServiceError as e:
+        except (LLMServiceError, ConfigLoadError) as e:
             return GenerateGraphAIResult(
                 success=False,
                 error=ApiError(
