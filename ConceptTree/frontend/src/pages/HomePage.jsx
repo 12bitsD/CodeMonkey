@@ -340,7 +340,7 @@ const HomePage = () => {
             <p className="text-xl font-light text-zinc-900">{parsedGoal?.interpretation}</p>
           </div>
           
-          {parsedGoal?.backgroundSummary?.length > 0 && (
+           {parsedGoal?.backgroundSummary?.length > 0 && (
             <div className="space-y-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">基于你的背景</h4>
               <div className="flex flex-col gap-3">
@@ -353,6 +353,41 @@ const HomePage = () => {
                     )}
                     <span className="text-sm font-medium text-zinc-900">{item.text}</span>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {parsedGoal?.shouldSplit && parsedGoal?.splitSuggestions?.length > 0 && (
+            <div className="space-y-4">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-sm text-amber-800 font-medium">
+                  🎯 目标较大，建议拆分为以下子目标分步学习：
+                </p>
+              </div>
+              <div className="flex flex-col gap-3">
+                {parsedGoal.splitSuggestions.map((suggestion, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setInputText(suggestion.title);
+                      setShowConfirmModal(false);
+                      setParsedGoal(null);
+                    }}
+                    className="text-left p-4 bg-white border border-zinc-200 rounded-xl hover:border-teal-300 hover:shadow-sm transition-all group"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h5 className="text-sm font-semibold text-zinc-900 group-hover:text-teal-700 transition-colors">
+                          {suggestion.title}
+                        </h5>
+                        <p className="text-xs text-zinc-500 mt-1">{suggestion.description}</p>
+                      </div>
+                      <span className="text-xs text-zinc-400 bg-zinc-100 px-2 py-1 rounded-full shrink-0 ml-3">
+                        ~{suggestion.estimatedNodes} 节点
+                      </span>
+                    </div>
+                  </button>
                 ))}
               </div>
             </div>
