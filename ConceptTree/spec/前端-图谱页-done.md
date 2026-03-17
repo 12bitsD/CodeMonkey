@@ -3,7 +3,7 @@
 **路由**: `/graph/:planId`  
 **文件**: `src/pages/GraphPage.jsx`
 
-一致性标记：⚠️（edges 字段映射已在 api.js 层完成 ✅；节点状态/位置变更仅更新本地 state，未调用后端持久化 ❌）
+一致性标记：✅（edges 字段映射已在 api.js 层完成；节点状态/位置变更已调用后端持久化；clarify-goal UI 已实现）
 
 ---
 

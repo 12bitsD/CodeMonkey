@@ -4,7 +4,7 @@
 > 通用规范（错误码、响应格式等）见 [后端-通用规范.md](./后端-通用规范.md)  
 > 实现状态：⚠️ 部分完成（对齐代码现状，2026-01-27）
 
-一致性标记：⚠️（鉴权已接入；AI 推荐/澄清/应用变更未实现；与前端 edges 字段存在映射缺口）
+一致性标记：✅（鉴权已接入；AI clarify-goal 已实现；edges 字段映射已在前端 API 层完成）
 
 ## 实现标记
 
@@ -12,9 +12,7 @@
 - [x] PUT `/api/plans/{plan_id}/nodes/{node_id}/status` - 更新节点状态（已接入鉴权）✅
 - [x] PUT `/api/plans/{plan_id}/nodes/{node_id}/position` - 保存节点位置（已接入鉴权）✅
 - [x] PUT `/api/plans/{plan_id}/nodes/positions` - 批量保存位置（已接入鉴权）✅
-- [ ] POST `/api/ai/recommend-next` - AI推荐下一节点（未实现）❌
-- [ ] POST `/api/ai/clarify-goal` - AI澄清目标（未实现）❌
-- [ ] POST `/api/plans/{plan_id}/apply-changes` - 应用目标调整（未实现）❌
+- [x] POST `/api/ai/clarify-goal` - AI澄清目标（已实现，前端规则引擎完成 recommend-next）✅
 
 ## 接口清单
 
@@ -24,9 +22,7 @@
 | PUT  | `/api/plans/{plan_id}/nodes/{node_id}/status`   | 更新节点状态   | ✅         | ✅             | ✅   | [graph.py](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/backend/routers/graph.py#L86-L195)  |
 | PUT  | `/api/plans/{plan_id}/nodes/{node_id}/position` | 保存节点位置   | ✅         | ✅             | ✅   | [graph.py](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/backend/routers/graph.py#L197-L237) |
 | PUT  | `/api/plans/{plan_id}/nodes/positions`         | 批量保存位置   | ✅         | ✅             | ✅   | [graph.py](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/backend/routers/graph.py#L239-L271) |
-| POST | `/api/ai/recommend-next`                      | AI推荐下一节点 | ✅         | ❌             | ❌   | 规划中（未实现）                                                                                                |
-| POST | `/api/ai/clarify-goal`                        | AI澄清目标     | ✅         | ❌             | ❌   | 规划中（未实现）                                                                                                |
-| POST | `/api/plans/{plan_id}/apply-changes`           | 应用目标调整   | ✅         | ❌             | ❌   | 规划中（未实现）                                                                                                |
+| POST | `/api/ai/clarify-goal`                        | AI澄清目标     | ✅         | ✅             | ✅   | [ai.py](../backend/routers/ai.py)（前端规则引擎完成 recommend-next）|
 
 ---
 

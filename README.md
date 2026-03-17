@@ -63,28 +63,33 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 
 ## 📚 文档入口
 
-- 规范与进度总览：[进度总览.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E8%BF%9B%E5%BA%A6%E6%80%BB%E8%A7%88.md)
-- 后端契约与通用约定：[后端-通用规范.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E5%90%8E%E7%AB%AF-%E9%80%9A%E7%94%A8%E8%A7%84%E8%8C%83.md)
-- 前端架构与 API 策略：[前端-架构总览.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E5%89%8D%E7%AB%AF-%E6%9E%B6%E6%9E%84%E6%80%BB%E8%A7%88.md)
-- Spec 变更日志：[变更日志.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/ConceptTree/spec/%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%97.md)
-- 需求文档（PRD）：[学习路径规划器 - MVP PRD（最终版）.md](file:///Users/bytedance/Desktop/CodeSpace/CodeMonkey/%E5%AD%A6%E4%B9%A0%E8%B7%AF%E5%BE%84%E8%A7%84%E5%88%92%E5%99%A8%20-%20MVP%20PRD%EF%BC%88%E6%9C%80%E7%BB%88%E7%89%88%EF%BC%89.md)
+| 文档 | 说明 |
+|------|------|
+| [进度总览.md](./ConceptTree/spec/进度总览.md) | MVP 完成状态一览 |
+| [后端-通用规范.md](./ConceptTree/spec/后端-通用规范.md) | 后端契约与通用约定 |
+| [前端-架构总览.md](./ConceptTree/spec/前端-架构总览.md) | 前端架构与 API 策略 |
+| [变更日志.md](./ConceptTree/spec/变更日志.md) | Spec 变更历史 |
+| [学习路径规划器 - MVP PRD（最终版）.md](./学习路径规划器%20-%20MVP%20PRD（最终版）.md) | 需求文档（PRD） |
 
 ```
 📁 ConceptTree/
-├── 📁 spec/              ← 真理之源。AI 首先读这里。
-│   ├── 前端-架构总览.md   ← 前端架构规范
-│   ├── 后端-通用规范.md   ← 后端通用约定
-│   └── ...               ← 逐页规范文档
-├── 📁 backend/           ← FastAPI 应用
-│   ├── routers/          ← API 端点 (一个文件 = 一个领域)
-│   ├── services/         ← 业务逻辑
-│   ├── utils/            ← 鉴权/密码/ID 等通用能力
-│   └── tests/            ← 测试先行开发
-└── 📁 frontend/          ← React + Vite 应用
-    ├── pages/            ← 路由组件
-    ├── components/       ← 可复用 UI
-    ├── services/         ← API 客户端
-    └── contexts/         ← 状态管理
+├── 📁 spec/                   ← 真理之源。AI 首先读这里。
+│   ├── 进度总览.md             ← MVP 完成状态（活跃）
+│   ├── 后端-通用规范.md         ← 后端契约（活跃）
+│   ├── 前端-架构总览.md         ← 前端架构（活跃）
+│   ├── 变更日志.md             ← 变更历史（活跃）
+│   └── *-done.md              ← 已完成模块（归档）
+├── 📁 backend/                ← FastAPI 应用
+│   ├── routers/               ← API 端点
+│   ├── services/              ← 业务逻辑
+│   ├── utils/                 ← 通用能力
+│   └── tests/                 ← 测试
+└── 📁 frontend/               ← React + Vite 应用
+    ├── pages/                 ← 路由组件
+    ├── components/            ← 可复用 UI
+    ├── services/              ← API 客户端
+    ├── contexts/              ← 状态管理
+    └── tests/                 ← 测试
 ```
 
 ### 为什么这样设计？
@@ -193,14 +198,20 @@ python -m pytest -q test_docs_sync.py
 
 ## 📊 项目状态
 
-| 组件         | 状态      |
-| ------------ | --------- |
-| 核心图谱引擎 | ✅ 已完成 |
-| 目标解析 AI  | ✅ 已完成 |
-| 用户认证     | ✅ 已完成 |
-| 前端 UI      | ✅ 已完成 |
-| 云数据库     | 🔄 进行中 |
-| 移动端支持   | ⏳ 计划中 |
+**MVP 已完成（2026-03-17）**
+
+| 组件           | 状态      | 备注                                      |
+| -------------- | --------- | ----------------------------------------- |
+| 核心图谱引擎   | ✅ 已完成 | 节点/边/状态/位置全持久化                 |
+| 目标解析 AI    | ✅ 已完成 | 真实 Kimi 2.5，Prompt JSON 配置化         |
+| 个性化图谱     | ✅ 已完成 | user_background 全链路打通                |
+| 用户认证       | ✅ 已完成 | JWT + 注册/登录/登出                      |
+| 前端 UI        | ✅ 已完成 | 首页/图谱/我的学习，全局 Toast            |
+| 目标调整       | ✅ 已完成 | clarify-goal 后端+前端完整实现            |
+| 测试覆盖       | ✅ 已完成 | Vitest 6 + Playwright 4                   |
+| 云数据库       | 🔄 可选   | 当前 SQLite，可迁移至 Supabase            |
+| 移动端支持     | ⏳ 计划中 | 响应式适配                                |
+| apply-changes  | ⏳ 可选   | clarify-goal 后真正修改图谱（当前引导新建）|
 
 ---
 

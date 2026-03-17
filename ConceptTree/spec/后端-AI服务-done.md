@@ -3,7 +3,7 @@
 > 通用规范（错误码、响应格式等）见 [后端-通用规范.md](./后端-通用规范.md)\
 > 最后同步：2026-03-17
 
-一致性标记：✅（parse-goal / generate-graph 已接入真实 Kimi 2.5 大模型；Prompt 配置已从 .txt 迁移至 JSON；clarify-goal 规划中）
+一致性标记：✅（parse-goal / generate-graph / clarify-goal 已接入真实 Kimi 2.5 大模型；Prompt 配置已从 .txt 迁移至 JSON；user_background 全链路打通）
 
 ***
 
@@ -12,7 +12,7 @@
 - [x] `POST /api/ai/parse-goal` - 解析学习目标 → **✅ 真实 LLM**
 - [x] `POST /api/ai/generate-graph` - 生成知识图谱 → **✅ 真实 LLM**
 - [ ] `POST /api/ai/recommend-next` - 推荐下一节点（前端已用规则引擎实现，后端 Phase 5 规划）→ ❌
-- [ ] `POST /api/ai/clarify-goal` - 澄清目标（Phase 5 规划中）→ ❌
+- [x] `POST /api/ai/clarify-goal` - 澄清目标 → **✅ 真实 LLM**
 
 ***
 
@@ -23,7 +23,7 @@
 | POST | `/api/ai/parse-goal`     | 解析学习目标 | ✅     | ✅       | ✅  | [ai.py](../backend/routers/ai.py) / [ai_service.py](../backend/services/ai_service.py) |
 | POST | `/api/ai/generate-graph` | 生成知识图谱 | ✅     | ✅       | ✅  | [ai.py](../backend/routers/ai.py) / [ai_service.py](../backend/services/ai_service.py) |
 | POST | `/api/ai/recommend-next` | 推荐下一节点 | ✅     | ❌       | ❌  | 规划中（前端已有规则引擎替代）|
-| POST | `/api/ai/clarify-goal`   | 澄清目标   | ✅     | ❌       | ❌  | Phase 5 规划中 |
+| POST | `/api/ai/clarify-goal`   | 澄清目标   | ✅     | ✅       | ✅  | [ai.py](../backend/routers/ai.py) / [ai_service.py](../backend/services/ai_service.py) |
 
 ***
 
@@ -646,10 +646,10 @@ P2（优化）：
   ☐ 成本追踪（未实现）
   ✅ Prompt 配置化（JSON configs 替代 Jinja2 .txt 模板）
 
-P3（Phase 5）：
-  ☐ clarify-goal 实现（Phase 5 规划中）
+P3（Phase 5 - 已完成）：
+  ✅ clarify-goal 实现（后端端点 + LLM 配置 + 前端 Modal UI）
+  ✅ user_background 传参（前端 → 后端 → AI Service → Prompt）
   ☐ recommend-next 后端（前端已有规则引擎，低优先级）
-  ☐ user_background 传参（Phase 5 规划中）
 ```
 
 ***
