@@ -1,20 +1,18 @@
 # 后端接口规格 - AI服务
 
 > 通用规范（错误码、响应格式等）见 [后端-通用规范.md](./后端-通用规范.md)\
-> 实现状态：⚠️ 规划中（2026-02-04）
+> 最后同步：2026-03-17
 
-一致性标记：⚠️（当前为Mock实现，需接入真实LLM）
+一致性标记：✅（parse-goal / generate-graph 已接入真实 Kimi 2.5 大模型；Prompt 配置已从 .txt 迁移至 JSON；clarify-goal 规划中）
 
 ***
 
 ## 实现状态
 
-**规划中（待实现）**
-
-- [x] `POST /api/ai/parse-goal` - 解析学习目标（Mock实现）→ ⚠️
-- [x] `POST /api/ai/generate-graph` - 生成知识图谱（Mock实现）→ ⚠️
-- [ ] `POST /api/ai/recommend-next` - 推荐下一节点（规划中）→ ❌
-- [ ] `POST /api/ai/clarify-goal` - 澄清目标（规划中）→ ❌
+- [x] `POST /api/ai/parse-goal` - 解析学习目标 → **✅ 真实 LLM**
+- [x] `POST /api/ai/generate-graph` - 生成知识图谱 → **✅ 真实 LLM**
+- [ ] `POST /api/ai/recommend-next` - 推荐下一节点（前端已用规则引擎实现，后端 Phase 5 规划）→ ❌
+- [ ] `POST /api/ai/clarify-goal` - 澄清目标（Phase 5 规划中）→ ❌
 
 ***
 
@@ -22,10 +20,10 @@
 
 | 方法   | 路由                       | 说明     | 契约需认证 | 当前实现需认证 | 状态 | 代码                                        |
 | ---- | ------------------------ | ------ | ----- | ------- | -- | ----------------------------------------- |
-| POST | `/api/ai/parse-goal`     | 解析学习目标 | ✅     | ✅       | ⚠️ | [ai.py](../backend/routers/ai.py#L31-L52) |
-| POST | `/api/ai/generate-graph` | 生成知识图谱 | ✅     | ✅       | ⚠️ | [ai.py](../backend/routers/ai.py#L54-L76) |
-| POST | `/api/ai/recommend-next` | 推荐下一节点 | ✅     | ❌       | ❌  | 规划中                                       |
-| POST | `/api/ai/clarify-goal`   | 澄清目标   | ✅     | ❌       | ❌  | 规划中                                       |
+| POST | `/api/ai/parse-goal`     | 解析学习目标 | ✅     | ✅       | ✅  | [ai.py](../backend/routers/ai.py) / [ai_service.py](../backend/services/ai_service.py) |
+| POST | `/api/ai/generate-graph` | 生成知识图谱 | ✅     | ✅       | ✅  | [ai.py](../backend/routers/ai.py) / [ai_service.py](../backend/services/ai_service.py) |
+| POST | `/api/ai/recommend-next` | 推荐下一节点 | ✅     | ❌       | ❌  | 规划中（前端已有规则引擎替代）|
+| POST | `/api/ai/clarify-goal`   | 澄清目标   | ✅     | ❌       | ❌  | Phase 5 规划中 |
 
 ***
 
@@ -547,46 +545,49 @@ POST /api/ai/clarify-goal
 
 ## 工程化设计
 
-### 1. 目录结构
+### 1. 目录结构（当前实现）
 
 ```
 backend/
 ├── services/
-│   ├── ai_service.py              # 当前文件（重构）
-│   └── llm/                       # 新增LLM模块
-│       ├── __init__.py
-│       ├── client.py              # 统一客户端
-│       ├── providers/             # 各LLM适配器
+│   ├── ai_service.py              # AIService：parse_goal / generate_graph
+│   └── llm/
+│       ├── __init__.py            # 统一导出
+│       ├── client.py              # UnifiedLLMClient（重试 + 降级）
+│       ├── providers/
 │       │   ├── __init__.py
-│       │   ├── base.py            # 抽象基类
-│       │   ├── openai_adapter.py
-│       │   ├── deepseek_adapter.py
-│       │   └── claude_adapter.py
-│       ├── prompts/               # Prompt模板
-│       │   ├── parse_goal_v1.txt
-│       │   ├── generate_graph_v1.txt
-│       │   └── __init__.py
-│       ├── cache.py               # 语义缓存
-│       ├── parser.py              # 响应解析器
-│       └── cost_tracker.py        # 成本追踪
-├── config.py                      # 新增LLM配置
-└── models.py                      # 新增AI相关模型
+│       │   ├── base.py            # BaseLLMProvider 抽象基类
+│       │   └── openai_compatible.py  # Kimi 2.5 / OpenAI 兼容适配器
+│       └── configs/               # JSON Prompt 配置（替代已删除的 prompts/*.txt）
+│           ├── __init__.py        # load_ai_config(name, user_input, **kwargs)
+│           ├── parse_goal.json    # parse-goal 的 system_prompt / output_format / rules / examples
+│           └── generate_graph.json # generate-graph 的同上
+├── config.py                      # LLM_* 环境变量配置
+└── models.py                      # ParseGoalResponse / GenerateGraphResponse 等 Pydantic 模型
 ```
 
-### 2. 配置项
+> **已删除**：`llm/prompts/parse_goal_v1.txt`、`llm/prompts/generate_graph_v1.txt`、`llm/prompts/__init__.py`（全部被 `configs/` 替代）
+
+### 2. 配置项（当前实现）
 
 ```python
-# config.py 新增
-LLM_PROVIDER: str = "openai"  # openai/deepseek/claude
-LLM_API_KEY: str = ""
-LLM_MODEL: str = "gpt-4o-mini"
+# config.py - Settings dataclass（已实现）
+LLM_PROVIDER: str = "kimi"                           # 当前默认 Kimi 2.5
+LLM_API_KEY: str = ""                                # 必须通过 .env 配置
+LLM_BASE_URL: str = "https://api.moonshot.cn/v1"     # Kimi OpenAI-compatible endpoint
+LLM_MODEL: str = "kimi-k2-5"
 LLM_TIMEOUT: int = 30
 LLM_MAX_RETRIES: int = 3
-LLM_FALLBACK_PROVIDER: str = ""
+LLM_TEMPERATURE: float = 0.7
+
+# 降级配置（可选）
+LLM_FALLBACK_ENABLED: bool = True
+LLM_FALLBACK_PROVIDER: str = "openai"
 LLM_FALLBACK_API_KEY: str = ""
-AI_CACHE_ENABLED: bool = True
-AI_RATE_LIMIT_RPM: int = 60
+LLM_FALLBACK_MODEL: str = "gpt-4o-mini"
 ```
+
+> **注意**：`AI_CACHE_ENABLED` / `AI_RATE_LIMIT_RPM` 在规划文档中出现，但**当前未实现**。
 
 ### 3. 降级策略
 
@@ -596,31 +597,33 @@ AI_RATE_LIMIT_RPM: int = 60
 | L2 | LLM服务不可用     | 返回简化版规则引擎结果   |
 | L3 | 完全失败         | 返回友好错误，引导用户重试 |
 
-### 4. 调用流程
+### 4. 调用流程（当前实现）
 
 ```
-用户请求
+用户请求 POST /api/ai/parse-goal 或 /api/ai/generate-graph
     ↓
-1. 参数校验 (Pydantic)
+1. 参数校验（Pydantic：长度 5-2000 字符）
     ↓
-2. 缓存检查 (语义相似度匹配)
+2. load_ai_config(config_name, user_input, **kwargs)
+   → 读取 services/llm/configs/{name}.json
+   → 拼装 system_prompt + user_prompt（含 output_format / rules / examples）
+   → 提取 model_params（temperature / max_tokens）
     ↓
-命中 → 返回缓存结果
+3. UnifiedLLMClient.chat_json(system_prompt, user_prompt, temperature, max_tokens)
+   → OpenAICompatibleProvider.chat(messages, response_format={"type":"json_object"})
+   → Kimi 2.5 API 调用（带重试 + 指数退避）
+   → 主 Provider 失败 → 尝试 Fallback Provider
     ↓
-未命中
+4. JSON 响应解析（json.loads）
     ↓
-3. 限流检查 (Token bucket)
+5. Pydantic 模型校验（ParseGoalResponse / GenerateGraphResponse）
     ↓
-4. Prompt组装 (Jinja2模板)
+6. 业务校验（targetNode 存在、edges 引用合法）
     ↓
-5. LLM调用 (带重试机制)
-    ↓
-6. 响应解析 (JSON Schema校验)
-    ↓
-7. 结果缓存 (写入语义缓存)
-    ↓
-返回结果
+返回 {success: true, data: {...}}
 ```
+
+> **未实现**：语义缓存、限流、成本追踪（规划文档中提及，当前未实现）
 
 ***
 
@@ -628,25 +631,25 @@ AI_RATE_LIMIT_RPM: int = 60
 
 ```
 P0（核心功能）：
-  ☐ 统一LLM客户端框架
-  ☐ parse-goal Prompt + 解析
-  ☐ generate-graph Prompt + 解析
-  ☐ JSON Schema校验
+  ✅ 统一LLM客户端框架（UnifiedLLMClient + OpenAICompatibleProvider）
+  ✅ parse-goal Prompt + JSON 解析
+  ✅ generate-graph Prompt + JSON 解析
+  ✅ JSON Schema 校验（Pydantic）
 
 P1（稳定性）：
-  ☐ 重试机制
-  ☐ 降级策略
-  ☐ 错误处理
+  ✅ 重试机制（指数退避，max_retries=3）
+  ✅ 降级策略（Fallback Provider）
+  ✅ 错误处理（LLMServiceError / ConfigLoadError → 规范 error 响应）
 
 P2（优化）：
-  ☐ 语义缓存
-  ☐ 成本追踪
-  ☐ Prompt版本管理
+  ☐ 语义缓存（未实现）
+  ☐ 成本追踪（未实现）
+  ✅ Prompt 配置化（JSON configs 替代 Jinja2 .txt 模板）
 
-P3（高级）：
-  ☐ recommend-next实现
-  ☐ clarify-goal实现
-  ☐ 多LLM对比
+P3（Phase 5）：
+  ☐ clarify-goal 实现（Phase 5 规划中）
+  ☐ recommend-next 后端（前端已有规则引擎，低优先级）
+  ☐ user_background 传参（Phase 5 规划中）
 ```
 
 ***
@@ -654,9 +657,13 @@ P3（高级）：
 ## 代码位置
 
 - 后端路由：[ai.py](../backend/routers/ai.py)
-- AI mock实现：[ai\_service.py](../backend/services/ai_service.py)
-- 现有测试：[test\_ai.py](../backend/tests/test_ai.py)
+- AI 服务实现：[ai_service.py](../backend/services/ai_service.py)
+- LLM 统一客户端：[services/llm/client.py](../backend/services/llm/client.py)
+- OpenAI 兼容适配器：[services/llm/providers/openai_compatible.py](../backend/services/llm/providers/openai_compatible.py)
+- Prompt JSON 配置：[services/llm/configs/](../backend/services/llm/configs/)
+- 配置加载器：[services/llm/configs/__init__.py](../backend/services/llm/configs/__init__.py)
+- 单元 + 集成测试：[tests/test_ai.py](../backend/tests/test_ai.py) / [tests/test_ai_integration.py](../backend/tests/test_ai_integration.py)
 
 ***
 
-*文档创建时间：2026-02-04*
+*文档创建时间：2026-02-04 | 最后同步：2026-03-17*
