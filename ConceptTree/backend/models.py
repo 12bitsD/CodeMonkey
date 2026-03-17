@@ -11,6 +11,7 @@ class NodeStatus(str, Enum):
 
 # ========== 认证和用户相关模型 ==========
 
+
 class RegisterRequest(BaseModel):
     email: str
     password: str
@@ -238,3 +239,73 @@ class ApplyChangesRequest(BaseModel):
 class ApplyChangesResponse(BaseModel):
     success: bool
     data: Dict[str, Any]
+
+
+# ========== AI 响应模型 ==========
+
+
+class BackgroundItem(BaseModel):
+    """User background summary item"""
+
+    text: str
+    source: str  # "profile" or "input"
+    isStrength: bool
+
+
+class ParseGoalResponse(BaseModel):
+    """AI response for parse-goal endpoint"""
+
+    interpretation: str
+    backgroundSummary: List[BackgroundItem]
+    suggestedNodeCount: int
+    shouldSplit: bool
+    splitSuggestions: Optional[List[SplitSuggestion]] = None
+
+
+class ParseGoalAIResult(BaseModel):
+    """Wrapper for API response"""
+
+    success: bool
+    data: Optional[ParseGoalResponse] = None
+    error: Optional[Dict[str, Any]] = None
+
+
+class GraphNode(BaseModel):
+    """Knowledge node in the graph"""
+
+    id: str
+    name: str
+    status: str = "unlearned"  # unlearned/learned/skipped
+    x: float = 0.0
+    y: float = 0.0
+    why: str
+    what: List[str]
+    mastery: List[str]
+    prompt: str
+    resources: List[Resource] = []
+    isTarget: bool = False
+    domain: Optional[str] = None
+
+
+class GraphEdge(BaseModel):
+    """Dependency edge between nodes"""
+
+    from_node: str
+    to_node: str
+
+
+class GenerateGraphResponse(BaseModel):
+    """AI response for generate-graph endpoint"""
+
+    interpretation: str
+    nodes: List[GraphNode]
+    edges: List[GraphEdge]
+    targetNodeId: str
+
+
+class GenerateGraphAIResult(BaseModel):
+    """Wrapper for API response"""
+
+    success: bool
+    data: Optional[GenerateGraphResponse] = None
+    error: Optional[Dict[str, Any]] = None

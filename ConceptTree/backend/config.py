@@ -41,6 +41,22 @@ class Settings:
         True,
     )
 
+    # LLM Configuration
+    LLM_PROVIDER: str = _get_env("LLM_PROVIDER", "kimi")
+    LLM_API_KEY: str = _get_env("LLM_API_KEY", "")
+    LLM_BASE_URL: str = _get_env("LLM_BASE_URL", "https://api.moonshot.cn/v1")
+    LLM_MODEL: str = _get_env("LLM_MODEL", "kimi-k2-5")
+    LLM_TIMEOUT: int = int(_get_env("LLM_TIMEOUT", "30"))
+    LLM_MAX_RETRIES: int = int(_get_env("LLM_MAX_RETRIES", "3"))
+    LLM_TEMPERATURE: float = float(_get_env("LLM_TEMPERATURE", "0.7"))
+
+    # Fallback configuration
+    LLM_FALLBACK_ENABLED: bool = _get_bool_env("LLM_FALLBACK_ENABLED", True)
+    LLM_FALLBACK_PROVIDER: str = _get_env("LLM_FALLBACK_PROVIDER", "openai")
+    LLM_FALLBACK_API_KEY: str = _get_env("LLM_FALLBACK_API_KEY", "")
+    LLM_FALLBACK_BASE_URL: str = _get_env("LLM_FALLBACK_BASE_URL", "")
+    LLM_FALLBACK_MODEL: str = _get_env("LLM_FALLBACK_MODEL", "gpt-4o-mini")
+
 
 settings = Settings()
 
