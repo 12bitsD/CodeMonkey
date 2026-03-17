@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, field_validator
 
 from database import get_db
 from services.ai_service import get_ai_service
 from models import ErrorResponse
 from utils.auth import get_current_user_id
-from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
@@ -12,6 +12,15 @@ router = APIRouter(prefix="/api/ai", tags=["AI"])
 
 class ParseGoalRequest(BaseModel):
     input: str
+
+    @field_validator("input")
+    @classmethod
+    def validate_input_length(cls, v: str) -> str:
+        if len(v.strip()) < 5:
+            raise ValueError("Input must be at least 5 characters")
+        if len(v) > 2000:
+            raise ValueError("Input must be less than 2000 characters")
+        return v
 
 
 class GenerateGraphRequest(BaseModel):

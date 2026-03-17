@@ -2,7 +2,7 @@
 
 import json
 from typing import Optional
-from jinja2 import Template
+from jinja2 import Template, StrictUndefined
 
 from models import (
     ParseGoalResponse,
@@ -34,7 +34,9 @@ class AIService:
         try:
             # Load and render prompt
             prompt_template = load_prompt(PARSE_GOAL_V1)
-            prompt = Template(prompt_template).render(user_input=user_input)
+            prompt = Template(prompt_template, undefined=StrictUndefined).render(
+                user_input=user_input
+            )
 
             # Call LLM
             result = await self.llm_client.chat_json(
@@ -90,7 +92,7 @@ class AIService:
 
             # Load and render prompt
             prompt_template = load_prompt(GENERATE_GRAPH_V1)
-            prompt = Template(prompt_template).render(
+            prompt = Template(prompt_template, undefined=StrictUndefined).render(
                 interpretation=interpretation,
                 original_input=original_input,
                 background=background_str,

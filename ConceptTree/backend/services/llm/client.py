@@ -112,8 +112,13 @@ class UnifiedLLMClient:
                     response_format=response_format,
                     use_fallback=True,
                 )
-            except Exception:
-                pass
+            except Exception as fallback_error:
+                # Log fallback failure; will raise original error below
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    f"Fallback provider also failed: {fallback_error}"
+                )
 
         raise LLMServiceError(
             f"LLM request failed after {self.max_retries} retries: {str(last_error)}"
