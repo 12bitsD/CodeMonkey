@@ -60,6 +60,7 @@ class UnifiedLLMClient:
         messages: List[LLMMessage],
         temperature: Optional[float] = None,
         response_format: Optional[Dict] = None,
+        max_tokens: int = 4096,
         use_fallback: bool = False,
     ) -> LLMResponse:
         """
@@ -93,7 +94,10 @@ class UnifiedLLMClient:
         for attempt in range(self.max_retries):
             try:
                 response = await provider.chat(
-                    messages=messages, temperature=temp, response_format=response_format
+                    messages=messages,
+                    temperature=temp,
+                    response_format=response_format,
+                    max_tokens=max_tokens,
                 )
                 return response
 
@@ -110,6 +114,7 @@ class UnifiedLLMClient:
                     messages=messages,
                     temperature=temperature,
                     response_format=response_format,
+                    max_tokens=max_tokens,
                     use_fallback=True,
                 )
             except Exception as fallback_error:
@@ -125,7 +130,11 @@ class UnifiedLLMClient:
         )
 
     async def chat_json(
-        self, system_prompt: str, user_prompt: str, temperature: Optional[float] = None
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: Optional[float] = None,
+        max_tokens: int = 4096,
     ) -> Dict[str, Any]:
         """
         Convenience method for JSON mode chat.
@@ -147,6 +156,7 @@ class UnifiedLLMClient:
             messages=messages,
             temperature=temperature,
             response_format={"type": "json_object"},
+            max_tokens=max_tokens,
         )
 
         try:

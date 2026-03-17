@@ -36,6 +36,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         messages: List[LLMMessage],
         temperature: float = 0.7,
         response_format: Optional[Dict] = None,
+        max_tokens: int = 4096,
     ) -> LLMResponse:
         """
         Send chat completion using OpenAI SDK.
@@ -51,6 +52,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 "model": self.model,
                 "messages": openai_messages,
                 "temperature": temperature,
+                "max_tokens": max_tokens,
             }
 
             if response_format:

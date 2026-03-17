@@ -44,6 +44,7 @@ class BaseLLMProvider(ABC):
         messages: List[LLMMessage],
         temperature: float = 0.7,
         response_format: Optional[Dict] = None,
+        max_tokens: int = 4096,
     ) -> LLMResponse:
         """
         Send chat completion request.
