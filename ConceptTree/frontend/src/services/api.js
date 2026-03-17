@@ -249,6 +249,13 @@ export const aiApi = {
     });
   },
 
+  clarifyGoal: async (originalGoal, newGoal) => {
+    return await fetchApi("/ai/clarify-goal", {
+      method: "POST",
+      body: JSON.stringify({ originalGoal, newGoal }),
+    });
+  },
+
   recommendNext: async (planId) => {
     void planId;
     return { recommendedNodeId: null, reason: "后端暂未实现AI推荐" };

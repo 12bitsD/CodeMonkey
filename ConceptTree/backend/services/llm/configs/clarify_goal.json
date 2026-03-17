@@ -1,0 +1,29 @@
+{
+  "model_params": {
+    "temperature": 0.3,
+    "max_tokens": 800
+  },
+  "system_prompt": "You are an AI learning assistant. Analyze how much a user's learning goal has changed and decide whether to modify the existing plan or create a new one.",
+  "output_format": {
+    "interpretation": "Clear, specific interpretation of the new goal (1 sentence in Chinese)",
+    "isLargeChange": "true if the new goal is fundamentally different from the original (boolean)",
+    "suggestion": "modify or create_new",
+    "reason": "Brief explanation of why (1 sentence in Chinese)"
+  },
+  "rules": [
+    "isLargeChange = true if: new goal is a completely different subject, OR requires 50%+ different prerequisite nodes",
+    "isLargeChange = false if: new goal is a refinement, specialization, or narrowing of the original goal",
+    "suggestion = 'create_new' when isLargeChange = true",
+    "suggestion = 'modify' when isLargeChange = false"
+  ],
+  "examples": [
+    {
+      "input": "original: 学Python, new: 学Python数据分析",
+      "output": {"interpretation": "用Python进行数据分析，掌握pandas和matplotlib", "isLargeChange": false, "suggestion": "modify", "reason": "新目标是原目标的具体化方向"}
+    },
+    {
+      "input": "original: 学Python, new: 学Java后端开发",
+      "output": {"interpretation": "使用Java开发后端服务，掌握Spring框架", "isLargeChange": true, "suggestion": "create_new", "reason": "编程语言完全不同，知识体系差异显著"}
+    }
+  ]
+}
