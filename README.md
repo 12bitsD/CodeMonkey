@@ -210,10 +210,11 @@ python -m pytest -q test_docs_sync.py
 | 目标调整 (clarify) | ✅ 已完成 | clarify-goal 携带节点上下文，AI 返回精确 diff           |
 | apply-changes      | ✅ 已完成 | 小幅调整直接修改图谱；大幅变化引导新建                  |
 | AI 学习调度        | ✅ 已完成 | recommend-next：学习历史+画像+LLM；规则引擎兜底         |
-| 测试覆盖           | ✅ 已完成 | Vitest 6 + Playwright 4 + 后端单元测试 9               |
-| 节点详情展示       | ⏳ Phase 8 | mastery checklist + resources 列表（后端已生成）        |
-| 笔记体验           | ⏳ Phase 9 | 按计划分组、筛选、精准跳转                              |
-| 进度实时同步       | ⏳ Phase 10 | 图谱页学习后首页进度自动刷新                           |
+| 节点详情展示       | ✅ 已完成 | mastery checklist + resources 卡片 + 搜索更多资源按钮  |
+| 笔记体验           | ✅ 已完成 | 计划筛选/分组/精准跳转节点/删除按钮                    |
+| 进度实时同步       | ✅ 已完成 | 标记节点后首页进度即时更新（AppContext 同步）          |
+| 测试覆盖           | ✅ 已完成 | Vitest 25 + Playwright 4 + 后端单元测试 9              |
+| 图谱交互补全       | ⏳ Phase 11 | 双击切换/用于链接/"保存计划"状态机/离开弹窗/完成庆祝  |
 | 云数据库           | 🔄 可选   | 当前 SQLite，可迁移至 Supabase                          |
 | 移动端支持         | ⏳ 计划中 | 响应式适配                                              |
 
