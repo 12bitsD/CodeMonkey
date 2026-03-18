@@ -65,33 +65,41 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 
 | 文档 | 说明 |
 |------|------|
+| **[CLAUDE.md](./docs/spec/CLAUDE.md)** | **AI session 入口 — 每次先读这个** |
 | [进度总览.md](./docs/spec/进度总览.md) | MVP 完成状态一览 |
 | [后端-通用规范.md](./docs/spec/后端-通用规范.md) | 后端契约与通用约定 |
 | [前端-架构总览.md](./docs/spec/前端-架构总览.md) | 前端架构与 API 策略 |
-| [变更日志.md](./docs/spec/变更日志.md) | Spec 变更历史 |
-| [学习路径规划器 - MVP PRD（最终版）.md](./docs/学习路径规划器%20-%20MVP%20PRD（最终版）.md) | 需求文档（PRD） |
+| [变更日志.md](./docs/architecture/变更日志.md) | Spec 变更历史 |
+| [学习路径规划器 - MVP PRD（最终版）.md](./docs/architecture/学习路径规划器%20-%20MVP%20PRD（最终版）.md) | 需求文档（PRD） |
 
 ```
 📁 ConceptTree/
 ├── 📁 backend/                ← FastAPI 应用
 │   ├── routers/               ← API 端点
-│   ├── services/              ← 业务逻辑
+│   ├── services/              ← 业务逻辑（含 llm/ AI 服务）
 │   ├── utils/                 ← 通用能力
 │   └── tests/                 ← 测试
 └── 📁 frontend/               ← React + Vite 应用
     ├── pages/                 ← 路由组件
     ├── components/            ← 可复用 UI
-    ├── services/              ← API 客户端
-    ├── contexts/              ← 状态管理
-    └── tests/                 ← 测试
+    ├── services/              ← API 客户端（api.js 唯一入口）
+    ├── contexts/              ← 状态管理（AppContext / AuthContext）
+    └── tests/                 ← Playwright E2E 测试
 📁 docs/
-├── 📁 spec/                   ← 真理之源。AI 首先读这里。
-│   ├── 进度总览.md             ← MVP 完成状态（活跃）
-│   ├── 后端-通用规范.md         ← 后端契约（活跃）
-│   ├── 前端-架构总览.md         ← 前端架构（活跃）
-│   ├── 变更日志.md             ← 变更历史（活跃）
-│   └── *-done.md              ← 已完成模块（归档）
-└── 学习路径规划器 - MVP PRD（最终版）.md  ← 需求文档（PRD）
+├── 📁 spec/                   ← AI 必读合同（session 开始先读）
+│   ├── CLAUDE.md              ← AI 入口：stack/约束/patterns
+│   ├── 进度总览.md             ← MVP 完成状态（唯一状态真相）
+│   ├── 后端-通用规范.md         ← 后端契约
+│   ├── 前端-架构总览.md         ← 前端架构
+│   └── archive/               ← 已完成模块归档（*-done.md）
+├── 📁 architecture/           ← 人类读，AI 按需注入
+│   ├── ConceptTree-Architecture.md
+│   ├── AI服务Mermaid图解.md
+│   ├── 变更日志.md
+│   └── 学习路径规划器 - MVP PRD（最终版）.md
+└── 📁 devlog/                 ← Session 日志（时效性内容）
+    ├── DEVLOG.md              ← 滚动日志（最新在最上）
+    └── archive/               ← 历史 session 详细报告
 ```
 
 ### 为什么这样设计？
@@ -168,7 +176,7 @@ npm install && npm run dev
 
 AI 智能体在修改代码库时遵循这些规则：
 
-1. **写代码前先读 `/spec`**
+1. **写代码前先读 `docs/spec/CLAUDE.md`**
 2. **先更新规范，再写测试，最后实现**
 3. **测试不通过不提交**
 4. **在规范中标记实现状态** (`✅` / `❌`)
