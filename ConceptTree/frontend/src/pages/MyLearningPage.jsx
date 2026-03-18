@@ -178,6 +178,30 @@ const MyLearningPage = () => {
                       className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-lg text-sm focus:bg-white focus:border-zinc-300 outline-none transition-colors" 
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-zinc-500">编程基础</label>
+                    <select
+                      value={userProfile?.programmingLevel || '入门'}
+                      onChange={e => actions.setUserProfile({ ...userProfile, programmingLevel: e.target.value })}
+                      className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-lg text-sm focus:bg-white focus:border-zinc-300 outline-none transition-colors"
+                    >
+                      {['无基础', '入门', '熟练'].map(level => (
+                        <option key={level} value={level}>{level}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-zinc-500">数学基础</label>
+                    <select
+                      value={userProfile?.mathLevel || '入门'}
+                      onChange={e => actions.setUserProfile({ ...userProfile, mathLevel: e.target.value })}
+                      className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-lg text-sm focus:bg-white focus:border-zinc-300 outline-none transition-colors"
+                    >
+                      {['无基础', '入门', '熟练'].map(level => (
+                        <option key={level} value={level}>{level}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </section>
 

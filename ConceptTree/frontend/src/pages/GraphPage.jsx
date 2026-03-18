@@ -160,6 +160,7 @@ const GraphPage = () => {
 
   const handleNodeStatusChange = async (nodeId, newStatus) => {
     setNodeStatus(nodeId, newStatus);
+    actions.updateNodeStatusInPlan(planId, nodeId, newStatus);
     try {
       await graphApi.updateNodeStatus(planId, nodeId, newStatus);
     } catch (err) {
