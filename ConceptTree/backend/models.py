@@ -320,11 +320,18 @@ class UserBackgroundInput(BaseModel):
     masteredKnowledge: List[str] = []
 
 
+class GraphChanges(BaseModel):
+    keep: List[str] = []
+    remove: List[str] = []
+    add: List[str] = []
+
+
 class ClarifyGoalResponse(BaseModel):
     interpretation: str
     isLargeChange: bool
     suggestion: str
     reason: str
+    changes: GraphChanges = GraphChanges()
 
 
 class ClarifyGoalAIResult(BaseModel):
