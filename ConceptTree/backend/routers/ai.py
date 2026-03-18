@@ -100,6 +100,7 @@ async def generate_graph(
 class ClarifyGoalRequest(BaseModel):
     originalGoal: str
     newGoal: str
+    planId: Optional[str] = None
 
     @field_validator("newGoal")
     @classmethod
@@ -126,10 +127,25 @@ async def clarify_goal(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    existing_nodes = []
+    if request.planId:
+        plan = db.execute(
+            "SELECT user_id FROM plans WHERE id = ?", (request.planId,)
+        ).fetchone()
+        if plan and plan["user_id"] == current_user_id:
+            rows = db.execute(
+                "SELECT id, name, status FROM nodes WHERE plan_id = ?",
+                (request.planId,),
+            ).fetchall()
+            existing_nodes = [
+                {"id": r["id"], "name": r["name"], "status": r["status"]} for r in rows
+            ]
+
     ai_service = get_ai_service()
     result = await ai_service.clarify_goal(
         original_goal=request.originalGoal,
         new_goal=request.newGoal,
+        existing_nodes=existing_nodes,
     )
     if not result.success:
         raise HTTPException(
