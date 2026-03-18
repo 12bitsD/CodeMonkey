@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { Button, Modal } from '../components/ui';
 import { InfoSection } from '../components/common';
+import { MasteryChecklist } from '../components/node/MasteryChecklist';
+import { ResourceList } from '../components/node/ResourceList';
 import { useGraphInteraction } from '../hooks/useGraphInteraction';
 import { useAppContext } from '../contexts/AppContext';
 import { useToast } from '../contexts/ToastContext';
@@ -419,6 +421,10 @@ const GraphPage = () => {
                   </section>
                 )}
 
+                {selectedNode.mastery?.length > 0 && (
+                  <MasteryChecklist items={selectedNode.mastery} />
+                )}
+
                 {selectedNode.prompt && (
                   <InfoSection icon={Sparkles} title="学习 Prompt">
                     <div className="relative group">
@@ -434,6 +440,20 @@ const GraphPage = () => {
                     </div>
                   </InfoSection>
                 )}
+
+                {selectedNode.resources?.length > 0 && (
+                  <ResourceList resources={selectedNode.resources} />
+                )}
+
+                <button
+                  onClick={() => window.open(
+                    `https://www.google.com/search?q=${encodeURIComponent(selectedNode.name + ' 学习教程')}`,
+                    '_blank'
+                  )}
+                  className="w-full py-2.5 text-xs text-zinc-400 hover:text-zinc-600 border border-dashed border-zinc-200 rounded-xl hover:border-zinc-300 transition-colors"
+                >
+                  搜索更多资源 ↗
+                </button>
 
                 {/* Notes */}
                 <section>
