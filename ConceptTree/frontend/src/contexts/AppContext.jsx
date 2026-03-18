@@ -116,6 +116,27 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const deleteNote = async (noteId) => {
+    try {
+      await notesApi.delete(noteId);
+      setAllNotes(prev => prev.filter(n => n.id !== noteId));
+    } catch (error) {
+      toast.error('删除笔记失败');
+    }
+  };
+
+  const updateNodeStatusInPlan = (planId, nodeId, status) => {
+    setPlans(prev => prev.map(plan => {
+      if (plan.id !== planId) return plan;
+      const updatedNodes = (plan.nodes || []).map(n =>
+        n.id === nodeId ? { ...n, status } : n
+      );
+      const relevant = updatedNodes.filter(n => n.status !== 'skipped');
+      const learned = relevant.filter(n => n.status === 'learned').length;
+      return { ...plan, nodes: updatedNodes, progress: learned, total: relevant.length };
+    }));
+  };
+
   // 业务逻辑 - 用户相关
   const updateUserProfile = async (newProfile) => {
     try {
@@ -133,12 +154,14 @@ export const AppProvider = ({ children }) => {
     isLoading,
     actions: {
       setUserProfile: updateUserProfile,
-      setPlans, // 暴露原始 setter 以备不时之需
+      setPlans,
       createPlan,
       updatePlan,
       archivePlan,
       deletePlan,
-      addNote
+      addNote,
+      deleteNote,
+      updateNodeStatusInPlan,
     }
   };
 
