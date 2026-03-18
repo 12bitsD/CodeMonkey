@@ -85,7 +85,7 @@ def test_clarify_goal_endpoint_success(client, auth_headers_a, monkeypatch):
     from services.ai_service import AIService
     from models import ClarifyGoalResponse, ClarifyGoalAIResult
 
-    async def mock_clarify(self, original_goal, new_goal):
+    async def mock_clarify(self, original_goal, new_goal, existing_nodes=None):
         return ClarifyGoalAIResult(
             success=True,
             data=ClarifyGoalResponse(
@@ -124,4 +124,4 @@ def test_clarify_goal_endpoint_validates_short_goal(client, auth_headers_a):
         json={"originalGoal": "学Python", "newGoal": "学"},
         headers=auth_headers_a,
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 400
