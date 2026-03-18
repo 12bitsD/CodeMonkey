@@ -16,7 +16,8 @@ import {
   Sparkles,
   FileText,
   Copy,
-  ChevronRight
+  ChevronRight,
+  Save,
 } from 'lucide-react';
 import { Button, Modal } from '../components/ui';
 import { InfoSection } from '../components/common';
@@ -25,7 +26,8 @@ import { ResourceList } from '../components/node/ResourceList';
 import { useGraphInteraction } from '../hooks/useGraphInteraction';
 import { useAppContext } from '../contexts/AppContext';
 import { useToast } from '../contexts/ToastContext';
-import { graphApi, aiApi } from '../services/api';
+import { graphApi, aiApi, plansApi } from '../services/api';
+import { toggleNodeStatus, isAllComplete } from '../utils/graphUtils';
 
 const GraphPage = () => {
   const { planId } = useParams();
@@ -38,6 +40,10 @@ const GraphPage = () => {
   
   const plan = plans.find(p => p.id === planId);
   const [loading, setLoading] = useState(true);
+  const [isDirty, setIsDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
 
   const {
@@ -171,11 +177,40 @@ const GraphPage = () => {
 
   const handleNodeStatusChange = async (nodeId, newStatus) => {
     setNodeStatus(nodeId, newStatus);
+    setIsDirty(true);
     actions.updateNodeStatusInPlan(planId, nodeId, newStatus);
     try {
       await graphApi.updateNodeStatus(planId, nodeId, newStatus);
     } catch (err) {
       console.error('Failed to save node status', err);
+    }
+  };
+
+  const handleDoubleClickNode = (e, nodeId, currentStatus) => {
+    e.stopPropagation();
+    handleNodeStatusChange(nodeId, toggleNodeStatus(currentStatus));
+  };
+
+  const handleSavePlan = async () => {
+    if (!planId || isSaving) return;
+    setIsSaving(true);
+    try {
+      await plansApi.update(planId, { title: plan?.title });
+      setSavedAt(new Date());
+      setIsDirty(false);
+      toast.success('计划已保存');
+    } catch {
+      toast.error('保存失败，请重试');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleNavigateBack = () => {
+    if (isDirty) {
+      setShowLeaveConfirm(true);
+    } else {
+      navigate('/');
     }
   };
 
@@ -219,7 +254,7 @@ const GraphPage = () => {
       <div className="absolute top-0 left-0 right-0 z-20 px-6 py-4 pointer-events-none">
         <div className="max-w-screen-xl mx-auto flex justify-between items-start">
           <div className="bg-white/90 backdrop-blur-md px-5 py-3 rounded-2xl shadow-sm border border-zinc-200/50 pointer-events-auto flex items-center gap-4 transition-all hover:shadow-md">
-            <button onClick={() => navigate('/')} className="text-zinc-400 hover:text-zinc-900 transition-colors">
+            <button onClick={handleNavigateBack} className="text-zinc-400 hover:text-zinc-900 transition-colors">
               <ArrowLeft size={20} strokeWidth={1.5} />
             </button>
             <div className="h-4 w-px bg-zinc-200" />
@@ -239,7 +274,21 @@ const GraphPage = () => {
             </div>
           </div>
           
-          <div className="bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-sm border border-zinc-200/50 pointer-events-auto flex gap-1">
+          <div className="bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-sm border border-zinc-200/50 pointer-events-auto flex gap-1 items-center">
+            {savedAt && !isDirty ? (
+              <span className="text-[10px] text-zinc-400 px-2">
+                已保存 {savedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            ) : isDirty ? (
+              <button
+                onClick={handleSavePlan}
+                disabled={isSaving}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 rounded-xl hover:bg-zinc-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Save size={12} />
+                {isSaving ? '保存中...' : '保存计划'}
+              </button>
+            ) : null}
             <button className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all" title="Share">
               <Share2 size={18} strokeWidth={1.5}/>
             </button>
@@ -316,6 +365,7 @@ const GraphPage = () => {
                 `}
                 style={{ left: node.x, top: node.y }}
                 onClick={(e) => { e.stopPropagation(); setSelectedNodeId(node.id); }}
+                onDoubleClick={(e) => handleDoubleClickNode(e, node.id, node.status)}
                 onMouseDown={(e) => { e.stopPropagation(); setDraggingNodeId(node.id); }}
               >
                 {scale < 0.6 ? (
@@ -342,25 +392,47 @@ const GraphPage = () => {
         </div>
       </div>
 
-      {/* Floating Recommendation */}
-      {!selectedNodeId && recommendedNode && (
-        <div 
-          className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-zinc-100 rounded-full pl-2 pr-6 py-2 flex items-center gap-4 z-10 transition-transform hover:-translate-y-1 hover:shadow-xl cursor-pointer" 
-          onClick={() => setSelectedNodeId(recommendedNode.id)}
-        >
-          <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
-            <Sparkles size={14} fill="currentColor"/>
+      {/* Floating Recommendation / Completion */}
+      {(() => {
+        if (!loading && isAllComplete(nodes)) {
+          return (
+            <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-zinc-100 rounded-full px-6 py-3 flex items-center gap-3 z-10">
+              <span className="text-xl">🎉</span>
+              <span className="text-sm font-semibold text-zinc-800">学习完成！</span>
+            </div>
+          );
+        }
+        if (!recommendedNode) return null;
+        if (selectedNodeId) {
+          return (
+            <div
+              className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-white/80 backdrop-blur-md shadow-sm border border-zinc-100 rounded-full px-4 py-2 flex items-center gap-2 z-10 cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
+              onClick={() => setSelectedNodeId(recommendedNode.id)}
+            >
+              <span className="text-sm">💡</span>
+              <span className="text-xs font-medium text-zinc-600">{recommendedNode.name}</span>
+            </div>
+          );
+        }
+        return (
+          <div
+            className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-zinc-100 rounded-full pl-2 pr-6 py-2 flex items-center gap-4 z-10 transition-transform hover:-translate-y-1 hover:shadow-xl cursor-pointer"
+            onClick={() => setSelectedNodeId(recommendedNode.id)}
+          >
+            <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
+              <Sparkles size={14} fill="currentColor"/>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">推荐下一步</span>
+              <span className="text-sm font-semibold text-zinc-800">{recommendedNode.name}</span>
+              {recommendedNode.recommendReason && (
+                <span className="text-[11px] text-zinc-400 mt-0.5 max-w-[200px] truncate">{recommendedNode.recommendReason}</span>
+              )}
+            </div>
+            <ChevronRight size={16} className="text-zinc-400 ml-2" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">推荐下一步</span>
-            <span className="text-sm font-semibold text-zinc-800">{recommendedNode.name}</span>
-            {recommendedNode.recommendReason && (
-              <span className="text-[11px] text-zinc-400 mt-0.5 max-w-[200px] truncate">{recommendedNode.recommendReason}</span>
-            )}
-          </div>
-          <ChevronRight size={16} className="text-zinc-400 ml-2" />
-        </div>
-      )}
+        );
+      })()}
 
       {/* Zoom Controls */}
       <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-10">
@@ -425,6 +497,20 @@ const GraphPage = () => {
                 {selectedNode.why && (
                   <InfoSection icon={Target} title="为什么学">
                     {selectedNode.why}
+                    {edges.filter(e => e.from === selectedNode.id).map(e => {
+                      const target = nodes.find(n => n.id === e.to);
+                      if (!target) return null;
+                      return (
+                        <button
+                          key={e.to}
+                          onClick={() => setSelectedNodeId(e.to)}
+                          className="mt-2 flex items-center gap-1 text-xs text-teal-600 hover:text-teal-800 transition-colors"
+                        >
+                          <ChevronRight size={12} />
+                          用于：{target.name}
+                        </button>
+                      );
+                    })}
                   </InfoSection>
                 )}
 
@@ -584,6 +670,27 @@ const GraphPage = () => {
           onChange={e => setNoteContent(e.target.value)} 
           autoFocus 
         />
+      </Modal>
+
+      <Modal
+        isOpen={showLeaveConfirm}
+        onClose={() => setShowLeaveConfirm(false)}
+        title="保存学习计划？"
+        footer={
+          <div className="flex gap-3 w-full">
+            <Button variant="ghost" className="flex-1" onClick={() => { setShowLeaveConfirm(false); navigate('/'); }}>
+              不保存
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowLeaveConfirm(false)}>
+              取消
+            </Button>
+            <Button className="flex-1" onClick={async () => { await handleSavePlan(); setShowLeaveConfirm(false); navigate('/'); }}>
+              保存
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-zinc-500">保存后可在首页继续学习</p>
       </Modal>
     </div>
   );
