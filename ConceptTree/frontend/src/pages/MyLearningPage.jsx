@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -9,7 +9,8 @@ import {
   Search,
   Plus,
   RotateCcw,
-  CornerDownLeft
+  CornerDownLeft,
+  X,
 } from 'lucide-react';
 import { Button, Badge } from '../components/ui';
 import { StatCard, ChartBar } from '../components/common';
@@ -22,6 +23,7 @@ const MyLearningPage = () => {
   
   const [activeTab, setActiveTab] = useState('profile');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPlanFilter, setSelectedPlanFilter] = useState('all');
   const [isComposing, setIsComposing] = useState(false);
   const [localOccupation, setLocalOccupation] = useState(userProfile?.occupation || '');
   const [localEducation, setLocalEducation] = useState(userProfile?.education || '');
@@ -93,9 +95,22 @@ const MyLearningPage = () => {
   const archivedPlans = plans.filter(p => p.status === 'archived');
   const activePlans = plans.filter(p => p.status === 'active');
   
-  const filteredNotes = searchQuery 
-    ? allNotes.filter(n => n.content.toLowerCase().includes(searchQuery.toLowerCase()))
-    : allNotes;
+  const filteredNotes = useMemo(() => {
+    return allNotes.filter(n => {
+      const matchesPlan = selectedPlanFilter === 'all' || n.planId === selectedPlanFilter;
+      const matchesSearch = !searchQuery || n.content.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesPlan && matchesSearch;
+    });
+  }, [allNotes, selectedPlanFilter, searchQuery]);
+
+  const notesByPlan = useMemo(() => {
+    return filteredNotes.reduce((acc, note) => {
+      const key = note.planId;
+      if (!acc[key]) acc[key] = { title: note.planTitle || note.planId, notes: [] };
+      acc[key].notes.push(note);
+      return acc;
+    }, {});
+  }, [filteredNotes]);
 
   const completedPlansCount = archivedPlans.filter(p => p.progress === p.total && p.total > 0).length;
   const masteredKnowledgeCount = userProfile?.masteredKnowledge?.length || 0;
@@ -231,8 +246,20 @@ const MyLearningPage = () => {
           {/* Notes Tab */}
           {activeTab === 'notes' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex justify-between items-center pb-6 border-b border-zinc-50">
-                <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">全部笔记</h2>
+              <div className="flex flex-wrap justify-between items-center gap-3 pb-6 border-b border-zinc-50">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">全部笔记</h2>
+                  <select
+                    value={selectedPlanFilter}
+                    onChange={e => setSelectedPlanFilter(e.target.value)}
+                    className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-zinc-200"
+                  >
+                    <option value="all">全部计划</option>
+                    {plans.map(p => (
+                      <option key={p.id} value={p.id}>{p.title}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="relative">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/>
                   <input 
@@ -240,30 +267,56 @@ const MyLearningPage = () => {
                     placeholder="搜索笔记..." 
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 bg-zinc-50 rounded-full text-sm border-none focus:ring-1 focus:ring-zinc-200 w-64 transition-all" 
+                    className="pl-10 pr-4 py-2 bg-zinc-50 rounded-full text-sm border-none focus:ring-1 focus:ring-zinc-200 w-56 transition-all" 
                   />
                 </div>
               </div>
+
               {filteredNotes.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredNotes.map(note => (
-                    <div 
-                      key={note.id} 
-                      onClick={() => navigate(`/graph/${note.planId}`)} 
-                      className="group p-6 bg-zinc-50 rounded-2xl border border-zinc-100/50 hover:bg-white hover:shadow-md transition-all cursor-pointer"
-                    >
-                      <div className="flex justify-between mb-4">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{note.date}</span>
-                        <CornerDownLeft size={14} className="text-zinc-300 group-hover:text-teal-500 transition-colors"/>
+                <div className="space-y-8">
+                  {Object.entries(notesByPlan).map(([planId, group]) => (
+                    <div key={planId}>
+                      <h3 className="text-xs font-semibold text-zinc-400 mb-4 uppercase tracking-widest">
+                        {group.title}
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {group.notes.map(note => (
+                          <div
+                            key={note.id}
+                            className="group relative p-6 bg-zinc-50 rounded-2xl border border-zinc-100/50 hover:bg-white hover:shadow-md transition-all"
+                          >
+                            <button
+                              onClick={() => actions.deleteNote(note.id)}
+                              className="absolute top-3 right-3 p-1 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-full hover:bg-red-50"
+                              title="删除笔记"
+                            >
+                              <X size={13} />
+                            </button>
+                            <div
+                              className="cursor-pointer"
+                              onClick={() => navigate(`/graph/${note.planId}${note.nodeId ? `?node=${note.nodeId}` : ''}`)}
+                            >
+                              <div className="flex justify-between mb-3 pr-4">
+                                <div className="flex flex-col gap-0.5">
+                                  {note.nodeName && (
+                                    <span className="text-[10px] font-medium text-teal-500">{note.nodeName}</span>
+                                  )}
+                                  <span className="text-[10px] text-zinc-400">{note.date}</span>
+                                </div>
+                                <CornerDownLeft size={13} className="text-zinc-300 group-hover:text-teal-500 transition-colors flex-shrink-0 mt-1" />
+                              </div>
+                              <p className="text-sm text-zinc-600 leading-relaxed line-clamp-3">{note.content}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-sm text-zinc-600 leading-relaxed line-clamp-3">{note.content}</p>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-20 text-zinc-400">
                   <BookOpen size={48} className="mx-auto mb-4 opacity-20" strokeWidth={1}/>
-                  {searchQuery ? '没有找到匹配的笔记' : '暂无笔记'}
+                  {searchQuery || selectedPlanFilter !== 'all' ? '没有找到匹配的笔记' : '暂无笔记'}
                 </div>
               )}
             </div>
