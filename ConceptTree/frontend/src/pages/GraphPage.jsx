@@ -470,11 +470,20 @@ const GraphPage = () => {
                   </div>
                   <div className="space-y-3">
                     {nodeNotes.length > 0 ? nodeNotes.map(note => (
-                      <div 
-                        key={note.id} 
-                        className="bg-amber-50/50 border border-amber-100/50 p-4 rounded-xl text-sm text-zinc-700 relative hover:border-amber-200 transition-colors cursor-pointer"
+                      <div
+                        key={note.id}
+                        className="group bg-amber-50/50 border border-amber-100/50 p-4 rounded-xl text-sm text-zinc-700 relative hover:border-amber-200 transition-colors"
                       >
-                        <span className="text-[10px] font-bold text-amber-300 block mb-1">{note.date}</span>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[10px] font-bold text-amber-300">{note.date}</span>
+                          <button
+                            onClick={() => actions.deleteNote(note.id)}
+                            className="p-0.5 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                            title="删除笔记"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
                         <p className="leading-relaxed">{note.content}</p>
                       </div>
                     )) : (
