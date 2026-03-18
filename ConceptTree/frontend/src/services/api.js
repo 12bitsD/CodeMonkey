@@ -208,6 +208,13 @@ export const graphApi = {
       body: JSON.stringify({ x, y }),
     });
   },
+
+  applyChanges: async (planId, { keep, remove, add, newTitle }) => {
+    return await fetchApi(`/plans/${planId}/apply-changes`, {
+      method: "POST",
+      body: JSON.stringify({ keep, remove, add, newTitle }),
+    });
+  },
 };
 
 // ─── 笔记 API (Real Backend) ───
@@ -249,16 +256,18 @@ export const aiApi = {
     });
   },
 
-  clarifyGoal: async (originalGoal, newGoal) => {
+  clarifyGoal: async (originalGoal, newGoal, planId = null) => {
     return await fetchApi("/ai/clarify-goal", {
       method: "POST",
-      body: JSON.stringify({ originalGoal, newGoal }),
+      body: JSON.stringify({ originalGoal, newGoal, ...(planId ? { planId } : {}) }),
     });
   },
 
   recommendNext: async (planId) => {
-    void planId;
-    return { recommendedNodeId: null, reason: "后端暂未实现AI推荐" };
+    return await fetchApi("/ai/recommend-next", {
+      method: "POST",
+      body: JSON.stringify({ planId }),
+    });
   },
 };
 
