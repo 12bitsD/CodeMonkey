@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Share2, 
@@ -30,6 +30,7 @@ import { graphApi, aiApi } from '../services/api';
 const GraphPage = () => {
   const { planId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const containerRef = useRef(null);
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
   const { plans, allNotes, actions } = useAppContext();
@@ -80,6 +81,13 @@ const GraphPage = () => {
     
     loadGraph();
   }, [planId, setNodes, setEdges]);
+
+  useEffect(() => {
+    const nodeId = searchParams.get('node');
+    if (nodeId && !loading && nodes.length > 0) {
+      setSelectedNodeId(nodeId);
+    }
+  }, [searchParams, loading, nodes.length]);
 
   const [showGoalClarification, setShowGoalClarification] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState('');
