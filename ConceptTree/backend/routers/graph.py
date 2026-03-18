@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
+from typing import List
 import json
 import uuid
 
@@ -329,3 +331,51 @@ def update_nodes_positions(
     db.commit()
 
     return {"success": True, "data": {"updated": updated}}
+
+
+class ApplyChangesRequest(BaseModel):
+    keep: List[str] = []
+    remove: List[str] = []
+    add: List[str] = []
+    newTitle: str
+
+
+@router.post("/plans/{plan_id}/apply-changes")
+def apply_changes(
+    plan_id: str,
+    req: ApplyChangesRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    plan = db.execute(
+        "SELECT id, user_id FROM plans WHERE id = ?", (plan_id,)
+    ).fetchone()
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            },
+        )
+    if plan["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Forbidden"},
+        )
+
+    for node_id in req.remove:
+        db.execute("DELETE FROM nodes WHERE id = ? AND plan_id = ?", (node_id, plan_id))
+
+    for node_name in req.add:
+        new_id = f"n_{uuid.uuid4().hex[:10]}"
+        db.execute(
+            "INSERT INTO nodes (id, plan_id, name, status, x, y, why, what, mastery, prompt, resources) "
+            "VALUES (?, ?, ?, 'unlearned', 0, 0, '', '[]', '[]', '', '[]')",
+            (new_id, plan_id, node_name),
+        )
+
+    db.execute("UPDATE plans SET title = ? WHERE id = ?", (req.newTitle, plan_id))
+    db.commit()
+
+    return {"success": True, "data": {"planId": plan_id}}
