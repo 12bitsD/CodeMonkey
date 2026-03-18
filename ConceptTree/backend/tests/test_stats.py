@@ -8,12 +8,11 @@ def test_stats_overview_new_user(client, auth_headers_a):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "summary" in body["data"]
     assert "thisWeek" in body["data"]
-    assert body["data"]["summary"]["completedPlans"] == 0
-    assert body["data"]["summary"]["activePlans"] == 0
-    assert body["data"]["summary"]["masteredKnowledge"] == 0
-    assert body["data"]["summary"]["totalNotes"] == 0
+    assert body["data"]["completedPlans"] == 0
+    assert body["data"]["activePlans"] == 0
+    assert body["data"]["masteredNodes"] == 0
+    assert body["data"]["totalNotes"] == 0
 
 
 def test_stats_overview_with_data(client, auth_headers_a):
@@ -66,8 +65,8 @@ def test_stats_overview_with_data(client, auth_headers_a):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert body["data"]["summary"]["activePlans"] == 1
-    assert body["data"]["summary"]["totalNotes"] == 1
+    assert body["data"]["activePlans"] == 1
+    assert body["data"]["totalNotes"] == 1
 
 
 def test_stats_distribution_requires_auth(client):
@@ -153,3 +152,17 @@ def test_stats_distribution_with_learned_nodes(client, auth_headers_a):
     math_domain = next((d for d in dist if d["domain"] == "数学"), None)
     assert math_domain is not None
     assert math_domain["count"] == 1
+
+
+def test_stats_overview_response_structure_matches_frontend(client, auth_headers_a):
+    resp = client.get("/api/stats/overview", headers=auth_headers_a)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert "completedPlans" in body["data"]
+    assert "activePlans" in body["data"]
+    assert "masteredNodes" in body["data"]
+    assert "totalNotes" in body["data"]
+    assert "thisWeek" in body["data"]
+    assert "completedNodes" in body["data"]["thisWeek"]
+    assert "newNotes" in body["data"]["thisWeek"]

@@ -77,12 +77,10 @@ def get_stats_overview(
     return {
         "success": True,
         "data": {
-            "summary": {
-                "completedPlans": completed_plans,
-                "activePlans": active_plans,
-                "masteredKnowledge": mastered_knowledge,
-                "totalNotes": total_notes,
-            },
+            "completedPlans": completed_plans,
+            "activePlans": active_plans,
+            "masteredNodes": mastered_knowledge,
+            "totalNotes": total_notes,
             "thisWeek": {
                 "completedNodes": completed_nodes_this_week,
                 "newNotes": new_notes_this_week,

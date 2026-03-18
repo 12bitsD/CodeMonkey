@@ -266,14 +266,14 @@ def archive_plan(
             (plan_id,),
         ).fetchone()
 
-        # 计算进度
+        # 计算进度（排除skipped节点，与graph.py保持一致）
         stats = db.execute(
             """SELECT
                    COUNT(*) as total
                    ,SUM(CASE WHEN status = 'learned' THEN 1
                        ELSE 0 END) as completed
-               FROM nodes
-               WHERE plan_id = ?""",
+                FROM nodes
+                WHERE plan_id = ? AND status != 'skipped'""",
             (plan_id,),
         ).fetchone()
 
@@ -356,14 +356,14 @@ def restore_plan(
             (plan_id,),
         ).fetchone()
 
-        # 计算进度
+        # 计算进度（排除skipped节点，与graph.py保持一致）
         stats = db.execute(
             """SELECT
                    COUNT(*) as total
                    ,SUM(CASE WHEN status = 'learned' THEN 1
                        ELSE 0 END) as completed
-               FROM nodes
-               WHERE plan_id = ?""",
+                FROM nodes
+                WHERE plan_id = ? AND status != 'skipped'""",
             (plan_id,),
         ).fetchone()
 
