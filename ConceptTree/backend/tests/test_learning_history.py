@@ -14,7 +14,7 @@ class TestGetLearningHistory:
     def test_returns_last_learned_node(self, db):
         db.execute(
             "INSERT INTO learning_sessions (id, user_id, plan_id, node_id, node_name, action) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ["s1", "u_a", "p1", "n1", "矩阵乘法", "learned"],
         )
         db.commit()
@@ -27,12 +27,12 @@ class TestGetLearningHistory:
     def test_distinguishes_learned_and_skipped(self, db):
         db.execute(
             "INSERT INTO learning_sessions (id, user_id, plan_id, node_id, node_name, action) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ["s1", "u_a", "p1", "n1", "节点1", "learned"],
         )
         db.execute(
             "INSERT INTO learning_sessions (id, user_id, plan_id, node_id, node_name, action) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ["s2", "u_a", "p1", "n2", "节点2", "skipped"],
         )
         db.commit()
@@ -46,12 +46,12 @@ class TestGetLearningHistory:
     def test_deduplicates_repeated_actions(self, db):
         db.execute(
             "INSERT INTO learning_sessions (id, user_id, plan_id, node_id, node_name, action) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ["s1", "u_a", "p1", "n1", "节点1", "learned"],
         )
         db.execute(
             "INSERT INTO learning_sessions (id, user_id, plan_id, node_id, node_name, action) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ["s2", "u_a", "p1", "n1", "节点1", "learned"],
         )
         db.commit()
@@ -63,12 +63,12 @@ class TestGetLearningHistory:
     def test_isolated_by_user_and_plan(self, db):
         db.execute(
             "INSERT INTO learning_sessions (id, user_id, plan_id, node_id, node_name, action) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ["s1", "u_a", "p1", "n1", "节点1", "learned"],
         )
         db.execute(
             "INSERT INTO learning_sessions (id, user_id, plan_id, node_id, node_name, action) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             ["s2", "u_b", "p2", "n2", "节点2", "learned"],
         )
         db.commit()

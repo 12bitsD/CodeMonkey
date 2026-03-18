@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 import uuid
 from fastapi import APIRouter, HTTPException, Depends
@@ -14,6 +15,14 @@ from models import (
 )
 
 router = APIRouter(prefix="/api", tags=["plans"])
+
+
+def _format_datetime(dt) -> Optional[str]:
+    if dt is None:
+        return None
+    if isinstance(dt, datetime):
+        return dt.isoformat()
+    return str(dt)
 
 
 @router.post(
@@ -189,8 +198,8 @@ def get_plans(
                     "progress": plan["progress"] if plan["progress"] else 0,
                     "total": plan["total"] if plan["total"] else 0,
                     "status": plan["status"],
-                    "lastAccess": plan["last_access_at"],
-                    "createdAt": plan["created_at"],
+                    "lastAccess": _format_datetime(plan["last_access_at"]),
+                    "createdAt": _format_datetime(plan["created_at"]),
                 }
             )
 
@@ -278,8 +287,8 @@ def archive_plan(
                 "progress": completed,
                 "total": total,
                 "status": row["status"],
-                "lastAccess": row["last_access_at"],
-                "createdAt": row["created_at"],
+                "lastAccess": _format_datetime(row["last_access_at"]),
+                "createdAt": _format_datetime(row["created_at"]),
             },
         }
     except HTTPException:
@@ -368,8 +377,8 @@ def restore_plan(
                 "progress": completed,
                 "total": total,
                 "status": row["status"],
-                "lastAccess": row["last_access_at"],
-                "createdAt": row["created_at"],
+                "lastAccess": _format_datetime(row["last_access_at"]),
+                "createdAt": _format_datetime(row["created_at"]),
             },
         }
     except HTTPException:

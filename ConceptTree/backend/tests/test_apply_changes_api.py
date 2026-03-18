@@ -155,5 +155,5 @@ def test_apply_changes_updates_plan_title(client, auth_headers_a):
     )
 
     plans = client.get("/api/plans", headers=auth_headers_a).json()
-    plan = next((p for p in plans["data"]["plans"] if p["id"] == plan_id), None)
+    plan = next((p for p in plans["data"] if p["id"] == plan_id), None)
     assert plan["title"] == "Python数据分析"
