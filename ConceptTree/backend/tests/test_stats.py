@@ -120,7 +120,7 @@ def test_stats_distribution_with_learned_nodes(client, auth_headers_a):
             {
                 "id": "dist_n3",
                 "name": "节点C",
-                "status": "unlearned",
+                "status": "learned",
                 "x": 20,
                 "y": 0,
                 "why": "",
@@ -141,11 +141,15 @@ def test_stats_distribution_with_learned_nodes(client, auth_headers_a):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert body["data"]["total"] == 2
+    assert body["data"]["total"] == 3
 
     dist = body["data"]["distribution"]
     assert len(dist) == 2
 
-   编程 = next((d for d in dist if d["domain"] == "编程"), None)
-    assert 编程 is not None
-    assert 编程["count"] == 2
+    prog_domain = next((d for d in dist if d["domain"] == "编程"), None)
+    assert prog_domain is not None
+    assert prog_domain["count"] == 2
+
+    math_domain = next((d for d in dist if d["domain"] == "数学"), None)
+    assert math_domain is not None
+    assert math_domain["count"] == 1
