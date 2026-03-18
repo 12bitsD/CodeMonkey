@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Share2, 
@@ -30,6 +30,7 @@ import { graphApi, aiApi } from '../services/api';
 const GraphPage = () => {
   const { planId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const containerRef = useRef(null);
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
   const { plans, allNotes, actions } = useAppContext();
@@ -80,6 +81,13 @@ const GraphPage = () => {
     
     loadGraph();
   }, [planId, setNodes, setEdges]);
+
+  useEffect(() => {
+    const nodeId = searchParams.get('node');
+    if (nodeId && !loading && nodes.length > 0) {
+      setSelectedNodeId(nodeId);
+    }
+  }, [searchParams, loading, nodes.length]);
 
   const [showGoalClarification, setShowGoalClarification] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState('');
@@ -470,11 +478,20 @@ const GraphPage = () => {
                   </div>
                   <div className="space-y-3">
                     {nodeNotes.length > 0 ? nodeNotes.map(note => (
-                      <div 
-                        key={note.id} 
-                        className="bg-amber-50/50 border border-amber-100/50 p-4 rounded-xl text-sm text-zinc-700 relative hover:border-amber-200 transition-colors cursor-pointer"
+                      <div
+                        key={note.id}
+                        className="group bg-amber-50/50 border border-amber-100/50 p-4 rounded-xl text-sm text-zinc-700 relative hover:border-amber-200 transition-colors"
                       >
-                        <span className="text-[10px] font-bold text-amber-300 block mb-1">{note.date}</span>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[10px] font-bold text-amber-300">{note.date}</span>
+                          <button
+                            onClick={() => actions.deleteNote(note.id)}
+                            className="p-0.5 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                            title="删除笔记"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
                         <p className="leading-relaxed">{note.content}</p>
                       </div>
                     )) : (
