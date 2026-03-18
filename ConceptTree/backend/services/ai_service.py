@@ -153,9 +153,20 @@ class AIService:
         self,
         original_goal: str,
         new_goal: str,
+        existing_nodes: Optional[list] = None,
     ) -> ClarifyGoalAIResult:
         try:
-            combined_input = f"original: {original_goal}, new: {new_goal}"
+            nodes_context = ""
+            if existing_nodes:
+                nodes_list = "\n".join(
+                    f"  - id={n['id']}, name={n['name']}, status={n['status']}"
+                    for n in existing_nodes
+                )
+                nodes_context = f"\nExisting nodes:\n{nodes_list}"
+
+            combined_input = (
+                f"original: {original_goal}, new: {new_goal}{nodes_context}"
+            )
             params, sys_prompt, usr_prompt = load_ai_config(
                 "clarify_goal", combined_input
             )
@@ -164,7 +175,7 @@ class AIService:
                 system_prompt=sys_prompt,
                 user_prompt=usr_prompt,
                 temperature=params.get("temperature", 0.3),
-                max_tokens=params.get("max_tokens", 800),
+                max_tokens=params.get("max_tokens", 2000),
             )
 
             parsed = ClarifyGoalResponse(**result)

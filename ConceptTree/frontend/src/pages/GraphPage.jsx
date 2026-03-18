@@ -107,7 +107,7 @@ const GraphPage = () => {
     if (!newGoalInput.trim() || !plan) return;
     setIsClarifying(true);
     try {
-      const result = await aiApi.clarifyGoal(plan.title, newGoalInput);
+      const result = await aiApi.clarifyGoal(plan.title, newGoalInput, planId);
       setClarifyResult(result);
     } catch (err) {
       toast.error('分析失败，请重试');
@@ -116,10 +116,36 @@ const GraphPage = () => {
     }
   };
 
-  const handleApplyClarify = () => {
-    setShowGoalClarification(false);
-    setClarifyResult(null);
-    navigate(`/?goal=${encodeURIComponent(newGoalInput)}`);
+  const handleApplyClarify = async () => {
+    if (!clarifyResult) return;
+
+    if (clarifyResult.isLargeChange) {
+      setShowGoalClarification(false);
+      setClarifyResult(null);
+      navigate(`/?goal=${encodeURIComponent(newGoalInput)}`);
+      return;
+    }
+
+    try {
+      const changes = clarifyResult.changes || { keep: [], remove: [], add: [] };
+      await graphApi.applyChanges(planId, {
+        keep: changes.keep || [],
+        remove: changes.remove || [],
+        add: changes.add || [],
+        newTitle: newGoalInput,
+      });
+      setShowGoalClarification(false);
+      setClarifyResult(null);
+      setNewGoalInput('');
+      const data = await graphApi.get(planId);
+      if (data?.nodes) {
+        setNodes(data.nodes);
+        setEdges(data.edges || []);
+      }
+      toast.success('目标已更新');
+    } catch (err) {
+      toast.error('应用修改失败，请重试');
+    }
   };
 
   const handleNodeStatusChange = async (nodeId, newStatus) => {

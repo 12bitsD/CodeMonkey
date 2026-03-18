@@ -1,29 +1,38 @@
 {
   "model_params": {
     "temperature": 0.3,
-    "max_tokens": 800
+    "max_tokens": 2000
   },
-  "system_prompt": "You are an AI learning assistant. Analyze how much a user's learning goal has changed and decide whether to modify the existing plan or create a new one.",
+  "system_prompt": "You are an AI learning assistant. Analyze how much a user's learning goal has changed and produce a structured diff using the EXACT node IDs from the existing_nodes list provided in the input.",
   "output_format": {
-    "interpretation": "Clear, specific interpretation of the new goal (1 sentence in Chinese)",
-    "isLargeChange": "true if the new goal is fundamentally different from the original (boolean)",
+    "interpretation": "Clear interpretation of the new goal (1 sentence in Chinese)",
+    "isLargeChange": "boolean — true if fundamentally different subject or 50%+ nodes need to change",
     "suggestion": "modify or create_new",
-    "reason": "Brief explanation of why (1 sentence in Chinese)"
+    "reason": "1 sentence in Chinese explaining the decision",
+    "changes": {
+      "keep": ["array of EXISTING node IDs to keep — use exact id values from existing_nodes"],
+      "remove": ["array of EXISTING node IDs to remove — use exact id values from existing_nodes"],
+      "add": ["array of NEW concept names (strings) not in existing_nodes"]
+    }
   },
   "rules": [
-    "isLargeChange = true if: new goal is a completely different subject, OR requires 50%+ different prerequisite nodes",
-    "isLargeChange = false if: new goal is a refinement, specialization, or narrowing of the original goal",
+    "isLargeChange = true if new goal is completely different subject OR requires 50%+ different nodes",
+    "isLargeChange = false if new goal is a refinement, specialization, or direction change of original",
     "suggestion = 'create_new' when isLargeChange = true",
-    "suggestion = 'modify' when isLargeChange = false"
+    "suggestion = 'modify' when isLargeChange = false",
+    "In changes.keep and changes.remove: use the EXACT node id values (e.g., n1, n2) from the existing_nodes list",
+    "In changes.add: list NEW concept names NOT already in existing_nodes",
+    "Every existing node id MUST appear in either keep or remove, never both, never missing",
+    "If no existing_nodes are provided, changes.keep and changes.remove should be empty"
   ],
   "examples": [
     {
-      "input": "original: 学Python, new: 学Python数据分析",
-      "output": {"interpretation": "用Python进行数据分析，掌握pandas和matplotlib", "isLargeChange": false, "suggestion": "modify", "reason": "新目标是原目标的具体化方向"}
+      "input": "original: 学Python, new: 学Python数据分析\nExisting nodes:\n  - id=n1, name=变量与类型, status=learned\n  - id=n2, name=函数, status=unlearned\n  - id=n3, name=文件读写, status=unlearned",
+      "output": {"interpretation": "用Python进行数据分析，掌握pandas和matplotlib", "isLargeChange": false, "suggestion": "modify", "reason": "新目标是原目标的具体化方向", "changes": {"keep": ["n1", "n2"], "remove": ["n3"], "add": ["NumPy基础", "pandas数据处理", "matplotlib可视化"]}}
     },
     {
-      "input": "original: 学Python, new: 学Java后端开发",
-      "output": {"interpretation": "使用Java开发后端服务，掌握Spring框架", "isLargeChange": true, "suggestion": "create_new", "reason": "编程语言完全不同，知识体系差异显著"}
+      "input": "original: 学Python, new: 学Java后端开发\nExisting nodes:\n  - id=n1, name=变量与类型, status=learned\n  - id=n2, name=函数, status=unlearned",
+      "output": {"interpretation": "使用Java开发后端服务，掌握Spring框架", "isLargeChange": true, "suggestion": "create_new", "reason": "编程语言完全不同，知识体系差异显著", "changes": {"keep": [], "remove": ["n1", "n2"], "add": []}}
     }
   ]
 }
