@@ -1,4 +1,23 @@
-"""AI Service - Real LLM Integration"""
+"""Orchestrates the four AI-powered learning workflows for ConceptTree.
+
+This module is the primary entry point for all LLM calls in the backend.
+Each of the four public methods maps 1-to-1 with a user-facing operation:
+parse a goal, generate a knowledge graph, clarify an updated goal, and
+recommend the next concept to study.
+
+Primary reader: backend developer adding a new AI endpoint or tracing a
+request through the AI pipeline.
+
+Key things to understand:
+  1. **Config-driven prompts** — no prompt text is hard-coded here; each
+     method loads its system/user prompt from a JSON file in
+     ``services/llm/configs/`` via :func:`~services.llm.configs.load_ai_config`.
+  2. **Error containment** — every exception is caught and converted to an
+     ``ApiError`` embedded in the typed ``AIResult`` object; callers never
+     receive a raw exception.
+  3. **Singleton client** — all methods share one :class:`~services.llm.client.UnifiedLLMClient`
+     instance (and its HTTP connection pool) via :func:`get_ai_service`.
+"""
 
 from typing import Optional
 
@@ -19,20 +38,47 @@ from services.llm.configs import load_ai_config, ConfigLoadError
 
 
 class AIService:
-    """AI service for learning goal parsing and graph generation"""
+    """Executes the four LLM-powered learning workflows for ConceptTree.
+
+    This class sits between the HTTP route layer and the LLM client layer.
+    It is responsible for:
+
+    - Loading the correct prompt configuration from ``services/llm/configs/``
+      by name (e.g. ``"parse_goal"`` → ``parse_goal.json``).
+    - Invoking :class:`~services.llm.client.UnifiedLLMClient` with the
+      assembled prompts and config-driven temperature / max-token settings.
+    - Validating the structured JSON response with the matching Pydantic model.
+    - Catching every exception and converting it to a typed ``AIResult``
+      (``success=False``, ``error=ApiError``), so HTTP route handlers always
+      receive a consistent response shape regardless of what went wrong.
+
+    Instantiate once via :func:`get_ai_service` (singleton).  Each method
+    call is stateless — no shared mutable state is modified at call time.
+    """
 
     def __init__(self):
+        """Wire the shared LLM client on first instantiation."""
         self.llm_client = get_llm_client()
 
     async def parse_goal(self, user_input: str) -> ParseGoalAIResult:
-        """
-        Parse user learning goal using LLM.
+        """Turn free-form user text into a structured learning profile.
+
+        Uses the ``parse_goal`` prompt config to extract:
+
+        - A clear, actionable learning objective (``interpretation``).
+        - Background strengths and weaknesses inferred from the user's text.
+        - An estimated node count and, if the goal is too broad, split
+          suggestions for breaking it into focused sub-goals.
 
         Args:
-            user_input: Raw user input describing what they want to learn
+            user_input: Raw text describing what the user wants to learn,
+                e.g. ``"I want to learn Python data analysis"``.
 
         Returns:
-            ParseGoalAIResult with structured data or error
+            :class:`~models.ParseGoalAIResult` with ``success=True`` and
+            ``data`` populated on success, or ``success=False`` with an
+            ``ApiError`` (code ``"AI_SERVICE_ERROR"``) on any LLM or config
+            failure.
         """
         try:
             # Load config and build prompt
@@ -72,16 +118,35 @@ class AIService:
         original_input: str,
         user_background: Optional[dict] = None,
     ) -> GenerateGraphAIResult:
-        """
-        Generate knowledge graph using LLM.
+        """Build a knowledge dependency graph tailored to the learning goal.
+
+        Uses the ``generate_graph`` prompt config to produce a directed graph
+        of prerequisite concepts (nodes) and their dependencies (edges), with
+        one designated target node representing the final learning objective.
+
+        After receiving the LLM response, this method validates structural
+        integrity before returning:
+
+        - The ``targetNodeId`` must reference an existing node.
+        - Every edge's ``from_node`` and ``to_node`` must reference existing
+          node IDs.
 
         Args:
-            interpretation: Parsed learning goal
-            original_input: Original user input
-            user_background: Optional user profile data
+            interpretation: The structured learning objective produced by
+                :meth:`parse_goal` — used as the primary prompt input.
+            original_input: The user's original free-form text, included in
+                the prompt for additional context.
+            user_background: Optional dict of user profile data (strengths,
+                weaknesses) serialised into the prompt so the LLM can adapt
+                the graph — for example, skipping nodes the user already knows.
+                Pass ``None`` if no profile is available; the prompt will
+                receive ``"无"`` (none) for this field.
 
         Returns:
-            GenerateGraphAIResult with graph data or error
+            :class:`~models.GenerateGraphAIResult` with ``success=True`` and
+            a validated :class:`~models.GenerateGraphResponse` on success, or
+            ``success=False`` with an ``ApiError`` describing the failure
+            (LLM error, invalid target node, or broken edge reference).
         """
         try:
             # Format background for prompt
@@ -157,6 +222,33 @@ class AIService:
         new_goal: str,
         existing_nodes: Optional[list] = None,
     ) -> ClarifyGoalAIResult:
+        """Detect how much a revised goal diverges from the current learning plan.
+
+        Uses the ``clarify_goal`` prompt config to classify the change as a
+        refinement (``suggestion="modify"``) or a fundamentally new subject
+        (``suggestion="create_new"``), and to produce a diff of node IDs:
+
+        - ``changes.keep`` — existing node IDs to preserve in the plan.
+        - ``changes.remove`` — existing node IDs to delete from the plan.
+        - ``changes.add`` — new concept names (strings) not yet in the plan.
+
+        The LLM references ``existing_nodes`` by their exact ``id`` values,
+        so this method formats them as ``id=n1, name=..., status=...`` lines
+        before passing them to the config assembler.
+
+        Args:
+            original_goal: The learning objective the user started with.
+            new_goal: The user's revised learning objective.
+            existing_nodes: Optional list of current plan nodes, each a dict
+                with keys ``id``, ``name``, and ``status``.  The LLM uses
+                these exact ``id`` values in ``changes.keep``/``changes.remove``.
+                Pass ``None`` or an empty list if no plan exists yet.
+
+        Returns:
+            :class:`~models.ClarifyGoalAIResult` with ``success=True`` and a
+            :class:`~models.ClarifyGoalResponse` on success, or
+            ``success=False`` with an ``ApiError`` on any failure.
+        """
         try:
             nodes_context = ""
             if existing_nodes:
@@ -205,6 +297,38 @@ class AIService:
         learning_history: dict,
         learning_goal: str,
     ) -> RecommendNextAIResult:
+        """Recommend the single best next concept for the user to study.
+
+        Serialises the full graph, user profile, learning history, and goal
+        into a JSON context string and passes it to the ``recommend_next``
+        prompt config.  The LLM returns the ``id`` of the recommended node
+        and a one-sentence Chinese reason.
+
+        The LLM enforces prerequisite ordering: it only recommends nodes
+        whose incoming prerequisite edges all point to ``learned`` or
+        ``skipped`` nodes, and it prefers nodes on the critical path to the
+        target.  If every node is already completed, ``recommended_node_id``
+        will be ``null``.
+
+        Args:
+            graph: The full knowledge graph dict (nodes + edges) for the
+                current learning plan.
+            user_profile: User profile dict (e.g. ``math_level``,
+                ``experience``) used to personalise the recommendation —
+                weaker profiles receive more foundational suggestions.
+            learning_history: Dict produced by
+                :func:`~services.learning_history.get_learning_history`,
+                containing at minimum ``learned_nodes`` and ``skipped_nodes``
+                lists of node IDs.
+            learning_goal: The user's learning objective string, provided
+                to the LLM as additional context.
+
+        Returns:
+            :class:`~models.RecommendNextAIResult` with ``success=True`` and
+            a :class:`~models.RecommendNextResponse` (containing
+            ``recommended_node_id`` and ``reason``) on success, or
+            ``success=False`` with an ``ApiError`` on any failure.
+        """
         try:
             context = json.dumps(
                 {
@@ -247,7 +371,15 @@ _ai_service: Optional[AIService] = None
 
 
 def get_ai_service() -> AIService:
-    """Get or create AI service singleton"""
+    """Return the shared :class:`AIService` instance, creating it on first call.
+
+    Uses the singleton pattern so the underlying LLM client (and its HTTP
+    connection pool) is initialised once and reused across all requests,
+    rather than re-created on every call.
+
+    Returns:
+        The application-wide :class:`AIService` singleton.
+    """
     global _ai_service
     if _ai_service is None:
         _ai_service = AIService()

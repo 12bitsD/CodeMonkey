@@ -1,3 +1,14 @@
+/**
+ * MasteryChecklist tests — verify that mastery items render correctly and that
+ * the component is invisible when given no items.
+ *
+ * Coverage:
+ *  - Empty/null guard: component renders nothing when items is empty or null
+ *  - Section presence: the mastery-section container appears with valid input
+ *  - Item text: each string in the items array is rendered in the document
+ *  - Item count: the rendered list contains exactly as many items as the input array
+ */
+
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MasteryChecklist } from './MasteryChecklist';

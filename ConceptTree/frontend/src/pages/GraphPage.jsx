@@ -1,3 +1,39 @@
+/**
+ * GraphPage — the primary learning workspace for a single plan.
+ *
+ * Renders an interactive concept graph where users track node progress,
+ * take notes, and receive AI-powered "next step" recommendations. This is
+ * the most complex page in the app; almost every feature lives here.
+ *
+ * ## Key architectural facts for new developers
+ * 1. **Pan/zoom canvas** — the SVG edges + DOM node pills share a single
+ *    CSS `transform: translate(x,y) scale(s)` layer. All interaction state
+ *    (scale, position, drag) is encapsulated in `useGraphInteraction`.
+ * 2. **Optimistic status updates** — when a user marks a node learned/skipped,
+ *    local state updates immediately (`setNodeStatus`) and the API is called
+ *    in the background. Failures are logged but NOT rolled back (UX tradeoff).
+ * 3. **AI recommendation** — fetched once after the graph loads. The floating
+ *    bottom pill shows the recommended next node; if the user selects a
+ *    different node the pill shrinks to a hint so it doesn't obscure the drawer.
+ *
+ * ## State map
+ * | Name                  | Purpose                                                        |
+ * |-----------------------|----------------------------------------------------------------|
+ * | loading               | True while the graph is fetching; hides AI and node selection |
+ * | isDirty / isSaving    | Tracks unsaved changes; triggers leave-confirm guard           |
+ * | savedAt               | Timestamp shown in the toolbar after a successful save         |
+ * | showLeaveConfirm      | Guards navigation-away with an unsaved-changes modal           |
+ * | aiRecommendation      | Raw response from `/ai/recommend`; drives `recommendedNode`    |
+ * | showGoalClarification | Goal-editing modal visibility                                  |
+ * | clarifyResult         | AI diff of old vs. new goal (keep/remove/add node lists)       |
+ * | showNoteEditor        | Note-creation modal visibility                                 |
+ * | noteContent           | Draft note text                                                |
+ *
+ * ## Context & hooks consumed
+ * - `useAppContext` — `plans`, `allNotes`, `actions` (CRUD for plans and notes)
+ * - `useGraphInteraction` — canvas pan/zoom/drag, node selection, status mutation
+ * - `useToast` — non-blocking success/error toasts
+ */
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
@@ -34,6 +70,8 @@ const GraphPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const containerRef = useRef(null);
+  // Tracks the node currently being dragged so its final position can be
+  // persisted to the API on mouse-up (stored in a ref to avoid re-renders).
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
   const { plans, allNotes, actions } = useAppContext();
   const toast = useToast();
@@ -68,6 +106,7 @@ const GraphPage = () => {
     zoomOut
   } = useGraphInteraction([], [], aiRecommendation);
 
+  // ─── Effect 1: Load the graph data for this plan ────────────────────────────
   useEffect(() => {
     const loadGraph = async () => {
       if (!planId) return;
@@ -88,6 +127,8 @@ const GraphPage = () => {
     loadGraph();
   }, [planId, setNodes, setEdges]);
 
+  // ─── Effect 2: Pre-select a node if `?node=` is in the URL ─────────────────
+  // Allows deep-linking directly to a node's detail drawer (e.g., from notes).
   useEffect(() => {
     const nodeId = searchParams.get('node');
     if (nodeId && !loading && nodes.length > 0) {
@@ -95,6 +136,9 @@ const GraphPage = () => {
     }
   }, [searchParams, loading, nodes.length]);
 
+  // ─── Effect 3: Fetch the AI "next step" recommendation ─────────────────────
+  // Runs after the graph loads. A failure is silently swallowed — the pill
+  // simply won't appear, which is acceptable degraded behavior.
   useEffect(() => {
     if (!planId || loading) return;
     aiApi.recommendNext(planId)
@@ -106,18 +150,23 @@ const GraphPage = () => {
       .catch(() => {});
   }, [planId, loading]);
 
+  // ─── Goal clarification modal state ─────────────────────────────────────────
   const [showGoalClarification, setShowGoalClarification] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState('');
   const [clarifyResult, setClarifyResult] = useState(null);
   const [isClarifying, setIsClarifying] = useState(false);
+  // ─── Note editor modal state ─────────────────────────────────────────────────
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const [noteContent, setNoteContent] = useState('');
 
+  // Notes scoped to the currently selected node (used in the detail drawer).
   const nodeNotes = allNotes.filter(n => n.planId === planId && n.nodeId === selectedNodeId);
   
+  // Progress counters shown in the top-left toolbar pill.
   const learnedCount = nodes.filter(n => n.status === 'learned').length;
   const totalCount = nodes.filter(n => n.status !== 'skipped').length;
 
+  /** Saves the draft note for the currently selected node, then resets the editor. */
   const handleSaveNote = async () => {
     if (noteContent.trim()) {
       await actions.addNote(planId, selectedNodeId, noteContent);
@@ -126,10 +175,16 @@ const GraphPage = () => {
     setShowNoteEditor(false);
   };
 
+  /** Copies the AI-generated study prompt to the clipboard. */
   const handleCopyPrompt = (prompt) => {
     navigator.clipboard.writeText(prompt);
   };
 
+  /**
+   * Asks the AI to analyze how the updated goal differs from the current one.
+   * The result classifies the change as small (update in-place) or large
+   * (redirect to create a new plan).
+   */
   const handleClarifyGoal = async () => {
     if (!newGoalInput.trim() || !plan) return;
     setIsClarifying(true);
@@ -143,6 +198,13 @@ const GraphPage = () => {
     }
   };
 
+  /**
+   * Applies the AI-analyzed goal change.
+   * - Large change: navigates to HomePage with the new goal pre-filled so the
+   *   user can generate a fresh plan.
+   * - Small change: patches the existing graph via `graphApi.applyChanges` and
+   *   reloads the updated nodes/edges.
+   */
   const handleApplyClarify = async () => {
     if (!clarifyResult) return;
 
@@ -175,6 +237,11 @@ const GraphPage = () => {
     }
   };
 
+  /**
+   * Marks a node with a new status.
+   * Update order: local state first (instant feedback) → AppContext →
+   * API (background, failures are logged but not retried).
+   */
   const handleNodeStatusChange = async (nodeId, newStatus) => {
     setNodeStatus(nodeId, newStatus);
     setIsDirty(true);
@@ -186,11 +253,13 @@ const GraphPage = () => {
     }
   };
 
+  /** Double-clicking a node toggles its status (learned ↔ unlearned ↔ skipped). */
   const handleDoubleClickNode = (e, nodeId, currentStatus) => {
     e.stopPropagation();
     handleNodeStatusChange(nodeId, toggleNodeStatus(currentStatus));
   };
 
+  /** Saves the plan title to the API and clears the dirty flag. */
   const handleSavePlan = async () => {
     if (!planId || isSaving) return;
     setIsSaving(true);
@@ -206,6 +275,11 @@ const GraphPage = () => {
     }
   };
 
+  /**
+   * Back-navigation guard.
+   * If `isDirty` is true (unsaved node-status changes), shows a confirm modal
+   * instead of navigating immediately.
+   */
   const handleNavigateBack = () => {
     if (isDirty) {
       setShowLeaveConfirm(true);
@@ -214,6 +288,11 @@ const GraphPage = () => {
     }
   };
 
+  /**
+   * Mouse-move handler for the canvas.
+   * Delegates pan logic to `useGraphInteraction`, then also updates the
+   * dragging-position ref so the final position can be saved on mouse-up.
+   */
   const handleContainerMouseMove = (e) => {
     handleMouseMove(e, containerRef);
     if (draggingNodeId && containerRef.current) {
@@ -226,6 +305,11 @@ const GraphPage = () => {
     }
   };
 
+  /**
+   * Mouse-up handler for the canvas.
+   * After the hook cleans up drag state, reads the final position from the ref
+   * and persists it to the API asynchronously.
+   */
   const handleContainerMouseUp = () => {
     const { id, x, y } = draggingPosRef.current;
     handleMouseUp();
@@ -237,6 +321,7 @@ const GraphPage = () => {
     }
   };
 
+  // 404-like state: plan not found in AppContext after loading completed.
   if (!plan && !loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#FAFAFA]">
@@ -250,7 +335,11 @@ const GraphPage = () => {
 
   return (
     <div className="h-screen flex flex-col bg-[#F4F4F5] relative overflow-hidden">
-      {/* Top Navigation */}
+      {/* ── Top Navigation ─────────────────────────────────────────────────────
+           Left pill: plan title + progress bar.
+           Right pill: save status, share, and goal-edit actions.
+           Both are `pointer-events-none` on the wrapper so clicks pass through
+           to the canvas; individual interactive elements restore pointer events. */}
       <div className="absolute top-0 left-0 right-0 z-20 px-6 py-4 pointer-events-none">
         <div className="max-w-screen-xl mx-auto flex justify-between items-start">
           <div className="bg-white/90 backdrop-blur-md px-5 py-3 rounded-2xl shadow-sm border border-zinc-200/50 pointer-events-auto flex items-center gap-4 transition-all hover:shadow-md">
@@ -303,7 +392,10 @@ const GraphPage = () => {
         </div>
       </div>
 
-      {/* Canvas */}
+      {/* ── Pan/Zoom Canvas ─────────────────────────────────────────────────────
+           The canvas is a DOM div that captures mouse events for pan and drag.
+           Inside, a single `transform` layer moves and scales both the SVG
+           edges and the DOM node pills together. */}
       <div 
         className="flex-1 cursor-grab active:cursor-grabbing" 
         ref={containerRef}
@@ -313,6 +405,7 @@ const GraphPage = () => {
         onMouseLeave={handleContainerMouseUp} 
         onWheel={handleWheel}
       >
+        {/* Dot-grid background that moves with the pan position for depth cue */}
         <div 
           className="absolute inset-0 opacity-[0.03]"
           style={{ 
@@ -322,11 +415,14 @@ const GraphPage = () => {
           }} 
         />
 
+        {/* Single transform layer — all nodes and edges move/scale together */}
         <div 
           className="absolute top-0 left-0 w-full h-full origin-top-left will-change-transform"
           style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})` }}
         >
-          {/* Edges */}
+          {/* ── Edges (SVG lines between nodes) ──────────────────────────────
+               Traversed edges (from-node is 'learned') are drawn in teal with a
+               mid-point dot; skipped edges use a dashed stroke. */}
           <svg className="absolute top-0 left-0 overflow-visible w-full h-full pointer-events-none">
             {edges.map((edge, i) => {
               const from = nodes.find(n => n.id === edge.from);
@@ -350,7 +446,13 @@ const GraphPage = () => {
             })}
           </svg>
 
-          {/* Nodes */}
+          {/* ── Node Pills ────────────────────────────────────────────────────
+               Each node is an absolutely positioned div (not SVG foreignObject)
+               for richer styling. At low zoom (scale < 0.6) they collapse to
+               tiny colored dots for readability. Status drives color:
+               - learned  → dark background + emerald checkmark
+               - target   → teal ring + target icon
+               - unlearned → white background + grey circle */}
           {nodes.map(node => {
             const isSelected = selectedNodeId === node.id;
             const isLearned = node.status === 'learned';
@@ -392,7 +494,11 @@ const GraphPage = () => {
         </div>
       </div>
 
-      {/* Floating Recommendation / Completion */}
+      {/* ── Floating Bottom Pill (AI Recommendation / Completion) ──────────────
+           Three possible states:
+           1. All nodes complete → celebratory banner.
+           2. Node selected + recommendation exists → tiny hint pill (low opacity).
+           3. No selection + recommendation exists → full recommendation card. */}
       {(() => {
         if (!loading && isAllComplete(nodes)) {
           return (
@@ -434,7 +540,8 @@ const GraphPage = () => {
         );
       })()}
 
-      {/* Zoom Controls */}
+      {/* ── Zoom Controls ──────────────────────────────────────────────────────
+           In/Out buttons + reset-to-fit button, all delegated to the hook. */}
       <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-10">
         <div className="bg-white/90 backdrop-blur rounded-2xl shadow-sm border border-zinc-200/50 p-1.5 flex flex-col gap-1">
           <button onClick={zoomIn} className="p-2.5 hover:bg-zinc-50 rounded-xl text-zinc-500 transition-colors">
@@ -450,7 +557,10 @@ const GraphPage = () => {
         </button>
       </div>
 
-      {/* Node Detail Drawer */}
+      {/* ── Node Detail Drawer ─────────────────────────────────────────────────
+           Slides in from the right when a node is selected.
+           Contains: status toggle, "why learn" section, core content list,
+           mastery checklist, AI study prompt (copyable), resource links, notes. */}
       <div className={`absolute top-4 right-4 bottom-4 w-[400px] bg-white/95 backdrop-blur-2xl shadow-[0_0_50px_rgba(0,0,0,0.05)] rounded-3xl border border-zinc-100 transform transition-transform duration-500 cubic-bezier(0.16, 1, 0.3, 1) flex flex-col z-30 ${selectedNodeId ? 'translate-x-0' : 'translate-x-[calc(100%+2rem)]'}`}>
         {selectedNode && (
           <>
@@ -465,7 +575,8 @@ const GraphPage = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10 custom-scrollbar">
-              {/* Actions */}
+              {/* Status toggle: "Learned" button toggles to/from unlearned;
+                   skip button toggles to/from skipped */}
               <div className="flex gap-3">
                 {selectedNode.status === 'learned' ? (
                    <Button 
@@ -497,6 +608,7 @@ const GraphPage = () => {
                 {selectedNode.why && (
                   <InfoSection icon={Target} title="为什么学">
                     {selectedNode.why}
+                    {/* Downstream nodes — clicking navigates to the next node's drawer */}
                     {edges.filter(e => e.from === selectedNode.id).map(e => {
                       const target = nodes.find(n => n.id === e.to);
                       if (!target) return null;
@@ -534,6 +646,7 @@ const GraphPage = () => {
                   <MasteryChecklist items={selectedNode.mastery} />
                 )}
 
+                {/* AI-generated study prompt — copyable via the hover button */}
                 {selectedNode.prompt && (
                   <InfoSection icon={Sparkles} title="学习 Prompt">
                     <div className="relative group">
@@ -564,7 +677,7 @@ const GraphPage = () => {
                   搜索更多资源 ↗
                 </button>
 
-                {/* Notes */}
+                {/* Notes for this node, scoped by planId + nodeId */}
                 <section>
                   <div className="flex justify-between items-center mb-4">
                     <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -611,7 +724,10 @@ const GraphPage = () => {
         )}
       </div>
 
-      {/* Goal Clarification Modal */}
+      {/* ── Goal Clarification Modal ───────────────────────────────────────────
+           Step 1: User types a new goal → "Analyze" calls the AI.
+           Step 2: AI response (`clarifyResult`) is shown — either a small-change
+           summary or a large-change warning. The confirm button label adapts. */}
       <Modal
         isOpen={showGoalClarification}
         onClose={() => setShowGoalClarification(false)}
@@ -656,7 +772,8 @@ const GraphPage = () => {
         </div>
       </Modal>
 
-      {/* Note Editor Modal */}
+      {/* ── Note Editor Modal ──────────────────────────────────────────────────
+           Plain textarea that supports Markdown (rendering is out of scope here). */}
       <Modal 
         isOpen={showNoteEditor} 
         onClose={() => setShowNoteEditor(false)} 
@@ -672,6 +789,9 @@ const GraphPage = () => {
         />
       </Modal>
 
+      {/* ── Leave Confirmation Modal ───────────────────────────────────────────
+           Triggered by handleNavigateBack when isDirty is true.
+           Three choices: discard + leave, stay, or save + leave. */}
       <Modal
         isOpen={showLeaveConfirm}
         onClose={() => setShowLeaveConfirm(false)}

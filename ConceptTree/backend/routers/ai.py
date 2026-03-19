@@ -1,3 +1,25 @@
+"""
+AI Router — exposes the AI-powered learning flow as REST endpoints.
+
+This router is the bridge between the frontend's multi-step onboarding wizard
+and the backend AI service (``ai_service``). All four endpoints are
+authentication-required and delegate the heavy lifting to ``AIService``; this
+router handles HTTP concerns (request validation, ownership checks, error
+mapping) only.
+
+The typical client flow in order:
+  1. ``POST /ai/parse-goal``     — interpret a free-text goal into structured data
+  2. ``POST /ai/generate-graph`` — turn the interpretation into a knowledge graph
+  3. ``POST /ai/clarify-goal``   — (optional) refine the graph when the user edits
+                                   the goal after seeing an existing plan
+  4. ``POST /ai/recommend-next`` — (ongoing) get the AI's suggested next node to
+                                   study based on current progress and user profile
+
+All successful responses use the shape ``{"success": true, "data": {...}}``.
+A failure inside the AI service is surfaced as HTTP 500 with
+``{"success": false, "error": {...}}``.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from typing import Optional
@@ -14,6 +36,12 @@ router = APIRouter(prefix="/api/ai", tags=["AI"])
 
 
 class ParseGoalRequest(BaseModel):
+    """Request body for parsing a free-text learning goal.
+
+    Attributes:
+        input: The raw goal text entered by the user. Must be 5–2000 characters.
+    """
+
     input: str
 
     @field_validator("input")
@@ -27,17 +55,30 @@ class ParseGoalRequest(BaseModel):
 
 
 class GenerateGraphRequest(BaseModel):
+    """Request body for generating a knowledge graph from a parsed goal.
+
+    Attributes:
+        input: The original free-text goal (context for the AI).
+        interpretation: The structured interpretation returned by ``/parse-goal``.
+        userBackground: Optional user background data (occupation, skill levels)
+            used to personalise graph depth and difficulty.
+    """
+
     input: str
     interpretation: str
     userBackground: Optional[UserBackgroundInput] = None
 
 
 class ParseGoalResponseWrapper(BaseModel):
+    """Envelope returned by ``/parse-goal``."""
+
     success: bool
     data: dict
 
 
 class GenerateGraphResponseWrapper(BaseModel):
+    """Envelope returned by ``/generate-graph``."""
+
     success: bool
     data: dict
 
@@ -52,7 +93,26 @@ async def parse_goal(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    """AI解析学习目标"""
+    """Interpret a free-text learning goal and return a structured representation.
+
+    This is **step 1** of the onboarding flow. The AI reads the user's raw
+    input (e.g. "I want to learn machine learning") and returns a structured
+    object describing the target concept, inferred scope, and any ambiguities
+    the user should confirm before graph generation.
+
+    Args:
+        request: Contains ``input`` — the user's free-text goal (5–2000 chars).
+        current_user_id: Injected from the auth token (user must be authenticated).
+        db: Injected database connection (reserved for future per-user context).
+
+    Returns:
+        ``ParseGoalResponseWrapper`` with the AI's structured interpretation in
+        ``data``.
+
+    Raises:
+        HTTPException 500: AI service returned an error (propagated from
+            ``AIService.parse_goal``).
+    """
     ai_service = get_ai_service()
     result = await ai_service.parse_goal(request.input)
 
@@ -78,7 +138,27 @@ async def generate_graph(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    """AI生成知识图谱"""
+    """Generate a knowledge graph (nodes + edges) from a confirmed goal interpretation.
+
+    This is **step 2** of the onboarding flow, called once the user confirms
+    the parsed goal. The AI uses the structured ``interpretation`` plus the
+    optional ``userBackground`` to produce a dependency graph of learning
+    concepts: each node is a topic to master, and each edge represents
+    a prerequisite relationship.
+
+    Args:
+        request: Contains ``input`` (original text), ``interpretation``
+            (from ``/parse-goal``), and optional ``userBackground``.
+        current_user_id: Injected from the auth token.
+        db: Injected database connection (reserved for future per-user context).
+
+    Returns:
+        ``GenerateGraphResponseWrapper`` with the full graph structure (nodes,
+        edges, target node) in ``data``.
+
+    Raises:
+        HTTPException 500: AI service returned an error.
+    """
     ai_service = get_ai_service()
     user_bg = request.userBackground.model_dump() if request.userBackground else None
     result = await ai_service.generate_graph(
@@ -100,6 +180,15 @@ async def generate_graph(
 
 
 class ClarifyGoalRequest(BaseModel):
+    """Request body for re-analysing a goal after the user edits it.
+
+    Attributes:
+        originalGoal: The goal text that was used to build the existing plan.
+        newGoal: The user's revised goal text (5–2000 characters required).
+        planId: Optional ID of the existing plan whose nodes should be used as
+            context so the AI can suggest which to keep, add, or remove.
+    """
+
     originalGoal: str
     newGoal: str
     planId: Optional[str] = None
@@ -115,6 +204,8 @@ class ClarifyGoalRequest(BaseModel):
 
 
 class ClarifyGoalResponseWrapper(BaseModel):
+    """Envelope returned by ``/clarify-goal``."""
+
     success: bool
     data: dict
 
@@ -129,6 +220,28 @@ async def clarify_goal(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Compare a revised goal against an existing plan and return suggested changes.
+
+    This is **step 3** (optional) — called when a user refines their goal after
+    a plan already exists. If ``planId`` is provided and belongs to the current
+    user, the existing nodes are fetched and sent to the AI so it can suggest
+    which nodes to keep, add, or remove. Without ``planId``, the AI compares
+    goals without any node context.
+
+    Args:
+        request: Contains ``originalGoal``, ``newGoal`` (5–2000 chars), and an
+            optional ``planId``.
+        current_user_id: Injected from the auth token; used to verify plan
+            ownership before exposing node data.
+        db: Injected database connection.
+
+    Returns:
+        ``ClarifyGoalResponseWrapper`` with the AI's diff-style suggestions
+        (``keep``, ``add``, ``remove`` node lists, new title) in ``data``.
+
+    Raises:
+        HTTPException 500: AI service returned an error.
+    """
     existing_nodes = []
     if request.planId:
         plan = db.execute(
@@ -161,10 +274,18 @@ async def clarify_goal(
 
 
 class RecommendNextRequest(BaseModel):
+    """Request body for getting the AI's next-study recommendation.
+
+    Attributes:
+        planId: The active plan for which to generate a recommendation.
+    """
+
     planId: str
 
 
 class RecommendNextResponseWrapper(BaseModel):
+    """Envelope returned by ``/recommend-next``."""
+
     success: bool
     data: dict
 
@@ -183,6 +304,31 @@ async def recommend_next(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Recommend the best next node to study based on current plan state and user profile.
+
+    This endpoint assembles three context sources before calling the AI:
+      1. **Graph snapshot** — all nodes (id, name, status, isTarget) and edges
+         for the plan, so the AI understands prerequisite structure and progress.
+      2. **User profile** — occupation, math level, programming level, and
+         ability tags from ``user_profiles``; defaults to empty strings / "入门"
+         (beginner) if no profile exists.
+      3. **Learning history** — recent activity fetched via
+         ``get_learning_history`` to help the AI avoid repeating recent nodes.
+
+    Args:
+        request: Contains ``planId`` — the plan to generate a recommendation for.
+        current_user_id: Injected from the auth token; must match the plan owner.
+        db: Injected database connection.
+
+    Returns:
+        ``RecommendNextResponseWrapper`` with the AI's recommendation in ``data``
+        (typically a node ID, name, and reasoning).
+
+    Raises:
+        HTTPException 403: Authenticated user does not own this plan.
+        HTTPException 404: Plan not found (``PLAN_NOT_FOUND``).
+        HTTPException 500: AI service returned an error.
+    """
     plan = db.execute(
         "SELECT id, user_id, title, target_node_id FROM plans WHERE id = ?",
         (request.planId,),

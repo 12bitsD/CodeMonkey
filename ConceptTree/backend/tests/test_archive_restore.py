@@ -1,4 +1,23 @@
+"""Archive and restore API validates the basic plan lifecycle state transitions.
+
+Plans can be archived (paused) and later restored (resumed). This module
+covers the fundamental happy-path and auth-protection scenarios:
+1. Both archive and restore endpoints require authentication.
+2. A plan can be successfully archived and then successfully restored.
+
+For edge-case scenarios (double-archive, cross-user access, skipped-node
+counting), see test_archive_restore_extended.py.
+
+Primary reader: a developer checking that the archive/restore cycle works
+end-to-end, or verifying that auth guards are in place on both endpoints.
+"""
+
+
 def test_archive_restore_requires_auth(client):
+    """Both archive and restore endpoints reject unauthenticated requests.
+
+    Expected: both calls return HTTP 401.
+    """
     resp = client.put("/api/plans/p_any/archive")
     assert resp.status_code == 401
 
@@ -7,6 +26,13 @@ def test_archive_restore_requires_auth(client):
 
 
 def test_archive_restore_flow(client, auth_headers_a):
+    """A plan can be archived and subsequently restored without errors.
+
+    Creates a plan, archives it (PUT /archive), then restores it (PUT /restore).
+    Both operations must succeed.
+    Expected: archive returns HTTP 200 with success=True; restore returns
+    HTTP 200 with success=True.
+    """
     plan_data = {
         "title": "可归档计划",
         "originalInput": "input",

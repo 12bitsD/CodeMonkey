@@ -1,3 +1,14 @@
+/**
+ * ResourceList tests — verify that the component renders resources correctly and
+ * stays invisible when given empty or absent data.
+ *
+ * Coverage:
+ *  - Empty/null guard: component renders nothing (no DOM node) when input is empty or null
+ *  - Data rendering: resource name and optional reason text appear in the document
+ *  - Link attributes: href, target="_blank", and rel="noopener noreferrer" are all set correctly
+ *  - Multiple items: every resource in the array produces exactly one anchor element
+ */
+
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ResourceList } from './ResourceList';
@@ -24,6 +35,7 @@ describe('ResourceList', () => {
     const link = screen.getByRole('link', { name: /教程/ });
     expect(link).toHaveAttribute('href', 'https://test.com');
     expect(link).toHaveAttribute('target', '_blank');
+    // rel="noopener noreferrer" prevents the opened page from accessing window.opener
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 

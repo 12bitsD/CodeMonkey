@@ -1,4 +1,15 @@
 {
+  "_comment": "Prompt config for the 'recommend_next' AI operation.",
+  "_meta": {
+    "purpose": "Pick the single best next concept node for the user to study, respecting prerequisite ordering (all incoming edges must be 'learned' or 'skipped') and preferring nodes on the shortest critical path to the target node.",
+    "provider": "OpenAI-compatible (e.g. Kimi 2.5, OpenAI GPT-4o)",
+    "key_params": {
+      "temperature": "0.5 — balanced: some personalisation without wild variation",
+      "max_tokens": "1024 — intentionally small; output is just one node ID and one sentence"
+    },
+    "input_format": "JSON string with keys: graph (nodes+edges), user_profile, learning_history (learned_nodes, skipped_nodes), learning_goal",
+    "consumed_by": "services/ai_service.py AIService.recommend_next()"
+  },
   "model_params": {
     "temperature": 0.5,
     "max_tokens": 1024

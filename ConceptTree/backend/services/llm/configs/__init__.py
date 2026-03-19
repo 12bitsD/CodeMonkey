@@ -1,25 +1,83 @@
+"""Loads prompt configs from JSON files and assembles ready-to-use LLM prompts.
+
+Each AI operation in ConceptTree has a corresponding JSON config file in this
+directory (e.g. ``parse_goal.json``).  This module reads the config and builds
+the final ``system_prompt`` and ``user_prompt`` strings that are sent to the
+LLM, so no prompt text is hard-coded in the service layer.
+
+Primary reader: backend developer adding a new AI operation or debugging why
+a prompt does not look as expected.
+
+Key things to understand:
+  1. **Config discovery** — config files live in the same directory as this
+     ``__init__.py``; they are resolved at call time, not at import time.
+  2. **Placeholder rendering** — ``{{key}}`` tokens in ``system_prompt`` are
+     replaced by matching ``kwargs`` before the prompt is used.
+  3. **User prompt assembly** — the user prompt is built in five ordered
+     sections: ``Input``, dynamic kwargs (not consumed by system_prompt),
+     ``Output Format``, ``Rules``, and ``Examples``.
+"""
+
 import json
 from pathlib import Path
 from typing import Dict, Tuple, Any
 
 
 class ConfigLoadError(Exception):
+    """Raised when a prompt config file cannot be loaded or parsed.
+
+    Thrown by :func:`load_ai_config` in two cases:
+
+    - The requested config file does not exist on disk.
+    - The file exists but contains malformed JSON.
+    """
+
     pass
 
 
 def load_ai_config(
     config_name: str, user_input: str, **kwargs
 ) -> Tuple[Dict[str, Any], str, str]:
-    """
-    Load AI configuration from JSON and assemble the final prompts.
+    """Load a named prompt config and return ready-to-use prompts.
+
+    Reads ``<config_name>.json`` from this directory, renders any
+    ``{{key}}`` placeholders in the ``system_prompt`` using ``kwargs``,
+    and assembles the ``user_prompt`` from five ordered sections.
+
+    **User prompt structure** (sections are appended in this order):
+
+    1. ``## Input`` — always includes ``user_input`` and any ``kwargs`` that
+       were *not* consumed as ``{{key}}`` placeholders in ``system_prompt``.
+    2. ``## Output Format`` — if the config has an ``output_format`` key,
+       the expected JSON schema is included verbatim so the LLM knows
+       exactly what fields to return.
+    3. ``## Rules`` — if the config has a ``rules`` list, each rule is
+       appended as a bullet point.
+    4. ``## Examples`` — if the config has an ``examples`` list, each
+       example's ``input`` / ``output`` is appended.
+    5. A final instruction: ``"Respond ONLY with the JSON object…"``.
 
     Args:
-        config_name: Name of the config file (without .json extension)
-        user_input: The primary user input / learning goal
-        **kwargs: Additional dynamic variables (e.g., original_input, background)
+        config_name: Name of the config file without the ``.json`` extension,
+            e.g. ``"parse_goal"`` → reads ``parse_goal.json``.
+        user_input: The primary user input or learning goal.  Always appears
+            under ``## Input`` in the assembled user prompt.
+        **kwargs: Additional dynamic variables.  Each key matching a
+            ``{{key}}`` placeholder in ``system_prompt`` is substituted
+            there.  Any remaining kwargs (not consumed by system_prompt) are
+            appended as extra lines under ``## Input``.
 
     Returns:
-        (model_params, system_prompt, user_prompt)
+        A 3-tuple ``(model_params, system_prompt, user_prompt)`` where:
+
+        - ``model_params`` is the ``model_params`` dict from the JSON config
+          (contains keys like ``temperature`` and ``max_tokens``).
+        - ``system_prompt`` is the rendered system message string.
+        - ``user_prompt`` is the fully assembled user message string.
+
+    Raises:
+        ConfigLoadError: The config file does not exist, or its JSON is
+            malformed.
     """
     config_dir = Path(__file__).parent
     config_file = config_dir / f"{config_name}.json"

@@ -1,3 +1,37 @@
+"""
+Notes router — full CRUD for user-authored notes tied to learning plan nodes.
+
+Each note is anchored to a specific node (a topic/concept) within a learning plan.
+This router exposes four endpoints under the ``/api`` prefix:
+
+- ``GET    /notes``            — list the current user's notes, with optional filters
+- ``POST   /notes``            — create a new note on a plan node
+- ``PUT    /notes/{note_id}``  — update the content of an existing note
+- ``DELETE /notes/{note_id}``  — permanently delete a note
+
+**Ownership enforcement:** Every write endpoint (POST, PUT, DELETE) verifies
+that the target resource belongs to the authenticated user and returns
+``403 Forbidden`` if it does not.
+
+**Note shape** (as returned in ``data``):
+
+.. code-block:: json
+
+    {
+      "id":        "note_<12-char hex>",
+      "planId":    "<plan_id>",
+      "planTitle": "<plan title>",
+      "nodeId":    "<node_id>",
+      "nodeName":  "<node name>",
+      "content":   "User-written text",
+      "date":      "12/28",
+      "createdAt": "2024-12-28T10:30:00Z"
+    }
+
+``date`` is a short ``M/D`` display string derived from ``createdAt`` and is
+provided as a convenience for UI date labels.
+"""
+
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
 from datetime import datetime
@@ -10,7 +44,19 @@ router = APIRouter(prefix="/api", tags=["notes"])
 
 
 def format_date(dt_value) -> str:
-    """Format datetime string to friendly date like '12/28'"""
+    """Convert a datetime value to a short ``M/D`` display string (e.g. ``'12/28'``).
+
+    Handles three input types: a ``datetime`` object, an ISO 8601 string
+    (with or without a trailing ``Z``), or any other string (falls back to
+    returning the first 10 characters of the raw value).
+
+    Args:
+        dt_value: A ``datetime`` object, an ISO 8601 string, or ``None``.
+
+    Returns:
+        A ``"month/day"`` string such as ``"12/28"``, the first 10 characters
+        of the raw string if parsing fails, or ``""`` if the input is falsy.
+    """
     if not dt_value:
         return ""
     try:
@@ -31,6 +77,34 @@ def get_notes(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Return all notes belonging to the authenticated user, ordered newest first.
+
+    Joins ``notes`` with ``plans`` and ``nodes`` to include human-readable
+    plan titles and node names alongside each note. Both ``planId`` and
+    ``search`` filters are applied when provided; they can be combined.
+
+    Args:
+        planId: (optional query param) Restrict results to notes inside a
+            specific learning plan.
+        search: (optional query param) Case-insensitive substring filter
+            applied to note ``content`` (SQL ``LIKE '%search%'``).
+        current_user_id: Injected from the ``Authorization`` header.
+        db: Injected database connection.
+
+    Returns:
+        200 JSON::
+
+            {
+              "success": true,
+              "data": {
+                "notes": [ { ...note shape... }, ... ],
+                "total": 12
+              }
+            }
+
+    Raises:
+        401: Missing or invalid ``Authorization`` header.
+    """
     query = """
         SELECT 
             n.id, n.plan_id, n.node_id, n.content, n.created_at,
@@ -79,6 +153,42 @@ def create_note(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Create a new note attached to a specific node within a learning plan.
+
+    Verifies that both the plan and the node exist and that the plan belongs
+    to the authenticated user before inserting. Note IDs are generated as
+    ``note_<12-char UUID hex>`` (e.g. ``note_3f8a2c1b09d4``).
+
+    Args:
+        body: JSON request body with fields:
+            - ``planId``  (str, required) — ID of the learning plan.
+            - ``nodeId``  (str, required) — ID of the node within that plan.
+            - ``content`` (str, required) — Note text; must be non-empty after stripping.
+        current_user_id: Injected from the ``Authorization`` header.
+        db: Injected database connection.
+
+    Returns:
+        200 JSON::
+
+            {
+              "success": true,
+              "data": {
+                "id":        "note_3f8a2c1b09d4",
+                "planId":    "<plan_id>",
+                "nodeId":    "<node_id>",
+                "content":   "My note text",
+                "date":      "12/28",
+                "createdAt": "2024-12-28T10:30:00.000000Z"
+              }
+            }
+
+    Raises:
+        400 CONTENT_REQUIRED:  ``content`` is missing or blank.
+        401:                   Missing or invalid ``Authorization`` header.
+        403 FORBIDDEN:         The specified plan belongs to a different user.
+        404 PLAN_NOT_FOUND:    No plan exists with the given ``planId``.
+        404 NODE_NOT_FOUND:    No node with ``nodeId`` exists inside ``planId``.
+    """
     planId = body.get("planId")
     nodeId = body.get("nodeId")
     content = body.get("content")
@@ -163,6 +273,38 @@ def update_note(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Replace the content of an existing note and return the updated record.
+
+    Only the ``content`` field can be updated. Ownership is verified before
+    writing: a user cannot modify another user's notes.
+
+    Args:
+        note_id: Path parameter — the ID of the note to update
+            (format: ``note_<12-char hex>``).
+        body: JSON request body with fields:
+            - ``content`` (str, required) — Replacement text; must be non-empty
+              after stripping whitespace.
+        current_user_id: Injected from the ``Authorization`` header.
+        db: Injected database connection.
+
+    Returns:
+        200 JSON::
+
+            {
+              "success": true,
+              "data": {
+                "id":        "<note_id>",
+                "content":   "Updated text",
+                "updatedAt": "2024-12-28T11:00:00.000000Z"
+              }
+            }
+
+    Raises:
+        400 CONTENT_REQUIRED:  ``content`` is missing or blank.
+        401:                   Missing or invalid ``Authorization`` header.
+        403 FORBIDDEN:         This note belongs to a different user.
+        404 NOTE_NOT_FOUND:    No note exists with the given ``note_id``.
+    """
     content = body.get("content")
 
     if not content or not content.strip():
@@ -217,6 +359,27 @@ def delete_note(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Permanently delete a note after verifying the caller owns it.
+
+    This operation is irreversible. Ownership is verified before deletion:
+    a user cannot delete another user's notes.
+
+    Args:
+        note_id: Path parameter — the ID of the note to delete
+            (format: ``note_<12-char hex>``).
+        current_user_id: Injected from the ``Authorization`` header.
+        db: Injected database connection.
+
+    Returns:
+        200 JSON::
+
+            {"success": true, "data": {"message": "笔记已删除"}}
+
+    Raises:
+        401:                 Missing or invalid ``Authorization`` header.
+        403 FORBIDDEN:       This note belongs to a different user.
+        404 NOTE_NOT_FOUND:  No note exists with the given ``note_id``.
+    """
     note = db.execute(
         "SELECT id, user_id FROM notes WHERE id = ?",
         (note_id,),

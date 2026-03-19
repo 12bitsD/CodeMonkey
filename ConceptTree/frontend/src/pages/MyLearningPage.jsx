@@ -1,3 +1,27 @@
+/**
+ * MyLearningPage — the user's personal learning hub, organized into four tabs.
+ *
+ * Tab overview:
+ * - **Profile** — editable user background (occupation, education, skill levels,
+ *   ability tags, mastered knowledge)
+ * - **Archived** — completed or paused plans the user can restore to active
+ * - **Notes** — all notes across every plan, filterable and searchable
+ * - **Stats** — learning overview cards + knowledge-domain distribution chart
+ *
+ * ## What a new developer needs to know
+ * 1. **Stats are lazy-loaded** — `statsApi` is only called when the user switches
+ *    to the Stats tab, preventing unnecessary API calls on page load.
+ * 2. **IME-aware text inputs** — occupation and education fields use
+ *    `onCompositionStart/End` to defer profile updates while the user is composing
+ *    CJK characters (prevents mid-composition partial saves).
+ * 3. **Notes filtering + grouping uses `useMemo`** — `filteredNotes` and
+ *    `notesByPlan` are derived state, recomputed only when `allNotes`,
+ *    `selectedPlanFilter`, or `searchQuery` change.
+ *
+ * ## Context consumed
+ * - `useAppContext` — `userProfile`, `plans`, `allNotes`, `actions`
+ * - `statsApi` — lazy overview and distribution data for the Stats tab
+ */
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -24,13 +48,17 @@ const MyLearningPage = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlanFilter, setSelectedPlanFilter] = useState('all');
+  // isComposing prevents profile updates from firing mid-IME composition (CJK input).
   const [isComposing, setIsComposing] = useState(false);
+  // Local copies of text inputs prevent AppContext from re-rendering on every keystroke.
   const [localOccupation, setLocalOccupation] = useState(userProfile?.occupation || '');
   const [localEducation, setLocalEducation] = useState(userProfile?.education || '');
 
+  // Stats tab data — populated lazily when the Stats tab is first opened.
   const [statsData, setStatsData] = useState(null);
   const [distributionData, setDistributionData] = useState([]);
 
+  // Lazy-load stats only when the Stats tab is active.
   useEffect(() => {
     if (activeTab === 'stats') {
       Promise.all([
@@ -70,6 +98,11 @@ const MyLearningPage = () => {
     actions.setUserProfile({ ...userProfile, abilities: newAbilities });
   };
 
+  /**
+   * Updates occupation while typing, but only when NOT composing CJK characters.
+   * The `onBlur` handler (handleOccupationBlur) guarantees a final sync even if
+   * the user commits a composition without triggering a non-composing onChange.
+   */
   const handleOccupationChange = (e) => {
     setLocalOccupation(e.target.value);
     if (!isComposing) {
@@ -81,6 +114,7 @@ const MyLearningPage = () => {
     actions.setUserProfile({ ...userProfile, occupation: localOccupation });
   };
 
+  /** Same IME-aware pattern as occupation — see handleOccupationChange. */
   const handleEducationChange = (e) => {
     setLocalEducation(e.target.value);
     if (!isComposing) {
@@ -95,6 +129,10 @@ const MyLearningPage = () => {
   const archivedPlans = plans.filter(p => p.status === 'archived');
   const activePlans = plans.filter(p => p.status === 'active');
   
+  /**
+   * Derived state: notes matching both the plan filter and the search query.
+   * Recomputed only when allNotes, selectedPlanFilter, or searchQuery change.
+   */
   const filteredNotes = useMemo(() => {
     return allNotes.filter(n => {
       const matchesPlan = selectedPlanFilter === 'all' || n.planId === selectedPlanFilter;
@@ -103,6 +141,10 @@ const MyLearningPage = () => {
     });
   }, [allNotes, selectedPlanFilter, searchQuery]);
 
+  /**
+   * Derived state: filteredNotes grouped by planId for section headers in the UI.
+   * Shape: { [planId]: { title: string, notes: Note[] } }
+   */
   const notesByPlan = useMemo(() => {
     return filteredNotes.reduce((acc, note) => {
       const key = note.planId;
@@ -112,6 +154,7 @@ const MyLearningPage = () => {
     }, {});
   }, [filteredNotes]);
 
+  // Fallback counts used for the Stats tab when the API hasn't returned yet.
   const completedPlansCount = archivedPlans.filter(p => p.progress === p.total && p.total > 0).length;
   const masteredKnowledgeCount = userProfile?.masteredKnowledge?.length || 0;
 
@@ -125,7 +168,7 @@ const MyLearningPage = () => {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-12">
-        {/* Sidebar Navigation */}
+        {/* Sidebar Navigation — tab buttons stacked vertically on desktop */}
         <div className="w-full lg:w-64 flex-shrink-0 space-y-1">
           {tabs.map(tab => (
             <button 
@@ -143,10 +186,12 @@ const MyLearningPage = () => {
           ))}
         </div>
 
-        {/* Content Area */}
+        {/* Content Area — tab-conditional rendering with fade-in animation */}
         <div className="flex-1 bg-white rounded-[2rem] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-zinc-100 p-10 min-h-[600px]">
           
-          {/* Profile Tab */}
+          {/* ── Profile Tab ────────────────────────────────────────────────────
+               Basic info fields (occupation, education, skill levels) and
+               ability tags. Mastered knowledge is read-only (set by the graph). */}
           {activeTab === 'profile' && (
             <div className="max-w-2xl space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <section>
@@ -222,6 +267,7 @@ const MyLearningPage = () => {
                 </div>
               </section>
 
+              {/* Mastered knowledge tags — read-only, populated by GraphPage when nodes are marked learned */}
               {(userProfile?.masteredKnowledge?.length > 0) && (
                 <section>
                   <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">已掌握知识</h2>
@@ -237,7 +283,8 @@ const MyLearningPage = () => {
             </div>
           )}
 
-          {/* Archived Tab */}
+          {/* ── Archived Tab ────────────────────────────────────────────────────
+               Lists archived plans with a "Restore" button to move them back to active. */}
           {activeTab === 'archived' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">归档计划</h2>
@@ -267,7 +314,10 @@ const MyLearningPage = () => {
             </div>
           )}
 
-          {/* Notes Tab */}
+          {/* ── Notes Tab ───────────────────────────────────────────────────────
+               Notes from all plans, filterable by plan and full-text searchable.
+               Grouped by plan with section headers. Clicking a note navigates to
+               the corresponding node in GraphPage. */}
           {activeTab === 'notes' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-wrap justify-between items-center gap-3 pb-6 border-b border-zinc-50">
@@ -316,6 +366,7 @@ const MyLearningPage = () => {
                             >
                               <X size={13} />
                             </button>
+                            {/* Clicking the note body navigates to its node in GraphPage */}
                             <div
                               className="cursor-pointer"
                               onClick={() => navigate(`/graph/${note.planId}${note.nodeId ? `?node=${note.nodeId}` : ''}`)}
@@ -346,7 +397,10 @@ const MyLearningPage = () => {
             </div>
           )}
 
-          {/* Stats Tab */}
+          {/* ── Stats Tab ────────────────────────────────────────────────────────
+               Shows an overview grid of 4 key metrics and a domain distribution chart.
+               API data (statsData / distributionData) takes priority over local
+               fallback counts derived from AppContext. */}
           {activeTab === 'stats' && (
             <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <section>

@@ -1,4 +1,15 @@
 {
+  "_comment": "Prompt config for the 'parse_goal' AI operation.",
+  "_meta": {
+    "purpose": "Extract a structured learning profile from free-form user input: a clear objective, background strengths/weaknesses, an estimated node count, and optional split suggestions when the goal is too broad (>12 nodes).",
+    "provider": "OpenAI-compatible (e.g. Kimi 2.5, OpenAI GPT-4o)",
+    "key_params": {
+      "temperature": "0.7 — moderate creativity for goal interpretation",
+      "max_tokens": "1500 — sufficient for the profile JSON with split suggestions"
+    },
+    "input_format": "Raw free-form user text describing what they want to learn",
+    "consumed_by": "services/ai_service.py AIService.parse_goal()"
+  },
   "model_params": {
     "temperature": 0.7,
     "max_tokens": 1500

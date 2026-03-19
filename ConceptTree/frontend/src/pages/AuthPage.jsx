@@ -1,3 +1,29 @@
+/**
+ * AuthPage — the single entry point for user authentication.
+ *
+ * This page handles both login and registration in one view. After a
+ * successful auth action, users are sent to the URL they originally wanted
+ * to reach (read from the `?redirect=` search param, defaulting to `/`).
+ *
+ * ## What a new developer needs to know
+ * 1. **Single-form, dual mode** — `mode` ('login' | 'register') controls which
+ *    API call fires and what labels/copy are shown. Toggling mode clears errors.
+ * 2. **Redirect flow** — the router sets `?redirect=/graph/xyz` when it bounces
+ *    an unauthenticated user; after auth, we honor it so the user lands where
+ *    they intended.
+ * 3. **Auth context** — `login` and `register` come from `useAuth`. Both return
+ *    `{ success: boolean, error?: string }` so we can surface API errors without
+ *    throwing.
+ *
+ * ## State
+ * | Name        | Type    | Purpose                                         |
+ * |-------------|---------|-------------------------------------------------|
+ * | mode        | string  | 'login' or 'register' — controls form behavior |
+ * | email       | string  | Controlled input value                          |
+ * | password    | string  | Controlled input value                          |
+ * | error       | string  | Inline error message (empty = no error shown)  |
+ * | isLoading   | boolean | Disables form + shows in-progress button text  |
+ */
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -5,6 +31,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // After successful auth, send the user where they were originally headed.
   const redirectTo = searchParams.get('redirect') || '/';
   
   const [mode, setMode] = useState('login'); // 'login' | 'register'
@@ -15,6 +42,11 @@ export default function AuthPage() {
   
   const { login, register } = useAuth();
 
+  /**
+   * Validates the form and calls either `login` or `register` from `useAuth`.
+   * Runs client-side validation first to avoid a round-trip for obvious mistakes.
+   * On success, navigates to `redirectTo`; on failure, shows an inline error.
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -39,6 +71,7 @@ export default function AuthPage() {
     setIsLoading(true);
     
     try {
+      // Both `login` and `register` return { success, error? } — no throw on API errors.
       const result = mode === 'login' 
         ? await login(email, password)
         : await register(email, password);
@@ -49,6 +82,7 @@ export default function AuthPage() {
         setError(result.error || '操作失败，请重试');
       }
     } catch (err) {
+      // Network-level failures (backend unreachable) land here.
       setError('网络错误，请检查后端服务是否启动');
     } finally {
       setIsLoading(false);
@@ -66,7 +100,11 @@ export default function AuthPage() {
 
         {/* 登录/注册表单 */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          {/* 切换标签 */}
+          {/*
+           * Mode toggle — acts like a segmented control.
+           * Switching mode also clears any previous error so users
+           * aren't confused by a stale message from the other mode.
+           */}
         <div className="flex mb-8 bg-zinc-100/80 p-1.5 rounded-xl">
           <button
             className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${mode === 'login' ? 'bg-white text-zinc-900 shadow-[0_2px_10px_rgba(0,0,0,0.05)]' : 'text-zinc-500 hover:text-zinc-900'}`}
@@ -118,6 +156,7 @@ export default function AuthPage() {
               />
             </div>
 
+            {/* Error banner — only rendered when `error` is non-empty */}
             {error && (
               <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
                 {error}
@@ -133,7 +172,7 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* 提示 */}
+          {/* Inline mode-switch hint below the form — an alternative to the tab buttons above */}
           <div className="mt-6 text-center text-sm text-zinc-500">
             {mode === 'login' ? (
               <>

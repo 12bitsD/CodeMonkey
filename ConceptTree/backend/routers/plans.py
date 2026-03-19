@@ -1,3 +1,34 @@
+"""
+Plans Router — manages the full lifecycle of a user's learning plans.
+
+A *plan* is the top-level container in ConceptTree: it holds a title, a set
+of concept *nodes*, and the prerequisite *edges* between them. This router
+enforces that every user can only read and modify their own plans.
+
+Plan status transitions:
+  ``active``  →  ``archived``  (via ``/archive``)
+  ``archived`` →  ``active``   (via ``/restore``)
+  any state   →  deleted       (via ``DELETE``, permanent and irreversible)
+
+Key behaviours for frontend developers:
+  1. ``POST /plans`` is atomic — plan, nodes, and edges are all written in one
+     transaction, so a partial failure leaves no orphaned rows.
+  2. ``GET /plans`` sorts by ``last_access_at`` descending (most-recently viewed
+     first). Use the ``status`` query parameter to filter by ``active`` or
+     ``archived``.
+  3. Progress stats (``progress``/``total``) exclude ``skipped`` nodes from
+     the denominator so skipped concepts don't inflate the goal count.
+
+Endpoints
+---------
+POST   /plans                  — create a plan (atomic: plan + nodes + edges)
+GET    /plans                  — list the current user's plans
+PUT    /plans/{plan_id}        — update plan title
+PUT    /plans/{plan_id}/archive  — soft-delete: move plan to archived state
+PUT    /plans/{plan_id}/restore  — undo archive: move plan back to active
+DELETE /plans/{plan_id}        — permanent deletion
+"""
+
 from datetime import datetime
 from typing import Optional
 import uuid
@@ -18,6 +49,18 @@ router = APIRouter(prefix="/api", tags=["plans"])
 
 
 def _format_datetime(dt) -> Optional[str]:
+    """Convert a datetime value to an ISO 8601 string for JSON serialisation.
+
+    Returns ``None`` when ``dt`` is ``None``, so the JSON field is omitted
+    rather than serialised as ``"None"``. Accepts both ``datetime`` objects
+    and strings (the latter are returned unchanged).
+
+    Args:
+        dt: A ``datetime`` object, a datetime string, or ``None``.
+
+    Returns:
+        ISO 8601 string, the original string, or ``None``.
+    """
     if dt is None:
         return None
     if isinstance(dt, datetime):
@@ -35,6 +78,29 @@ def create_plan(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Create a new learning plan together with all its nodes and edges atomically.
+
+    All three writes (plan row, node rows, edge rows) happen inside a single
+    transaction. If any insert fails the whole operation is rolled back, so the
+    database never ends up with a plan that is missing nodes or edges.
+
+    The plan is created with ``status = "active"`` and progress counters at
+    zero. The plan ID is generated server-side using the prefix ``p_`` followed
+    by the first 8 characters of a UUID.
+
+    Args:
+        request: ``PlanCreateRequest`` containing ``title``, ``originalInput``,
+            ``targetNodeId``, a list of ``nodes``, and a list of ``edges``.
+        current_user_id: Injected from the auth token; used as the plan owner.
+        db: Injected database connection.
+
+    Returns:
+        ``PlanCreateResponse`` with ``id`` and ``title`` of the new plan.
+
+    Raises:
+        HTTPException 500: Any database error during creation
+            (``CREATE_PLAN_ERROR``).
+    """
     try:
         user_id = current_user_id
         plan_id = "p_" + str(uuid.uuid4())[:8]
@@ -113,6 +179,26 @@ def update_plan(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Update a plan's title. Currently the only mutable plan-level field.
+
+    Only the ``title`` field is updated; nodes, edges, and status are unchanged.
+    If ``request.title`` is empty or ``None``, no database write occurs and the
+    response echoes back the existing title (no 400 is raised).
+
+    Args:
+        plan_id: The plan to update.
+        request: ``PlanUpdateRequest`` with an optional ``title`` string.
+        current_user_id: Injected from the auth token; must match the plan owner.
+        db: Injected database connection.
+
+    Returns:
+        ``PlanUpdateResponse`` with ``id`` and the (potentially updated) ``title``.
+
+    Raises:
+        HTTPException 403: Authenticated user does not own this plan.
+        HTTPException 404: Plan not found (``PLAN_NOT_FOUND``).
+        HTTPException 500: Any database error (``UPDATE_PLAN_ERROR``).
+    """
     try:
         # 检查计划是否存在
         plan = db.execute(
@@ -171,6 +257,27 @@ def get_plans(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """List all learning plans owned by the current user, sorted by recency.
+
+    Results are ordered by ``last_access_at`` descending so the most recently
+    viewed plan appears first. Each plan includes pre-computed ``progress`` and
+    ``total`` counters (maintained by the graph router when nodes change status).
+
+    Args:
+        status: Optional filter — pass ``"active"`` or ``"archived"`` to narrow
+            results. Omit to return all plans regardless of status.
+        current_user_id: Injected from the auth token; scopes results to this
+            user only.
+        db: Injected database connection.
+
+    Returns:
+        ``PlanListResponse`` with a ``data`` list of plan summaries, each
+        containing ``id``, ``title``, ``progress``, ``total``, ``status``,
+        ``lastAccess``, and ``createdAt``.
+
+    Raises:
+        HTTPException 500: Any database error (``GET_PLANS_ERROR``).
+    """
     try:
         if status:
             rows = db.execute(
@@ -227,6 +334,31 @@ def archive_plan(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Archive an active plan — a reversible soft-delete.
+
+    Archiving sets ``status = "archived"`` without deleting any data. The plan
+    remains queryable via ``GET /plans?status=archived`` and can be restored at
+    any time. Attempting to archive an already-archived plan returns 400.
+
+    The response includes fresh progress stats (``progress``/``total``) computed
+    directly from nodes so the UI can display accurate completion at archival
+    time. ``skipped`` nodes are excluded from ``total``.
+
+    Args:
+        plan_id: The plan to archive.
+        current_user_id: Injected from the auth token; must match the plan owner.
+        db: Injected database connection.
+
+    Returns:
+        Full plan summary including updated ``status``, ``progress``, ``total``,
+        ``lastAccess``, and ``createdAt``.
+
+    Raises:
+        HTTPException 400: Plan is already archived (``PLAN_ALREADY_ARCHIVED``).
+        HTTPException 403: Authenticated user does not own this plan.
+        HTTPException 404: Plan not found (``PLAN_NOT_FOUND``).
+        HTTPException 500: Any database error (``ARCHIVE_PLAN_ERROR``).
+    """
     try:
         # 检查计划是否存在
         plan = db.execute(
@@ -317,6 +449,30 @@ def restore_plan(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Restore an archived plan back to active status.
+
+    This is the inverse of ``/archive``. Sets ``status = "active"`` so the
+    plan reappears in the default active plan list. Attempting to restore an
+    already-active plan returns 400.
+
+    The response includes fresh progress stats (``progress``/``total``) computed
+    from nodes, with ``skipped`` nodes excluded from ``total``.
+
+    Args:
+        plan_id: The archived plan to restore.
+        current_user_id: Injected from the auth token; must match the plan owner.
+        db: Injected database connection.
+
+    Returns:
+        Full plan summary with updated ``status = "active"``, ``progress``,
+        ``total``, ``lastAccess``, and ``createdAt``.
+
+    Raises:
+        HTTPException 400: Plan is already active (``PLAN_ALREADY_ACTIVE``).
+        HTTPException 403: Authenticated user does not own this plan.
+        HTTPException 404: Plan not found (``PLAN_NOT_FOUND``).
+        HTTPException 500: Any database error (``RESTORE_PLAN_ERROR``).
+    """
     try:
         # 检查计划是否存在
         plan = db.execute(
@@ -407,6 +563,25 @@ def delete_plan(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
+    """Permanently delete a plan and all its associated data.
+
+    **This action is irreversible.** The plan row is hard-deleted; associated
+    nodes and edges are removed by database cascade constraints. There is no
+    soft-delete or recovery path — use ``/archive`` if reversibility is needed.
+
+    Args:
+        plan_id: The plan to delete permanently.
+        current_user_id: Injected from the auth token; must match the plan owner.
+        db: Injected database connection.
+
+    Returns:
+        JSON ``{"success": true, "data": {"message": "计划已删除"}}`` on success.
+
+    Raises:
+        HTTPException 403: Authenticated user does not own this plan.
+        HTTPException 404: Plan not found (``PLAN_NOT_FOUND``).
+        HTTPException 500: Any database error (``DELETE_PLAN_ERROR``).
+    """
     try:
         # 检查计划是否存在
         plan = db.execute(

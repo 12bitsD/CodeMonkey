@@ -1,3 +1,40 @@
+/**
+ * Global application state context — user profile, learning plans, and notes.
+ *
+ * `AppContext` is the central store for data that multiple pages need:
+ * the authenticated user's profile, their list of learning plans, and all
+ * personal notes attached to plan nodes.
+ *
+ * Data is loaded from the backend **only when the user is authenticated**.
+ * When the user is not logged in, all state is reset to empty defaults so
+ * pages always receive a valid (if empty) data shape.
+ *
+ * Context value shape:
+ * ```js
+ * {
+ *   userProfile: UserProfile,   // learning background (occupation, levels, etc.)
+ *   plans: Plan[],              // all plans for the current user
+ *   allNotes: Note[],           // all notes across all plans
+ *   isLoading: boolean,         // true while initial data fetch is in flight
+ *   actions: {
+ *     setUserProfile(newProfile): Promise<void>,
+ *     setPlans(plans): void,          // direct state setter (advanced use)
+ *     createPlan(input, graphResult): Promise<Plan>,
+ *     updatePlan(id, data): Promise<Plan>,
+ *     archivePlan(id): Promise<void>,
+ *     deletePlan(id): Promise<void>,
+ *     addNote(planId, nodeId, content): Promise<Note>,
+ *     deleteNote(noteId): Promise<void>,
+ *     updateNodeStatusInPlan(planId, nodeId, status): void,
+ *   }
+ * }
+ * ```
+ *
+ * Important: `updateNodeStatusInPlan` is **local-only** (no API call). The
+ * caller must also call `graphApi.updateNodeStatus` to persist the change.
+ *
+ * @module contexts/AppContext
+ */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { userProfileApi, plansApi, notesApi } from '../services/api';
 import { createEmptyUserProfile } from '../types';
@@ -6,6 +43,15 @@ import { useToast } from './ToastContext';
 
 const AppContext = createContext();
 
+/**
+ * Accesses the global app context from any child component.
+ *
+ * Throws a descriptive error if called outside of `AppProvider`, making
+ * misconfigured component trees immediately obvious during development.
+ *
+ * @returns {{ userProfile: import('../types').UserProfile, plans: import('../types').Plan[], allNotes: import('../types').Note[], isLoading: boolean, actions: Object }}
+ * @throws {Error} When used outside an `<AppProvider>`.
+ */
 export const useAppContext = () => {
   const context = useContext(AppContext);
   if (!context) {
@@ -14,26 +60,38 @@ export const useAppContext = () => {
   return context;
 };
 
+/**
+ * Provides global app state and business-logic mutations to the component tree.
+ *
+ * On mount (and whenever `isAuthenticated` changes), this provider fetches
+ * the user's profile, plans, and notes in parallel via `Promise.all`. It
+ * depends on both `AuthContext` (to know whether to fetch) and `ToastContext`
+ * (to display error toasts on failures), so both must be ancestors in the tree.
+ *
+ * All `actions` that call the backend follow the same pattern:
+ *   1. Call the API.
+ *   2. On success, update local state optimistically.
+ *   3. On failure, show a toast — callers do not need to handle errors themselves.
+ *
+ * @param {{ children: React.ReactNode }} props
+ * @returns {JSX.Element}
+ */
 export const AppProvider = ({ children }) => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const toast = useToast();
   
-  // 全局状态
   const [userProfile, setUserProfile] = useState(createEmptyUserProfile());
   const [plans, setPlans] = useState([]);
   const [allNotes, setAllNotes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 初始化加载数据（仅在已登录时）
   useEffect(() => {
     const loadInitialData = async () => {
-      // 等待认证状态加载完成
       if (authLoading) return;
       
       setIsLoading(true);
       try {
         if (isAuthenticated) {
-          // 已登录，从后端加载数据
           const [profile, plansList, notesList] = await Promise.all([
             userProfileApi.get(),
             plansApi.list(),
@@ -44,7 +102,6 @@ export const AppProvider = ({ children }) => {
           if (plansList) setPlans(plansList);
           if (notesList) setAllNotes(notesList);
         } else {
-          // 未登录，使用默认数据
           setUserProfile(createEmptyUserProfile());
           setPlans([]);
           setAllNotes([]);
@@ -59,7 +116,15 @@ export const AppProvider = ({ children }) => {
     loadInitialData();
   }, [isAuthenticated, authLoading]);
 
-  // 业务逻辑 - 计划相关
+  /**
+   * Creates a new learning plan from an AI graph result and prepends it to
+   * the local `plans` array.
+   *
+   * @param {string} input - The original user goal text.
+   * @param {{ interpretation?: string, targetNodeId: string, nodes: import('../types').GraphNode[], edges: import('../types').GraphEdge[] }} graphResult
+   * @returns {Promise<import('../types').Plan>}
+   * @throws Re-throws on API failure (after showing a toast).
+   */
   const createPlan = async (input, graphResult) => {
     try {
       const newPlan = await plansApi.create({
@@ -77,6 +142,13 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  /**
+   * Partially updates a plan's metadata and merges the response into local state.
+   *
+   * @param {string} id
+   * @param {Partial<import('../types').Plan>} data
+   * @returns {Promise<import('../types').Plan|undefined>}
+   */
   const updatePlan = async (id, data) => {
     try {
       const updated = await plansApi.update(id, data);
@@ -86,7 +158,12 @@ export const AppProvider = ({ children }) => {
       toast.error('更新计划失败');
     }
   };
-  
+
+  /**
+   * Archives a plan by setting its status to `'archived'` in local state.
+   * @param {string} id
+   * @returns {Promise<void>}
+   */
   const archivePlan = async (id) => {
     try {
       await plansApi.archive(id);
@@ -96,6 +173,11 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  /**
+   * Permanently deletes a plan and removes it from local state.
+   * @param {string} id
+   * @returns {Promise<void>}
+   */
   const deletePlan = async (id) => {
     try {
       await plansApi.delete(id);
@@ -105,7 +187,14 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // 业务逻辑 - 笔记相关
+  /**
+   * Creates a Markdown note for a specific node and prepends it to `allNotes`.
+   *
+   * @param {string} planId
+   * @param {string} nodeId
+   * @param {string} content - Markdown text.
+   * @returns {Promise<import('../types').Note|undefined>}
+   */
   const addNote = async (planId, nodeId, content) => {
     try {
       const newNote = await notesApi.create(planId, nodeId, content);
@@ -116,6 +205,11 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  /**
+   * Permanently deletes a note and removes it from `allNotes`.
+   * @param {string} noteId
+   * @returns {Promise<void>}
+   */
   const deleteNote = async (noteId) => {
     try {
       await notesApi.delete(noteId);
@@ -125,6 +219,20 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  /**
+   * Updates a node's status inside the local `plans` state and recalculates
+   * the plan's `progress` / `total` counters.
+   *
+   * **Local-only** — this does NOT call the API. The caller must separately
+   * invoke `graphApi.updateNodeStatus` to persist the change.
+   *
+   * Skipped nodes are excluded from the `total` count so progress reflects
+   * only the nodes the user intends to learn.
+   *
+   * @param {string} planId
+   * @param {string} nodeId
+   * @param {'unlearned'|'learned'|'skipped'} status
+   */
   const updateNodeStatusInPlan = (planId, nodeId, status) => {
     setPlans(prev => prev.map(plan => {
       if (plan.id !== planId) return plan;
@@ -137,7 +245,11 @@ export const AppProvider = ({ children }) => {
     }));
   };
 
-  // 业务逻辑 - 用户相关
+  /**
+   * Updates the user's learning profile on the backend and syncs local state.
+   * @param {import('../types').UserProfile} newProfile
+   * @returns {Promise<void>}
+   */
   const updateUserProfile = async (newProfile) => {
     try {
       const updated = await userProfileApi.update(newProfile);

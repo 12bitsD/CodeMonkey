@@ -1,4 +1,21 @@
+"""Plans CRUD API validates creating learning plans and enforcing ownership.
+
+A learning plan is the central entity in ConceptTree — it groups a set of
+concept nodes (graph) that a learner wants to master. This module validates:
+1. The plan creation endpoint is auth-protected.
+2. Creating a plan with nodes and edges succeeds and returns the plan title.
+3. A user cannot delete another user's plan (ownership enforced, HTTP 403).
+
+Primary reader: a developer debugging plan creation failures or verifying
+the ownership-enforcement logic for destructive operations.
+"""
+
+
 def test_create_plan_requires_auth(client):
+    """Creating a plan without a token returns HTTP 401.
+
+    Expected: HTTP 401.
+    """
     plan_data = {
         "title": "测试计划",
         "originalInput": "我想学Python",
@@ -24,6 +41,12 @@ def test_create_plan_requires_auth(client):
 
 
 def test_create_plan_with_edges_success(client, auth_headers_a):
+    """Creating a plan with two nodes and one directed edge succeeds.
+
+    Verifies that the full plan payload (nodes + edges) is accepted and
+    that the response reflects the submitted title.
+    Expected: HTTP 200, success=True, data.title matches the submitted title.
+    """
     plan_data = {
         "title": "带边计划",
         "originalInput": "input",
@@ -68,6 +91,13 @@ def test_create_plan_with_edges_success(client, auth_headers_a):
 
 
 def test_cross_user_delete_forbidden(client, auth_headers_a, auth_headers_b):
+    """User B cannot delete a plan that belongs to user A.
+
+    Plan ownership is strictly enforced: the delete endpoint must return
+    HTTP 403 when the requester is not the plan creator.
+    Expected: plan creation by user A returns HTTP 200; deletion attempt
+    by user B returns HTTP 403.
+    """
     plan_data = {
         "title": "用户A计划",
         "originalInput": "input",

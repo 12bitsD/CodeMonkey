@@ -1,3 +1,38 @@
+/**
+ * HomePage — the app's entry point where users create new learning plans
+ * and resume existing ones.
+ *
+ * The core UX flow is a two-step graph generation process:
+ * 1. **Analyze** — user types a free-text learning goal; `aiApi.parseGoal`
+ *    interprets it and returns a structured summary shown in a confirmation modal.
+ * 2. **Generate** — user confirms; `graphApi.generate` builds the concept graph,
+ *    a new plan is created, and the app navigates to GraphPage.
+ *
+ * ## What a new developer needs to know
+ * 1. **Two-step generation** — the Analyze → Confirm → Generate split prevents
+ *    wasting a slow graph-generation call if the AI misunderstood the goal.
+ *    The loading animation runs on an 800 ms interval through `LOADING_TEXTS`.
+ * 2. **Auth-conditional header** — unauthenticated visitors see a "Login/Register"
+ *    button (redirects to AuthPage); authenticated users see "My Learning" + logout.
+ * 3. **Active plan cards** — only plans with `status === 'active'` are shown;
+ *    archived plans live in MyLearningPage. Each card has a context-menu for
+ *    rename and archive.
+ *
+ * ## State map
+ * | Name               | Purpose                                                          |
+ * |--------------------|------------------------------------------------------------------|
+ * | inputText          | The free-text learning goal the user is typing                   |
+ * | isAnalyzing        | True while `aiApi.parseGoal` is running (disables submit)        |
+ * | isGenerating       | True while `graphApi.generate` is running (shows loading overlay)|
+ * | loadingStep        | Index into `LOADING_TEXTS`; advances every 800 ms                |
+ * | parsedGoal         | AI parse result shown in the confirmation modal                  |
+ * | activeMenuPlanId   | Which plan's ⋮ context menu is currently open                    |
+ * | showRenameModal    | Rename-plan modal visibility                                     |
+ * | planToRename       | Plan object being renamed                                        |
+ * | newName            | Draft name in the rename modal                                   |
+ * | showLoginModal     | Inline login/register modal (legacy — auth now uses AuthPage)    |
+ * | authMode           | 'login' | 'register' for the inline modal                        |
+ */
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -41,6 +76,11 @@ const HomePage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  /**
+   * Step 1 of graph generation: parse the user's goal with AI.
+   * On success, stores the structured result in `parsedGoal` and opens the
+   * confirmation modal. Does NOT yet call the expensive graph-generation API.
+   */
   const handleStartAnalysis = async () => {
     if (!inputText.trim()) return;
     setIsAnalyzing(true);
@@ -57,6 +97,13 @@ const HomePage = () => {
     }
   };
 
+  /**
+   * Step 2 of graph generation: generate the graph and create the plan.
+   * The loading overlay cycles through `LOADING_TEXTS` on an 800 ms timer
+   * to give the user feedback during the slow generation call.
+   * After success, waits 500 ms so the final loading frame is visible,
+   * then navigates to the new plan's GraphPage.
+   */
   const handleConfirmGeneration = async () => {
     setShowConfirmModal(false);
     setIsGenerating(true);
@@ -117,6 +164,7 @@ const HomePage = () => {
     navigate('/');
   };
 
+  /** Handles the inline login/register modal (distinct from the dedicated AuthPage). */
   const handleLogin = async () => {
     try {
       if (authMode === 'login') {
@@ -143,6 +191,7 @@ const HomePage = () => {
     }
   };
 
+  // Only active plans are displayed here; archived plans are in MyLearningPage.
   const activePlans = plans.filter(p => p.status === 'active');
 
   return (
@@ -150,7 +199,10 @@ const HomePage = () => {
       className="max-w-screen-xl mx-auto px-6 md:px-12 py-10 min-h-screen flex flex-col relative" 
       onClick={() => setActiveMenuPlanId(null)}
     >
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────────────
+           Logo on the left; auth controls on the right.
+           Authenticated: "My Learning" link + logout button.
+           Unauthenticated: single "Login / Register" pill → AuthPage. */}
       <header className="flex justify-between items-center mb-24">
         <div className="flex items-center gap-3 group cursor-pointer" onClick={() => navigate('/')}>
           <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center text-white shadow-lg shadow-zinc-200 transition-transform group-hover:rotate-3 group-hover:scale-105">
@@ -188,7 +240,14 @@ const HomePage = () => {
         </div>
       </header>
 
-      {/* Hero Input */}
+      {/* ── Hero Input ─────────────────────────────────────────────────────────
+           The main interaction area. Contains:
+           - Headline copy
+           - Free-text goal textarea (the primary input)
+           - User ability tags (from userProfile) shown as context hints
+           - "Generate Graph" submit button
+           - Loading overlay that covers the textarea during generation
+           - Example prompt chips (shown only when the textarea is empty) */}
       <section className="flex-1 flex flex-col justify-center max-w-3xl mx-auto w-full mb-24">
         <div className="text-center mb-12 space-y-4">
           <h1 className="text-4xl md:text-5xl font-light tracking-tight text-zinc-900 leading-tight">
@@ -208,6 +267,7 @@ const HomePage = () => {
           />
           
           <div className="px-6 pb-6 flex justify-between items-end">
+            {/* First two userProfile ability tags shown as passive context badges */}
             <div className="flex items-center gap-3 max-w-[60%] overflow-hidden">
               {userProfile?.abilities?.slice(0, 2).map((tag, i) => (
                 <span 
@@ -228,6 +288,7 @@ const HomePage = () => {
             </Button>
           </div>
 
+          {/* Loading overlay — appears during graph generation, covers the textarea */}
           {isGenerating && (
             <div className="absolute inset-0 bg-white/98 z-10 flex flex-col items-center justify-center text-zinc-800 transition-opacity duration-500">
               <div className="w-12 h-12 border-[3px] border-zinc-100 border-t-zinc-900 rounded-full animate-spin mb-6" />
@@ -238,6 +299,7 @@ const HomePage = () => {
           )}
         </div>
 
+        {/* Example prompt chips — only visible when the input is empty */}
         {!inputText && (
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             {["理解反向传播算法", "Python 数据分析入门", "Transformer 架构详解"].map((text) => (
@@ -253,7 +315,11 @@ const HomePage = () => {
         )}
       </section>
 
-      {/* Active Plans */}
+      {/* ── Active Plan Cards ────────────────────────────────────────────────────
+           Shown only when there are active (non-archived) plans.
+           Each card is clickable to resume the plan. The ⋮ button opens a
+           context menu for rename/archive actions.
+           Clicking anywhere outside a menu (the page div's onClick) closes it. */}
       {activePlans.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-8">
@@ -276,6 +342,8 @@ const HomePage = () => {
                       上次学习: {plan.lastAccess}
                     </p>
                   </div>
+                  {/* e.stopPropagation() prevents the card's onClick from firing
+                       when the user interacts with the context menu. */}
                   <div className="relative" onClick={(e) => e.stopPropagation()}>
                     <button 
                       onClick={() => setActiveMenuPlanId(activeMenuPlanId === plan.id ? null : plan.id)}
@@ -322,7 +390,12 @@ const HomePage = () => {
         </section>
       )}
 
-      {/* Confirmation Modal */}
+      {/* ── Goal Confirmation Modal ────────────────────────────────────────────
+           Shown after Step 1 (Analyze). Displays:
+           - AI's interpretation of the goal
+           - Background strengths/gaps derived from userProfile
+           - Optional split suggestions if the goal is too large
+           Confirming triggers Step 2 (Generate). */}
       <Modal 
         isOpen={showConfirmModal} 
         onClose={() => setShowConfirmModal(false)}
@@ -342,6 +415,7 @@ const HomePage = () => {
             <p className="text-xl font-light text-zinc-900">{parsedGoal?.interpretation}</p>
           </div>
           
+          {/* Strengths (checkmarks) and gaps (circles) from the user's profile */}
            {parsedGoal?.backgroundSummary?.length > 0 && (
             <div className="space-y-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">基于你的背景</h4>
@@ -360,6 +434,8 @@ const HomePage = () => {
             </div>
           )}
 
+          {/* Split suggestions — clicking a suggestion pre-fills the input so the
+               user can generate a focused, smaller plan instead. */}
           {parsedGoal?.shouldSplit && parsedGoal?.splitSuggestions?.length > 0 && (
             <div className="space-y-4">
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
@@ -397,7 +473,7 @@ const HomePage = () => {
         </div>
       </Modal>
 
-      {/* Rename Modal */}
+      {/* ── Rename Modal ──────────────────────────────────────────────────────── */}
       <Modal
         isOpen={showRenameModal}
         onClose={() => setShowRenameModal(false)}
@@ -417,7 +493,9 @@ const HomePage = () => {
         />
       </Modal>
 
-      {/* Login / Register Modal */}
+      {/* ── Inline Login / Register Modal ─────────────────────────────────────
+           Legacy modal kept for backwards compatibility. New auth flow uses
+           the dedicated AuthPage (/auth). */}
       <Modal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}

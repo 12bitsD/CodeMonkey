@@ -1,4 +1,15 @@
 {
+  "_comment": "Prompt config for the 'clarify_goal' AI operation.",
+  "_meta": {
+    "purpose": "Classify how much a user's updated learning goal diverges from their current plan, and produce a node diff (keep / remove / add) so the frontend knows whether to modify the existing graph or create a new one.",
+    "provider": "OpenAI-compatible (e.g. Kimi 2.5, OpenAI GPT-4o)",
+    "key_params": {
+      "temperature": "0.3 — low for deterministic classification (modify vs create_new)",
+      "max_tokens": "2000 — sufficient for the diff response which is typically compact JSON"
+    },
+    "input_format": "A combined string: 'original: <goal>, new: <goal>\\nExisting nodes:\\n  - id=n1, name=..., status=...'",
+    "consumed_by": "services/ai_service.py AIService.clarify_goal()"
+  },
   "model_params": {
     "temperature": 0.3,
     "max_tokens": 2000

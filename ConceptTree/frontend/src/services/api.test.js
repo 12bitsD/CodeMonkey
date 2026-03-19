@@ -1,3 +1,15 @@
+/**
+ * Unit tests for the edge field-mapping utilities in `api.js`.
+ *
+ * These tests verify that `mapEdgesFromBackend` and `mapEdgesToBackend`
+ * correctly translate between the backend's `from_node`/`to_node` field names
+ * and the frontend's `from`/`to` field names — and that both functions handle
+ * null/undefined inputs without throwing.
+ *
+ * Run with: `npx vitest` (or `npm test`)
+ *
+ * @module services/api.test
+ */
 import { describe, it, expect } from 'vitest';
 import { mapEdgesFromBackend, mapEdgesToBackend } from './api.js';
 

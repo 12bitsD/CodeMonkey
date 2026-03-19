@@ -1,7 +1,39 @@
+/**
+ * Integration smoke tests for the graph-related backend API endpoints.
+ *
+ * This script is NOT a Vitest test — run it directly with Node.js to verify a
+ * live backend is responding correctly:
+ *
+ *   node src/services/api.test.mjs
+ *
+ * By default it targets `http://localhost:8000/api`. Override via environment:
+ *
+ *   API_TEST_BASE_URL=https://staging.example.com/api node src/services/api.test.mjs
+ *
+ * Test sequence (each step depends on the previous):
+ *   1. Creates a throwaway plan with a single node.
+ *   2. GET /plans/:id/graph  — verifies the graph is retrievable.
+ *   3. PUT /plans/:id/nodes/:nodeId/status — marks the node as "learned".
+ *   4. PUT /plans/:id/nodes/:nodeId/position — moves the node to (50, 50).
+ *
+ * The script exits with code 1 on the first failure so CI can detect it.
+ *
+ * @module services/api.test.mjs
+ */
 import process from "node:process";
 
 const BASE_URL = process.env.API_TEST_BASE_URL || "http://localhost:8000/api";
 
+/**
+ * Creates a minimal throwaway plan on the backend and returns its ID and
+ * the ID of its single node.
+ *
+ * The plan exists only to provide a valid context for the subsequent tests.
+ * It is not cleaned up after the tests — manually delete it if needed.
+ *
+ * @returns {Promise<{ planId: string, nodeId: string }>}
+ * @throws {Error} If the backend rejects the create request.
+ */
 async function createTestPlan() {
   const nodeId = `n_${Date.now()}`;
   const res = await fetch(`${BASE_URL}/plans`, {
@@ -37,6 +69,14 @@ async function createTestPlan() {
   return { planId: json.data.id, nodeId };
 }
 
+/**
+ * Runs the full graph API smoke test suite against the live backend.
+ *
+ * Exits the process with code 1 on any failure so the error is visible
+ * to CI pipelines and `npm` scripts.
+ *
+ * @returns {Promise<void>}
+ */
 async function testGraphApi() {
   console.log("🧪 Starting Graph API Integration Test...");
 

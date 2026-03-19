@@ -1,15 +1,48 @@
+# =============================================================================
+# ConceptTree — Local Development Infrastructure
+# =============================================================================
+# PURPOSE
+#   Spins up a PostgreSQL 16 database for local development.
+#   The app services (backend, frontend) run natively on your machine —
+#   only the database lives in Docker. This keeps feedback loops fast.
+#
+# QUICK START
+#   docker compose up -d          # start DB in background
+#   docker compose down           # stop DB (data is preserved)
+#   docker compose down -v        # stop DB and DELETE all data (clean slate)
+#   docker compose logs -f        # stream DB logs
+#
+# Primary reader: Developer setting up the project for the first time.
+# =============================================================================
+
 services:
+  # ---------------------------------------------------------------------------
+  # postgres — the sole infrastructure dependency of this application.
+  # All user data, concept trees, and session records are stored here.
+  # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine     # Alpine variant: smaller image, same functionality
     container_name: concepttree-postgres
+
+    # Default credentials for LOCAL DEVELOPMENT ONLY.
+    # Never use these values in production; override via secrets manager or CI env vars.
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
+
+    # Maps <host port>:<container port>.
+    # Change the left-hand value if port 5432 is already occupied on your machine.
     ports:
       - "5432:5432"
+
+    # Named volume keeps data alive across `docker compose down` restarts.
+    # Run `docker compose down -v` only when you need a fully clean database.
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+    # Healthcheck prevents dependent services from connecting before Postgres is
+    # fully ready to accept connections. Retries up to 5× at 5-second intervals.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -17,4 +50,6 @@ services:
       retries: 5
 
 volumes:
+  # Persists database files on the Docker host across container restarts.
+  # Deleting this volume is the only way to fully reset the database.
   postgres_data:
