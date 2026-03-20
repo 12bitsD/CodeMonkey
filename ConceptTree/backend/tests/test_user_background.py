@@ -65,8 +65,8 @@ def test_generate_graph_request_with_user_background():
             abilities=["JS入门"], masteredKnowledge=["变量"]
         ),
     )
-    assert req.userBackground.abilities == ["JS入门"]
     assert req.userBackground is not None
+    assert req.userBackground.abilities == ["JS入门"]
 
 
 def test_generate_graph_request_without_user_background():

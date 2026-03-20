@@ -43,6 +43,7 @@ class ParseGoalRequest(BaseModel):
     """
 
     input: str
+    userBackground: Optional[UserBackgroundInput] = None
 
     @field_validator("input")
     @classmethod
@@ -114,7 +115,8 @@ async def parse_goal(
             ``AIService.parse_goal``).
     """
     ai_service = get_ai_service()
-    result = await ai_service.parse_goal(request.input)
+    user_bg = request.userBackground.model_dump() if request.userBackground else None
+    result = await ai_service.parse_goal(request.input, user_background=user_bg)
 
     if not result.success:
         raise HTTPException(

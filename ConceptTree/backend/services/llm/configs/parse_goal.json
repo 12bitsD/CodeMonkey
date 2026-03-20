@@ -12,7 +12,7 @@
   },
   "model_params": {
     "temperature": 0.7,
-    "max_tokens": 1500
+    "max_tokens": 800
   },
   "system_prompt": "You are an AI learning assistant. Parse the user's learning goal and extract structured information.",
   "output_format": {
@@ -40,34 +40,5 @@
     "suggestedNodeCount: Simple topic 3-5 nodes, Moderate topic 6-10 nodes, Complex topic 11-15 nodes",
     "shouldSplit: true if suggestedNodeCount > 12 or goal is very broad",
     "splitSuggestions: Provide 2-3 concrete sub-goals if shouldSplit is true"
-  ],
-  "examples": [
-    {
-      "input": "我想学Python",
-      "output": {
-        "interpretation": "掌握Python编程语言基础",
-        "backgroundSummary": [],
-        "suggestedNodeCount": 8,
-        "shouldSplit": true,
-        "splitSuggestions": [
-          {"title": "Python基础语法", "description": "变量、数据类型、控制流", "estimatedNodes": 5},
-          {"title": "Python函数与模块", "description": "函数定义、模块导入、标准库", "estimatedNodes": 4},
-          {"title": "Python面向对象编程", "description": "类、对象、继承、封装", "estimatedNodes": 5}
-        ]
-      }
-    },
-    {
-      "input": "我想理解反向传播，我有Python基础但数学不好",
-      "output": {
-        "interpretation": "理解神经网络反向传播算法的数学原理和代码实现",
-        "backgroundSummary": [
-          {"text": "Python基础", "source": "input", "isStrength": true},
-          {"text": "数学薄弱", "source": "input", "isStrength": false}
-        ],
-        "suggestedNodeCount": 7,
-        "shouldSplit": false,
-        "splitSuggestions": null
-      }
-    }
   ]
 }

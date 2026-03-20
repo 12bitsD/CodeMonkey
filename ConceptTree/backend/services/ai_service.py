@@ -60,7 +60,9 @@ class AIService:
         """Wire the shared LLM client on first instantiation."""
         self.llm_client = get_llm_client()
 
-    async def parse_goal(self, user_input: str) -> ParseGoalAIResult:
+    async def parse_goal(
+        self, user_input: str, user_background: Optional[dict] = None
+    ) -> ParseGoalAIResult:
         """Turn free-form user text into a structured learning profile.
 
         Uses the ``parse_goal`` prompt config to extract:
@@ -81,8 +83,16 @@ class AIService:
             failure.
         """
         try:
+            background_str = (
+                json.dumps(user_background, ensure_ascii=False)
+                if user_background
+                else "无"
+            )
+
             # Load config and build prompt
-            params, sys_prompt, usr_prompt = load_ai_config("parse_goal", user_input)
+            params, sys_prompt, usr_prompt = load_ai_config(
+                "parse_goal", user_input, background=background_str
+            )
 
             # Call LLM with config-driven parameters
             result = await self.llm_client.chat_json(

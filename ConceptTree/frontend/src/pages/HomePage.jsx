@@ -105,6 +105,8 @@ const HomePage = () => {
    * then navigates to the new plan's GraphPage.
    */
   const handleConfirmGeneration = async () => {
+    const confirmedInterpretation = parsedGoal?.interpretation?.trim() || inputText;
+
     setShowConfirmModal(false);
     setIsGenerating(true);
     
@@ -120,7 +122,11 @@ const HomePage = () => {
 
     try {
       // 1. 生成图谱数据
-      const graphResult = await graphApi.generate(inputText, userProfile);
+      const graphResult = await graphApi.generate(
+        inputText,
+        confirmedInterpretation,
+        userProfile,
+      );
       
       // 2. 创建计划
       const newPlan = await actions.createPlan(inputText, graphResult);

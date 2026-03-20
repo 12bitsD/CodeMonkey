@@ -346,18 +346,8 @@ export const plansApi = {
  * always receives `from`/`to` fields, never `from_node`/`to_node`.
  */
 export const graphApi = {
-  /**
-   * Asks the AI to generate a concept dependency graph for a learning goal.
-   *
-   * Optionally enriches the prompt with the user's background so the AI can
-   * skip concepts the user already knows.
-   *
-   * @param {string} input - The learning goal typed by the user.
-   * @param {import('../types').UserProfile|null} [userProfile=null] - If provided, personalises the graph.
-   * @returns {Promise<{ nodes: import('../types').GraphNode[], edges: import('../types').GraphEdge[], targetNodeId: string, interpretation: string }>}
-   */
-  generate: async (input, userProfile = null) => {
-    const body = { input, interpretation: input };
+  generate: async (input, interpretation = input, userProfile = null) => {
+    const body = { input, interpretation };
     if (userProfile) {
       body.userBackground = {
         occupation: userProfile.occupation || "",
@@ -506,15 +496,14 @@ export const notesApi = {
  * graph structure — they assist with goal interpretation and study planning.
  */
 export const aiApi = {
-  /**
-   * Parses a free-form user goal string into a structured learning intent.
-   * @param {string} input - Raw user goal text.
-   * @returns {Promise<{ parsedGoal: string, [key: string]: * }>}
-   */
-  parseGoal: async (input) => {
+  parseGoal: async (input, userProfile = null) => {
+    const body = { input };
+    if (userProfile) {
+      body.userBackground = userProfile;
+    }
     return await fetchApi("/ai/parse-goal", {
       method: "POST",
-      body: JSON.stringify({ input }),
+      body: JSON.stringify(body),
     });
   },
 
