@@ -165,8 +165,8 @@ export const plansApi = {
 // ─── 图谱 API (Real Backend) ───
 
 export const graphApi = {
-  generate: async (input, userProfile = null) => {
-    const body = { input, interpretation: input };
+  generate: async (input, interpretation = input, userProfile = null) => {
+    const body = { input, interpretation };
     if (userProfile) {
       body.userBackground = {
         occupation: userProfile.occupation || "",
