@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { mapEdgesFromBackend, mapEdgesToBackend } from './api.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { aiApi, mapEdgesFromBackend, mapEdgesToBackend } from './api.js';
 
 describe('Edge Mapping Utility', () => {
   describe('mapEdgesFromBackend', () => {
@@ -36,5 +36,55 @@ describe('Edge Mapping Utility', () => {
     it('handles null input gracefully', () => {
       expect(mapEdgesToBackend(null)).toEqual([]);
     });
+  });
+});
+
+describe('aiApi.parseGoal', () => {
+  const userProfile = {
+    occupation: 'Product Manager',
+    education: 'Bachelor',
+    programmingLevel: 'beginner',
+    mathLevel: 'intermediate',
+    abilities: ['Python basics'],
+    masteredKnowledge: ['variables', 'loops'],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn().mockReturnValue(null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({
+        success: true,
+        data: {
+          interpretation: 'Understand backpropagation',
+          backgroundSummary: [],
+          suggestedNodeCount: 5,
+          shouldSplit: false,
+        },
+      }),
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('passes userProfile as userBackground in the parse-goal request', async () => {
+    await aiApi.parseGoal('I want to learn backpropagation', userProfile);
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/ai/parse-goal',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          input: 'I want to learn backpropagation',
+          userBackground: userProfile,
+        }),
+      }),
+    );
   });
 });

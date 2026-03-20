@@ -249,10 +249,15 @@ export const notesApi = {
 // ─── AI API (Real Backend) ───
 
 export const aiApi = {
-  parseGoal: async (input) => {
+  parseGoal: async (input, userProfile = null) => {
+    const body = { input };
+    if (userProfile) {
+      body.userBackground = userProfile;
+    }
+
     return await fetchApi("/ai/parse-goal", {
       method: "POST",
-      body: JSON.stringify({ input }),
+      body: JSON.stringify(body),
     });
   },
 
