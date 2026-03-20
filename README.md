@@ -71,6 +71,7 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 | [前端-架构总览.md](./docs/spec/前端-架构总览.md) | 前端架构与 API 策略 |
 | [变更日志.md](./docs/architecture/变更日志.md) | Spec 变更历史 |
 | [学习路径规划器 - MVP PRD（最终版）.md](./docs/architecture/学习路径规划器%20-%20MVP%20PRD（最终版）.md) | 需求文档（PRD） |
+| **[部署方案.md](./docs/architecture/部署方案.md)** | **Vercel + Supabase + Docker 部署指南** |
 
 ```
 📁 ConceptTree/
@@ -158,6 +159,16 @@ npm install && npm run dev
 ```
 
 </details>
+
+---
+
+## 🚀 部署上线
+
+详见 [部署方案.md](./docs/architecture/部署方案.md)，包含：
+
+- **前端**：Vercel 静态托管
+- **后端**：Docker 容器化，部署到 Render/Railway/Zeabur
+- **数据库**：Supabase PostgreSQL
 
 ---
 
