@@ -20,7 +20,9 @@ from models import (
 router = APIRouter(prefix="/api", tags=["graph"])
 
 
-def parse_json_field(field_value, default=[]):
+def parse_json_field(field_value, default=None):
+    if default is None:
+        default = []
     if not field_value:
         return default
     if isinstance(field_value, (list, dict)):
@@ -176,6 +178,13 @@ def update_node_status(
         "UPDATE plans SET progress = ?, total = ? WHERE id = ?",
         (progress, total, plan_id),
     )
+
+    # Auto-archive plan when all nodes are completed
+    if total > 0 and progress == total:
+        db.execute(
+            "UPDATE plans SET status = 'archived' WHERE id = ? AND status = 'active'",
+            (plan_id,),
+        )
 
     # 3. Record learning session
     session_id = str(uuid.uuid4())
@@ -376,6 +385,13 @@ def apply_changes(
         )
 
     db.execute("UPDATE plans SET title = ? WHERE id = ?", (req.newTitle, plan_id))
+
+    # 重新计算 progress/total
+    all_nodes = db.execute("SELECT status FROM nodes WHERE plan_id = ?", (plan_id,)).fetchall()
+    new_total = len([n for n in all_nodes if n["status"] != "skipped"])
+    new_progress = len([n for n in all_nodes if n["status"] == "learned"])
+    db.execute("UPDATE plans SET progress = ?, total = ? WHERE id = ?", (new_progress, new_total, plan_id))
+
     db.commit()
 
     return {"success": True, "data": {"planId": plan_id}}
