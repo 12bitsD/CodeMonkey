@@ -57,7 +57,7 @@ export const AppProvider = ({ children }) => {
     };
     
     loadInitialData();
-  }, [isAuthenticated, authLoading]);
+  }, [isAuthenticated, authLoading, toast]);
 
   // 业务逻辑 - 计划相关
   const createPlan = async (input, graphResult) => {

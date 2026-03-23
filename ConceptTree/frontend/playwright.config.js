@@ -1,14 +1,24 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: path.join(configDir, 'tests'),
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
+  expect: {
+    timeout: 10000,
+  },
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
+    actionTimeout: 10000,
+    navigationTimeout: 30000,
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,9 +28,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- --open=false',
-    url: 'http://localhost:3000',
+    command: 'npm run dev -- --host 127.0.0.1 --port 3000 --strictPort --open=false',
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
-    timeout: 30000,
+    timeout: 120000,
+    cwd: configDir,
   },
 });

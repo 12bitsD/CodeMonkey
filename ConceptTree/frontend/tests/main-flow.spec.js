@@ -33,8 +33,23 @@ async function mockCommonApis(page) {
       });
     }
   });
+  await page.route('**/api/plans/**/graph', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          nodes: [],
+          edges: [],
+          targetNodeId: null,
+        },
+      },
+    });
+  });
   await page.route('**/api/notes', async (route) => {
     await route.fulfill({ json: { success: true, data: [] } });
+  });
+  await page.route('**/api/ai/recommend-next', async (route) => {
+    await route.fulfill({ json: { success: true, data: {} } });
   });
 }
 

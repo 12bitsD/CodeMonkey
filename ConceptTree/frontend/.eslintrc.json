@@ -19,10 +19,17 @@
   "ignorePatterns": ["dist/", "build/"],
   "plugins": ["react", "react-hooks", "react-refresh"],
   "extends": ["eslint:recommended", "plugin:react/recommended", "plugin:react-hooks/recommended"],
+  "overrides": [
+    {
+      "files": ["vite.config.*", "playwright.config.*", "tests/**/*.{js,jsx,ts,tsx}"],
+      "env": {
+        "node": true
+      }
+    }
+  ],
   "rules": {
     "react/react-in-jsx-scope": "off",
     "react-refresh/only-export-components": "off",
     "react/prop-types": "off"
   }
 }
-
