@@ -165,16 +165,35 @@ export const plansApi = {
 // ─── 图谱 API (Real Backend) ───
 
 export const graphApi = {
-  generate: async (input, interpretation = input, userProfile = null) => {
+  generate: async (
+    input,
+    userProfileOrInterpretation = null,
+    userProfile = null,
+  ) => {
+    // 检测是否是旧调用（第二个参数是 profile）还是新调用（第二个是 interpretation）
+    let interpretation, profile;
+    if (
+      userProfileOrInterpretation &&
+      typeof userProfileOrInterpretation === "object"
+    ) {
+      // 旧调用：第二个参数是 profile
+      interpretation = input;
+      profile = userProfileOrInterpretation;
+    } else {
+      // 新调用：第二个参数是 interpretation
+      interpretation = userProfileOrInterpretation || input;
+      profile = userProfile;
+    }
+
     const body = { input, interpretation };
-    if (userProfile) {
+    if (profile) {
       body.userBackground = {
-        occupation: userProfile.occupation || "",
-        education: userProfile.education || "",
-        programmingLevel: userProfile.programmingLevel || "",
-        mathLevel: userProfile.mathLevel || "",
-        abilities: userProfile.abilities || [],
-        masteredKnowledge: userProfile.masteredKnowledge || [],
+        occupation: profile.occupation || "",
+        education: profile.education || "",
+        programmingLevel: profile.programmingLevel || "",
+        mathLevel: profile.mathLevel || "",
+        abilities: profile.abilities || [],
+        masteredKnowledge: profile.masteredKnowledge || [],
       };
     }
     const result = await fetchApi("/ai/generate-graph", {
