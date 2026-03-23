@@ -35,10 +35,12 @@ const GraphPage = () => {
   const [searchParams] = useSearchParams();
   const containerRef = useRef(null);
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
+  const hasCenteredRef = useRef(false);
   const { plans, allNotes, actions } = useAppContext();
   const toast = useToast();
 
   const plan = plans.find((p) => p.id === planId);
+  const [planTitle, setPlanTitle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
@@ -64,6 +66,7 @@ const GraphPage = () => {
     setNodeStatus,
     setNodes,
     setEdges,
+    setPosition,
     resetView,
     zoomIn,
     zoomOut,
@@ -76,6 +79,7 @@ const GraphPage = () => {
       try {
         const data = await graphApi.get(planId);
         if (data && data.nodes) {
+          if (data.title) setPlanTitle(data.title);
           setNodes(data.nodes);
           setEdges(data.edges || []);
         }
@@ -87,7 +91,23 @@ const GraphPage = () => {
     };
 
     loadGraph();
+    hasCenteredRef.current = false;
   }, [planId, setNodes, setEdges]);
+
+  // 当节点加载完且画布容器可用时自动居中（多次重试直到成功）
+  useEffect(() => {
+    if (hasCenteredRef.current) return;
+    if (nodes.length === 0) return;
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    setPosition({ x: rect.width / 2 - cx, y: rect.height / 2 - cy });
+    hasCenteredRef.current = true;
+  }, [nodes, plan?.id, loading, setPosition]);
 
   useEffect(() => {
     const nodeId = searchParams.get("node");
@@ -184,11 +204,13 @@ const GraphPage = () => {
   };
 
   const handleNodeStatusChange = async (nodeId, newStatus) => {
-    setNodeStatus(nodeId, newStatus);
-    setIsDirty(true);
-    actions.updateNodeStatusInPlan(planId, nodeId, newStatus);
+    setNodeStatus(nodeId, newStatus); // 立即更新本地 UI
     try {
-      await graphApi.updateNodeStatus(planId, nodeId, newStatus);
+      const result = await graphApi.updateNodeStatus(planId, nodeId, newStatus);
+      // 用后端返回的 progress/total 同步 context（list 接口不含 nodes，无法本地计算）
+      if (result?.plan) {
+        actions.updatePlanProgress(planId, result.plan.progress, result.plan.total);
+      }
     } catch (err) {
       console.error("Failed to save node status", err);
     }
@@ -200,10 +222,11 @@ const GraphPage = () => {
   };
 
   const handleSavePlan = async () => {
-    if (!planId || isSaving) return;
+    const titleToSave = planTitle || plan?.title;
+    if (!planId || isSaving || !titleToSave) return;
     setIsSaving(true);
     try {
-      await plansApi.update(planId, { title: plan?.title });
+      await plansApi.update(planId, { title: titleToSave });
       setSavedAt(new Date());
       setIsDirty(false);
       toast.success("计划已保存");
@@ -273,7 +296,7 @@ const GraphPage = () => {
             <div className="h-4 w-px bg-zinc-200" />
             <div>
               <h1 className="text-sm font-semibold text-zinc-800">
-                {plan?.title || "加载中..."}
+                {planTitle || plan?.title || "加载中..."}
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <div className="h-1 w-16 bg-zinc-100 rounded-full overflow-hidden">
@@ -336,7 +359,7 @@ const GraphPage = () => {
 
       {/* Canvas */}
       <div
-        className="flex-1 cursor-grab active:cursor-grabbing"
+        className="flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing"
         ref={containerRef}
         onMouseDown={(e) => handleMouseDown(e, containerRef)}
         onMouseMove={handleContainerMouseMove}
@@ -345,7 +368,7 @@ const GraphPage = () => {
         onWheel={handleWheel}
       >
         <div
-          className="absolute inset-0 opacity-[0.03]"
+          className="absolute inset-0 opacity-[0.07]"
           style={{
             backgroundImage: `radial-gradient(#000 1px, transparent 1px)`,
             backgroundSize: `${24 * scale}px ${24 * scale}px`,
@@ -374,8 +397,8 @@ const GraphPage = () => {
                     y1={from.y}
                     x2={to.x}
                     y2={to.y}
-                    stroke={isTraversed ? "#0D9488" : "#E4E4E7"}
-                    strokeWidth={isTraversed ? 1.5 : 1}
+                    stroke={isTraversed ? "#0D9488" : "#A1A1AA"}
+                    strokeWidth={isTraversed ? 2 : 1.5}
                     strokeDasharray={from.status === "skipped" ? "4,4" : "0"}
                   />
                   {isTraversed && (
@@ -400,9 +423,9 @@ const GraphPage = () => {
                 key={node.id}
                 className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center cursor-pointer
                   ${scale < 0.6 ? "w-4 h-4 rounded-full" : "w-auto h-auto px-6 py-3 rounded-full"}
-                  ${isSelected ? "scale-110 shadow-[0_10px_40px_rgba(0,0,0,0.1)] z-10" : "shadow-[0_2px_10px_rgba(0,0,0,0.03)] hover:shadow-lg z-0"}
-                  ${isLearned ? "bg-zinc-900 text-white border border-zinc-800" : "bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-300"}
-                  ${node.isTarget && !isLearned ? "ring-2 ring-teal-500/20 border-teal-500 text-teal-700" : ""}
+                  ${isSelected ? "scale-110 shadow-[0_10px_40px_rgba(0,0,0,0.15)] z-10" : "shadow-[0_2px_12px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.15)] z-0"}
+                  ${isLearned ? "bg-zinc-900 text-white border border-zinc-700" : "bg-white text-zinc-800 border border-zinc-300 hover:border-zinc-400"}
+                  ${node.isTarget && !isLearned ? "ring-2 ring-teal-500/30 border-teal-500 text-teal-700 bg-teal-50" : ""}
                 `}
                 style={{ left: node.x, top: node.y }}
                 onClick={(e) => {
@@ -421,7 +444,7 @@ const GraphPage = () => {
                   isLearned ? (
                     <div className="w-2 h-2 bg-emerald-400 rounded-full" />
                   ) : (
-                    <div className="w-2 h-2 bg-zinc-300 rounded-full" />
+                    <div className="w-2 h-2 bg-zinc-400 rounded-full" />
                   )
                 ) : (
                   <div className="flex items-center gap-3">
@@ -436,7 +459,7 @@ const GraphPage = () => {
                     ) : (
                       <Circle
                         size={16}
-                        className="text-zinc-300"
+                        className="text-zinc-400"
                         strokeWidth={2}
                       />
                     )}
@@ -523,7 +546,18 @@ const GraphPage = () => {
           </button>
         </div>
         <button
-          onClick={resetView}
+          onClick={() => {
+            if (containerRef.current && nodes.length > 0) {
+              const rect = containerRef.current.getBoundingClientRect();
+              const xs = nodes.map(n => n.x);
+              const ys = nodes.map(n => n.y);
+              const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+              const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+              setPosition({ x: rect.width / 2 - cx, y: rect.height / 2 - cy });
+            } else {
+              resetView();
+            }
+          }}
           className="bg-white/90 backdrop-blur p-4 rounded-2xl shadow-sm border border-zinc-200/50 text-zinc-500 hover:text-zinc-900 transition-colors"
         >
           <RotateCcw size={18} strokeWidth={1.5} />

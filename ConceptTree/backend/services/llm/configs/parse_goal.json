@@ -1,7 +1,7 @@
 {
   "model_params": {
     "temperature": 0.7,
-    "max_tokens": 800
+    "max_tokens": 4096
   },
   "system_prompt": "You are an AI learning assistant. Parse the user's learning goal and extract structured information.",
   "output_format": {
@@ -10,16 +10,16 @@
       {
         "text": "Description of strength or weakness",
         "source": "profile or input",
-        "isStrength": "true or false (boolean)"
+        "isStrength": true
       }
     ],
-    "suggestedNodeCount": "number (estimated nodes needed, 3-15)",
-    "shouldSplit": "true or false (boolean)",
+    "suggestedNodeCount": 8,
+    "shouldSplit": false,
     "splitSuggestions": [
       {
         "title": "Specific sub-goal title",
         "description": "What this sub-goal covers",
-        "estimatedNodes": "number"
+        "estimatedNodes": 5
       }
     ]
   },

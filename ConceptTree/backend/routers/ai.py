@@ -136,7 +136,12 @@ async def clarify_goal(
         plan = db.execute(
             "SELECT user_id FROM plans WHERE id = ?", (request.planId,)
         ).fetchone()
-        if plan and plan["user_id"] == current_user_id:
+        if plan:
+            if plan["user_id"] != current_user_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail={"code": "FORBIDDEN", "message": "Forbidden"},
+                )
             rows = db.execute(
                 "SELECT id, name, status FROM nodes WHERE plan_id = ?",
                 (request.planId,),

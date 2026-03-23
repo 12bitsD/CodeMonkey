@@ -9,9 +9,6 @@ Run with: pytest tests/test_api_contract.py -v
 import pytest
 
 
-pytestmark = pytest.mark.no_db
-
-
 class TestAuthContract:
     """Test /api/auth/* endpoints match frontend expectations"""
 

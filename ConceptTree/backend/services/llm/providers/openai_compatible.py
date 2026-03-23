@@ -1,7 +1,7 @@
 """OpenAI SDK compatible provider (works with Kimi, OpenAI, etc.)"""
 
 from typing import List, Dict, Any, Optional
-from openai import AsyncOpenAI, APIError, Timeout
+from openai import AsyncOpenAI, APIError, APITimeoutError
 
 from .base import BaseLLMProvider, LLMMessage, LLMResponse
 
@@ -37,6 +37,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         temperature: float = 0.7,
         response_format: Optional[Dict] = None,
         max_tokens: int = 4096,
+        model: Optional[str] = None,
     ) -> LLMResponse:
         """
         Send chat completion using OpenAI SDK.
@@ -49,7 +50,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             ]
 
             request_kwargs = {
-                "model": self.model,
+                "model": model or self.model,
                 "messages": openai_messages,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
@@ -58,14 +59,26 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             if response_format:
                 request_kwargs["response_format"] = response_format
 
-            response = await self.client.chat.completions.create(**request_kwargs)
+            try:
+                response = await self.client.chat.completions.create(**request_kwargs)
+            except APIError as e:
+                # Some models (e.g. kimi-k2.5) only accept temperature=1
+                if e.status_code == 400 and "temperature" in str(e).lower():
+                    request_kwargs["temperature"] = 1
+                    response = await self.client.chat.completions.create(**request_kwargs)
+                else:
+                    raise
 
             # Validate response
             if not response.choices:
                 raise LLMProviderError("Empty response from API")
             content = response.choices[0].message.content
-            if content is None:
-                raise LLMProviderError("API returned empty content")
+            if content is None or content.strip() == "":
+                finish_reason = response.choices[0].finish_reason
+                raise LLMProviderError(
+                    f"API returned empty content (finish_reason={finish_reason}). "
+                    "Possible causes: max_tokens too low for reasoning model."
+                )
 
             return LLMResponse(
                 content=content,
@@ -80,7 +93,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 finish_reason=response.choices[0].finish_reason,
             )
 
-        except Timeout:
+        except APITimeoutError:
             raise LLMTimeoutError(f"Request timed out after {self.timeout}s")
         except APIError as e:
             raise LLMProviderError(f"API error: {e.message}", status_code=e.status_code)

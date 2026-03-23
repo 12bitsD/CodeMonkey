@@ -62,6 +62,7 @@ class UnifiedLLMClient:
         response_format: Optional[Dict] = None,
         max_tokens: int = 4096,
         use_fallback: bool = False,
+        model: Optional[str] = None,
     ) -> LLMResponse:
         """
         Send chat completion with retry and fallback.
@@ -98,6 +99,7 @@ class UnifiedLLMClient:
                     temperature=temp,
                     response_format=response_format,
                     max_tokens=max_tokens,
+                    model=model,
                 )
                 return response
 
@@ -135,6 +137,7 @@ class UnifiedLLMClient:
         user_prompt: str,
         temperature: Optional[float] = None,
         max_tokens: int = 4096,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Convenience method for JSON mode chat.
@@ -157,6 +160,7 @@ class UnifiedLLMClient:
             temperature=temperature,
             response_format={"type": "json_object"},
             max_tokens=max_tokens,
+            model=model,
         )
 
         try:

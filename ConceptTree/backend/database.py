@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from typing import Any, Generator, Optional, Sequence
 
@@ -47,12 +48,13 @@ class DbSession:
 def _connect() -> "psycopg2.extensions.connection":
     if not settings.DATABASE_URL:
         raise RuntimeError("DATABASE_URL is required")
-    if settings.DATABASE_SCHEMA:
-        return psycopg2.connect(
-            settings.DATABASE_URL,
-            options=f"-c search_path={settings.DATABASE_SCHEMA}",
-        )
-    return psycopg2.connect(settings.DATABASE_URL)
+    conn = psycopg2.connect(settings.DATABASE_URL)
+    schema = os.environ.get("DATABASE_SCHEMA") or settings.DATABASE_SCHEMA
+    if schema:
+        with conn.cursor() as cur:
+            cur.execute(f"SET search_path TO {schema}")
+        conn.commit()
+    return conn
 
 
 def get_db() -> Generator[DbSession, None, None]:

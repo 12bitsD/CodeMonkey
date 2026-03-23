@@ -75,11 +75,7 @@ export const authApi = {
   },
 
   logout: async () => {
-    try {
-      await fetchApi("/auth/logout", { method: "POST" });
-    } finally {
-      tokenManager.remove();
-    }
+    await fetchApi("/auth/logout", { method: "POST" }).catch(() => {});
   },
 };
 

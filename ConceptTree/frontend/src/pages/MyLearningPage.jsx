@@ -28,6 +28,12 @@ const MyLearningPage = () => {
   const [localOccupation, setLocalOccupation] = useState(userProfile?.occupation || '');
   const [localEducation, setLocalEducation] = useState(userProfile?.education || '');
 
+  // 同步异步加载的 profile 数据到本地状态
+  useEffect(() => {
+    setLocalOccupation(userProfile?.occupation || '');
+    setLocalEducation(userProfile?.education || '');
+  }, [userProfile?.occupation, userProfile?.education]);
+
   const [statsData, setStatsData] = useState(null);
   const [distributionData, setDistributionData] = useState([]);
 
@@ -38,7 +44,8 @@ const MyLearningPage = () => {
         statsApi.getDistribution().catch(() => []),
       ]).then(([overview, distribution]) => {
         if (overview) setStatsData(overview);
-        if (distribution) setDistributionData(distribution);
+        // getDistribution returns { distribution: [...], total: N } — extract array
+        if (distribution) setDistributionData(Array.isArray(distribution) ? distribution : (distribution.distribution || []));
       });
     }
   }, [activeTab]);
@@ -51,7 +58,7 @@ const MyLearningPage = () => {
   ];
 
   const handleRestore = async (id) => {
-    await actions.updatePlan(id, { status: 'active' });
+    await actions.restorePlan(id);
   };
 
   const handleAddAbility = () => {
@@ -352,10 +359,10 @@ const MyLearningPage = () => {
               <section>
                 <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">总览</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard label="已完成计划" value={statsData?.completedPlans ?? completedPlansCount} />
-                  <StatCard label="进行中" value={statsData?.activePlans ?? activePlans.length} />
-                  <StatCard label="掌握知识点" value={statsData?.masteredNodes ?? masteredKnowledgeCount} />
-                  <StatCard label="学习笔记" value={statsData?.totalNotes ?? allNotes.length} />
+                  <StatCard label="已完成计划" value={statsData?.summary?.completedPlans ?? completedPlansCount} />
+                  <StatCard label="进行中" value={statsData?.summary?.activePlans ?? activePlans.length} />
+                  <StatCard label="掌握知识点" value={statsData?.summary?.masteredKnowledge ?? masteredKnowledgeCount} />
+                  <StatCard label="学习笔记" value={statsData?.summary?.totalNotes ?? allNotes.length} />
                 </div>
               </section>
 

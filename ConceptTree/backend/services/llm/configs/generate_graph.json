@@ -1,5 +1,6 @@
 {
   "model_params": {
+    "model": "moonshot-v1-32k",
     "temperature": 0.7,
     "max_tokens": 4096
   },
@@ -33,7 +34,7 @@
     "Node Count: Generate 5-12 nodes depending on goal complexity",
     "Node Fields: id MUST be n1, n2 format. name MUST be Chinese. isTarget MUST be true for exactly ONE node.",
     "Dependencies (edges): Create logical prerequisite chains. Target node should have at least 2 incoming edges. Avoid circular dependencies.",
-    "Layout: Target node x=0, y=0. Prerequisites negative y values, spread x from -200 to 200.",
+    "Layout STRICT: Target node x=0, y=0. Direct prerequisites y=-200. Their prerequisites y=-400. Foundational nodes y=-600. Spread x values: use -300,-150,0,150,300 to avoid overlap. NEVER use y=-1 or y=0 for non-target nodes.",
     "Background Adaptation: If user has strengths, skip basic nodes. If weaknesses, add foundation nodes."
   ],
   "examples": [

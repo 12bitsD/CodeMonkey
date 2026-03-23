@@ -59,7 +59,7 @@ class SplitSuggestion(BaseModel):
 
 class Resource(BaseModel):
     name: str
-    url: str
+    url: Optional[str] = ""
     reason: str
 
 
@@ -228,14 +228,6 @@ class AiClarifyRequest(BaseModel):
 class AiClarifyResponse(BaseModel):
     success: bool
     data: Dict[str, Any]
-
-
-class ApplyChangesRequest(BaseModel):
-    newGoal: str
-    keep: List[str]
-    add: List[NodeCreate]
-    remove: List[str]
-    newEdges: List[Edge]
 
 
 class ApplyChangesResponse(BaseModel):

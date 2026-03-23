@@ -39,29 +39,35 @@ def create_plan(
         user_id = current_user_id
         plan_id = "p_" + str(uuid.uuid4())[:8]
 
+        # 将 AI 返回的节点 ID (n1/n2...) 映射为全局唯一 ID，避免跨计划冲突
+        node_id_map = {node.id: f"{plan_id}_{node.id}" for node in request.nodes}
+        target_node_id = node_id_map.get(request.targetNodeId, request.targetNodeId)
+
         # 1. 创建计划
+        total_nodes = len(request.nodes)
         db.execute(
             """INSERT INTO plans (id, user_id, title, original_input,
-               target_node_id, status)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               target_node_id, status, total)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 plan_id,
                 user_id,
                 request.title,
                 request.originalInput,
-                request.targetNodeId,
+                target_node_id,
                 "active",
+                total_nodes,
             ),
         )
 
-        # 2. 批量创建节点
+        # 2. 批量创建节点（使用映射后的唯一 ID）
         for node in request.nodes:
             db.execute(
                 """INSERT INTO nodes (id, plan_id, name, status, x, y, why,
                    what, mastery, prompt, resources, is_target, domain)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    node.id,
+                    node_id_map[node.id],
                     plan_id,
                     node.name,
                     node.status.value,
@@ -77,19 +83,32 @@ def create_plan(
                 ),
             )
 
-        # 3. 批量创建边
+        # 3. 批量创建边（同步映射节点 ID）
         for edge in request.edges:
             edge_id = "e_" + uuid.uuid4().hex[:12]
             db.execute(
                 """INSERT INTO edges (id, plan_id, from_node_id, to_node_id)
                    VALUES (?, ?, ?, ?)""",
-                (edge_id, plan_id, edge.from_node, edge.to_node),
+                (
+                    edge_id,
+                    plan_id,
+                    node_id_map.get(edge.from_node, edge.from_node),
+                    node_id_map.get(edge.to_node, edge.to_node),
+                ),
             )
 
         db.commit()
         return {
             "success": True,
-            "data": {"id": plan_id, "title": request.title},
+            "data": {
+                "id": plan_id,
+                "title": request.title,
+                "progress": 0,
+                "total": total_nodes,
+                "status": "active",
+                "lastAccess": None,
+                "createdAt": None,
+            },
         }
     except Exception as e:
         db.rollback()

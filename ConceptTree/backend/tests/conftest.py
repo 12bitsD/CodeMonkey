@@ -7,9 +7,11 @@ from pathlib import Path
 
 import psycopg2
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from psycopg2.extras import Json
 
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

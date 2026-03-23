@@ -109,12 +109,13 @@ class AIService:
                 background=background_str,
             )
 
-            # Call LLM with config-driven parameters
+            # Call LLM with config-driven parameters (model override for speed)
             result = await self.llm_client.chat_json(
                 system_prompt=sys_prompt,
                 user_prompt=usr_prompt,
                 temperature=params.get("temperature", 0.7),
                 max_tokens=params.get("max_tokens", 4096),
+                model=params.get("model"),
             )
 
             # Validate with Pydantic

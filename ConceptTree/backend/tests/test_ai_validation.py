@@ -4,7 +4,7 @@ def test_parse_goal_input_too_short(client, auth_headers_a):
         json={"input": "学"},
         headers=auth_headers_a,
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 400
 
 
 def test_parse_goal_input_empty(client, auth_headers_a):
@@ -13,7 +13,7 @@ def test_parse_goal_input_empty(client, auth_headers_a):
         json={"input": ""},
         headers=auth_headers_a,
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 400
 
 
 def test_generate_graph_requires_auth(client):

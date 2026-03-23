@@ -42,7 +42,8 @@ export const AppProvider = ({ children }) => {
           
           if (profile) setUserProfile(profile);
           if (plansList) setPlans(plansList);
-          if (notesList) setAllNotes(notesList);
+          // notesApi returns { notes: [...], total: N } — extract the array
+          if (notesList) setAllNotes(Array.isArray(notesList) ? notesList : (notesList.notes || []));
         } else {
           // 未登录，使用默认数据
           setUserProfile(createEmptyUserProfile());
@@ -57,7 +58,7 @@ export const AppProvider = ({ children }) => {
     };
     
     loadInitialData();
-  }, [isAuthenticated, authLoading, toast]);
+  }, [isAuthenticated, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 业务逻辑 - 计划相关
   const createPlan = async (input, graphResult) => {
@@ -105,6 +106,15 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const restorePlan = async (id) => {
+    try {
+      await plansApi.restore(id);
+      setPlans(prev => prev.map(p => p.id === id ? { ...p, status: 'active' } : p));
+    } catch (error) {
+      toast.error('恢复计划失败');
+    }
+  };
+
   // 业务逻辑 - 笔记相关
   const addNote = async (planId, nodeId, content) => {
     try {
@@ -126,15 +136,16 @@ export const AppProvider = ({ children }) => {
   };
 
   const updateNodeStatusInPlan = (planId, nodeId, status) => {
-    setPlans(prev => prev.map(plan => {
-      if (plan.id !== planId) return plan;
-      const updatedNodes = (plan.nodes || []).map(n =>
-        n.id === nodeId ? { ...n, status } : n
-      );
-      const relevant = updatedNodes.filter(n => n.status !== 'skipped');
-      const learned = relevant.filter(n => n.status === 'learned').length;
-      return { ...plan, nodes: updatedNodes, progress: learned, total: relevant.length };
-    }));
+    // plans list doesn't carry nodes, so we can't recalculate here
+    // progress/total are updated via updatePlanProgress after the API responds
+  };
+
+  const updatePlanProgress = (planId, progress, total) => {
+    setPlans(prev =>
+      prev.map(plan =>
+        plan.id === planId ? { ...plan, progress, total } : plan
+      )
+    );
   };
 
   // 业务逻辑 - 用户相关
@@ -159,9 +170,11 @@ export const AppProvider = ({ children }) => {
       updatePlan,
       archivePlan,
       deletePlan,
+      restorePlan,
       addNote,
       deleteNote,
       updateNodeStatusInPlan,
+      updatePlanProgress,
     }
   };
 

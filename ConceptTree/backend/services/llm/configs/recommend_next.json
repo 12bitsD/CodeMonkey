@@ -1,7 +1,7 @@
 {
   "model_params": {
     "temperature": 0.5,
-    "max_tokens": 1024
+    "max_tokens": 4096
   },
   "system_prompt": "You are a learning path advisor. Given a user's knowledge graph, learning history, and profile, recommend the single best next node to study. Prioritize nodes on the critical path to the target, where all prerequisites are completed.",
   "output_format": {
