@@ -57,6 +57,18 @@ export const mapEdgesToBackend = (edges) =>
     };
   });
 
+export const mapUserProfileToBackground = (profile) => {
+  if (!profile) return null;
+  return {
+    occupation: profile.occupation || "",
+    education: profile.education || "",
+    programmingLevel: profile.programmingLevel || "",
+    mathLevel: profile.mathLevel || "",
+    abilities: profile.abilities || [],
+    masteredKnowledge: profile.masteredKnowledge || [],
+  };
+};
+
 // ─── 认证 API (Real Backend) ───
 
 export const authApi = {
@@ -165,36 +177,10 @@ export const plansApi = {
 // ─── 图谱 API (Real Backend) ───
 
 export const graphApi = {
-  generate: async (
-    input,
-    userProfileOrInterpretation = null,
-    userProfile = null,
-  ) => {
-    // 检测是否是旧调用（第二个参数是 profile）还是新调用（第二个是 interpretation）
-    let interpretation, profile;
-    if (
-      userProfileOrInterpretation &&
-      typeof userProfileOrInterpretation === "object"
-    ) {
-      // 旧调用：第二个参数是 profile
-      interpretation = input;
-      profile = userProfileOrInterpretation;
-    } else {
-      // 新调用：第二个参数是 interpretation
-      interpretation = userProfileOrInterpretation || input;
-      profile = userProfile;
-    }
-
+  generate: async (input, interpretation = input, userProfile = null) => {
     const body = { input, interpretation };
-    if (profile) {
-      body.userBackground = {
-        occupation: profile.occupation || "",
-        education: profile.education || "",
-        programmingLevel: profile.programmingLevel || "",
-        mathLevel: profile.mathLevel || "",
-        abilities: profile.abilities || [],
-        masteredKnowledge: profile.masteredKnowledge || [],
-      };
+    if (userProfile) {
+      body.userBackground = mapUserProfileToBackground(userProfile);
     }
     const result = await fetchApi("/ai/generate-graph", {
       method: "POST",
@@ -271,7 +257,7 @@ export const aiApi = {
   parseGoal: async (input, userProfile = null) => {
     const body = { input };
     if (userProfile) {
-      body.userBackground = userProfile;
+      body.userBackground = mapUserProfileToBackground(userProfile);
     }
 
     return await fetchApi("/ai/parse-goal", {
