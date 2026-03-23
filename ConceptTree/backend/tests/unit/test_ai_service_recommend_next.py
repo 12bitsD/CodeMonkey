@@ -53,7 +53,7 @@ class TestAIServiceRecommendNext:
 
         assert isinstance(result, RecommendNextAIResult)
         assert result.success is True
-        assert result.data.recommended_node_id == "n2"
+        assert result.data.recommendedNodeId == "n2"
         assert len(result.data.reason) > 0
 
     @pytest.mark.asyncio
@@ -80,7 +80,7 @@ class TestAIServiceRecommendNext:
             )
 
         assert result.success is True
-        assert result.data.recommended_node_id is None
+        assert result.data.recommendedNodeId is None
 
     @pytest.mark.asyncio
     async def test_returns_error_on_llm_failure(self):
