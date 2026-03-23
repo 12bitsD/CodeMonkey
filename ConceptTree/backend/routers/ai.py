@@ -264,4 +264,7 @@ async def recommend_next(
                 "error": result.error.model_dump() if result.error else {},
             },
         )
-    return {"success": True, "data": result.data.model_dump() if result.data else {}}
+    return {
+        "success": True,
+        "data": result.data.model_dump(by_alias=True) if result.data else {},
+    }
