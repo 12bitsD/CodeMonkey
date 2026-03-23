@@ -110,4 +110,72 @@ describe('HomePage confirm generation', () => {
       );
     });
   });
+
+  it('falls back to raw input when interpretation is empty', async () => {
+    parseGoalMock.mockResolvedValue({
+      interpretation: '',
+      backgroundSummary: [],
+      suggestedNodeCount: 5,
+      shouldSplit: false,
+      splitSuggestions: [],
+    });
+
+    render(<HomePage />);
+
+    const rawInput = 'fallback test input';
+
+    fireEvent.change(screen.getByPlaceholderText('例如：我想理解深度学习中的反向传播，我有Python基础但数学不好...'), {
+      target: { value: rawInput },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '生成图谱' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('fallback test input')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '确认生成' }));
+
+    await waitFor(() => {
+      expect(generateGraphMock).toHaveBeenCalledWith(
+        rawInput,
+        rawInput,
+        userProfile,
+      );
+    });
+  });
+
+  it('falls back to raw input when interpretation is null', async () => {
+    parseGoalMock.mockResolvedValue({
+      interpretation: null,
+      backgroundSummary: [],
+      suggestedNodeCount: 5,
+      shouldSplit: false,
+      splitSuggestions: [],
+    });
+
+    render(<HomePage />);
+
+    const rawInput = 'null interpretation test';
+
+    fireEvent.change(screen.getByPlaceholderText('例如：我想理解深度学习中的反向传播，我有Python基础但数学不好...'), {
+      target: { value: rawInput },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '生成图谱' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('null interpretation test')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '确认生成' }));
+
+    await waitFor(() => {
+      expect(generateGraphMock).toHaveBeenCalledWith(
+        rawInput,
+        rawInput,
+        userProfile,
+      );
+    });
+  });
 });
