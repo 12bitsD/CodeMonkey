@@ -343,8 +343,10 @@ class ClarifyGoalAIResult(BaseModel):
 
 
 class RecommendNextResponse(BaseModel):
-    recommended_node_id: Optional[str] = None
+    recommendedNodeId: Optional[str] = Field(default=None, alias="recommended_node_id")
     reason: str
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RecommendNextAIResult(BaseModel):

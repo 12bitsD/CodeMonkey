@@ -68,10 +68,10 @@ def test_recommend_next_returns_node_id(client, auth_headers_a):
     mock_result = MagicMock()
     mock_result.success = True
     mock_result.data = MagicMock()
-    mock_result.data.recommended_node_id = "n2"
+    mock_result.data.recommendedNodeId = "n2"
     mock_result.data.reason = "链式法则的前置知识已完成"
     mock_result.data.model_dump.return_value = {
-        "recommended_node_id": "n2",
+        "recommendedNodeId": "n2",
         "reason": "链式法则的前置知识已完成",
     }
 
@@ -89,7 +89,7 @@ def test_recommend_next_returns_node_id(client, auth_headers_a):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert body["data"]["recommended_node_id"] == "n2"
+    assert body["data"]["recommendedNodeId"] == "n2"
     assert "reason" in body["data"]
 
 

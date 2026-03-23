@@ -164,6 +164,18 @@ export const plansApi = {
 
 // ─── 图谱 API (Real Backend) ───
 
+const mapUserProfileToBackground = (profile) => {
+  if (!profile) return null;
+  return {
+    occupation: profile.occupation || "",
+    education: profile.education || "",
+    programmingLevel: profile.programmingLevel || "",
+    mathLevel: profile.mathLevel || "",
+    abilities: profile.abilities || [],
+    masteredKnowledge: profile.masteredKnowledge || [],
+  };
+};
+
 export const graphApi = {
   generate: async (
     input,
@@ -186,15 +198,9 @@ export const graphApi = {
     }
 
     const body = { input, interpretation };
-    if (profile) {
-      body.userBackground = {
-        occupation: profile.occupation || "",
-        education: profile.education || "",
-        programmingLevel: profile.programmingLevel || "",
-        mathLevel: profile.mathLevel || "",
-        abilities: profile.abilities || [],
-        masteredKnowledge: profile.masteredKnowledge || [],
-      };
+    const userBackground = mapUserProfileToBackground(profile);
+    if (userBackground) {
+      body.userBackground = userBackground;
     }
     const result = await fetchApi("/ai/generate-graph", {
       method: "POST",
@@ -270,8 +276,9 @@ export const notesApi = {
 export const aiApi = {
   parseGoal: async (input, userProfile = null) => {
     const body = { input };
-    if (userProfile) {
-      body.userBackground = userProfile;
+    const userBackground = mapUserProfileToBackground(userProfile);
+    if (userBackground) {
+      body.userBackground = userBackground;
     }
 
     return await fetchApi("/ai/parse-goal", {
