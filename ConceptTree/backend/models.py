@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
@@ -93,6 +93,8 @@ class NodeBase(BaseModel):
 
 
 class NodeCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     status: NodeStatus = NodeStatus.unlearned
     x: float = 0
@@ -102,7 +104,7 @@ class NodeCreate(BaseModel):
     mastery: List[str] = []
     prompt: Optional[str] = None
     resources: List[Dict[str, str]] = []
-    is_target: bool = False
+    is_target: bool = Field(False, alias="isTarget")
     domain: Optional[str] = None
 
 
