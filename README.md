@@ -78,11 +78,12 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 ```
 📁 ConceptTree/
 ├── 📁 backend/                ← FastAPI 应用
-│   ├── epic_1/               ← Epic 1 模型/工具
-│   ├── epic_2/               ← Epic 2 模型/工具
-│   ├── epic_3/               ← Epic 3 模型/工具
-│   ├── epic_4/               ← Epic 4 模型/工具
-│   ├── epic_5/               ← Epic 5 模型/工具
+│   ├── epic_1/               ← Epic 1: 认证 Pydantic 模型
+│   ├── epic_2/               ← Epic 2: 图谱 Pydantic 模型
+│   ├── epic_3/               ← Epic 3: 笔记 Pydantic 模型
+│   ├── epic_4/               ← Epic 4: AI 服务 Pydantic 模型
+│   ├── epic_5/               ← Epic 5: 统计 Pydantic 模型
+│   ├── models.py             ← Pydantic facade (re-exports from epic_N)
 │   ├── routers/              ← API 端点
 │   ├── services/             ← 业务逻辑（含 llm/ AI 服务）
 │   ├── tests/                ← 测试（按 epic_N/ 组织）
@@ -106,12 +107,16 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 │   ├── epic-3-notes/         ← Epic 3: 笔记
 │   ├── epic-4-ai/           ← Epic 4: AI 服务
 │   └── epic-5-stats/         ← Epic 5: 统计
-└── 📁 design/                ← 架构约束
-    ├── BACKEND.md            ← 后端架构
-    └── FRONTEND.md           ← 前端架构
-```
-    ├── DEVLOG.md              ← 滚动日志（最新在最上）
-    └── archive/               ← 历史 session 详细报告
+├── 📁 design/                ← 架构约束
+│   ├── BACKEND.md            ← 后端架构
+│   ├── FRONTEND.md           ← 前端架构
+│   ├── Architecture-Diagrams.md ← 系统架构图
+│   └── Deployment.md         ← 部署方案
+├── 📁 devlog/                ← 开发日志
+│   └── DEVLOG.md             ← 滚动日志（最新在最上）
+└── 📁 archive/               ← 历史文档
+    ├── 变更日志.md
+    └── backend-code-review-report-2026-03-18.md
 ```
 
 ### 为什么这样设计？
@@ -175,7 +180,7 @@ npm install && npm run dev
 
 ## 🚀 部署上线
 
-详见 [部署方案.md](./docs/architecture/部署方案.md)，包含：
+详见 [部署方案.md](./docs/design/Deployment.md)，包含：
 
 - **前端**：Vercel 静态托管
 - **后端**：Docker 容器化，部署到 Render/Railway/Zeabur

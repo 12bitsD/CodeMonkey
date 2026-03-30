@@ -5,37 +5,21 @@
 ```
 backend/
 ├── main.py              # FastAPI 入口
-├── models.py            # Pydantic 模型 (统一导出)
+├── models.py            # Pydantic facade (re-exports from epic_N/models.py)
 ├── database.py          # 数据库连接
 ├── config.py            # 配置
 ├── schema.sql          # 数据库 schema
 │
+├── epic_1/models.py    # Epic 1: 认证相关 Pydantic 模型
+├── epic_2/models.py    # Epic 2: 图谱相关 Pydantic 模型
+├── epic_3/models.py    # Epic 3: 笔记相关 Pydantic 模型
+├── epic_4/models.py    # Epic 4: AI 服务相关 Pydantic 模型
+├── epic_5/models.py    # Epic 5: 统计相关 Pydantic 模型
+│
 ├── routers/            # API 路由 (按类型)
-│   ├── auth.py         # /api/auth/*
-│   ├── user.py         # /api/user/*
-│   ├── plans.py        # /api/plans/*
-│   ├── graph.py        # /api/plans/{id}/graph
-│   ├── notes.py        # /api/notes/*
-│   ├── stats.py        # /api/stats/*
-│   └── ai.py           # /api/ai/*
-│
 ├── services/           # 业务逻辑
-│   ├── ai_service.py   # AI 服务
-│   ├── learning_history.py
-│   └── llm/           # LLM 集成
-│       ├── client.py
-│       ├── providers/
-│       └── configs/    # Prompt JSON 配置
-│
-└── tests/             # 测试
-    ├── conftest.py  # API 测试 fixtures
-    ├── epic_1/     # Epic 1 API 测试
-    ├── epic_2/     # Epic 2 API 测试
-    ├── epic_3/     # Epic 3 API 测试
-    ├── epic_4/     # Epic 4 API 测试
-    ├── epic_5/     # Epic 5 API 测试
-    ├── global/     # 全局测试 (api_contract, docs_sync, learning_history)
-    └── unit/       # 单元测试 (ai_service, models 等)
+├── utils/              # 工具函数
+└── tests/              # 测试 (按 epic_N/ 组织)
 ```
 
 ## 路由组织

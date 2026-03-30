@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-03-30 架构重构 — bitsNovels 模式采纳
+
+### 改了什么
+- 将 `backend/models.py` 拆分为 `epic_N/models.py` (N=1..5)
+- 文档目录重组：`docs/spec/` (Epic 规格) / `docs/design/` (架构约束) / `docs/devlog/` (工作日志) / `docs/archive/` (历史)
+- 测试目录重组：`backend/tests/epic_N/` (按 Epic 归类)
+- 删除 14 个冗余文档
+
+### 为什么
+- bitsNovels 架构模式要求代码和测试按 Epic 严格分区
+- 便于定位：改某个功能时只要看对应 epic_N/
+
+### 架构状态 (重组后)
+- models.py: ✅ 拆分到 epic_N/models.py
+- routers/: ❌ 仍在 root (未拆分)
+- services/: ❌ 仍在 root (未拆分)
+- 注意: 此次重构仅完成了 models 的 epic_N 分离
+
+### 技术债
+- routers/ services/ utils/ 未按 epic_N 分离
+- 153 个需数据库的测试未运行 (DATABASE_URL 未配置)
+
 ## 2026-03-18 文档整理与目录重组
 
 ### 改了什么

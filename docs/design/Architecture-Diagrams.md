@@ -521,7 +521,8 @@ flowchart TB
 | **路由** | `ConceptTree/backend/routers/auth.py` | 认证路由 |
 | **路由** | `ConceptTree/backend/routers/plans.py` | 计划路由 |
 | **路由** | `ConceptTree/backend/routers/graph.py` | 图谱路由 |
-| **模型** | `ConceptTree/backend/models.py` | Pydantic模型 |
+| **模型** | `ConceptTree/backend/epic_N/models.py` (N=1..5) | Epic 各自的 Pydantic 模型 |
+| **模型(facade)** | `ConceptTree/backend/models.py` | Pydantic facade (re-exports from epic_N/models.py) |
 | **数据库** | `ConceptTree/backend/database.py` | 数据库连接 |
 
 ---
