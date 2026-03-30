@@ -34,12 +34,24 @@ CodeMonkey/
 ├── ConceptTree/
 │   ├── backend/          FastAPI 应用
 │   │   ├── main.py       FastAPI 入口
-│   │   ├── models.py     Pydantic 模型
+│   │   ├── models.py     Pydantic 模型 (统一导出)
 │   │   ├── database.py   DB 连接
 │   │   ├── config.py     配置
+│   │   ├── epic_1/       Epic 1 模型
+│   │   ├── epic_2/       Epic 2 模型
+│   │   ├── epic_3/       Epic 3 模型
+│   │   ├── epic_4/       Epic 4 模型
+│   │   ├── epic_5/       Epic 5 模型
 │   │   ├── routers/      API 路由
 │   │   ├── services/     业务逻辑 (AI服务等)
-│   │   └── tests/        测试 (按 epic_N 组织)
+│   │   ├── tests/
+│   │   │   ├── epic_1/
+│   │   │   ├── epic_2/
+│   │   │   ├── epic_3/
+│   │   │   ├── epic_4/
+│   │   │   ├── epic_5/
+│   │   │   └── global/
+│   │   └── utils/
 │   │
 │   └── frontend/         React 18 + Vite 应用
 │       └── src/
@@ -113,10 +125,4 @@ CodeMonkey/
 
 ## 错误码规范
 
-| 前缀 | 模块 |
-|------|------|
-| `PLAN_*` | 计划 |
-| `NODE_*` | 节点 |
-| `NOTE_*` | 笔记 |
-| `AI_*` | AI 服务 |
-| `AUTH_*` | 认证 |
+详见 [BACKEND.md](../design/BACKEND.md#错误码)

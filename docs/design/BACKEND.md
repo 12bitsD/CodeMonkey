@@ -27,13 +27,13 @@ backend/
 │       ├── providers/
 │       └── configs/    # Prompt JSON 配置
 │
-├── epic_N/            # 按 Epic 的模型/工具 (未来扩展)
-│   └── ...
-│
 └── tests/             # 测试 (按 epic_N 组织)
     ├── epic_1/
     ├── epic_2/
-    └── ...
+    ├── epic_3/
+    ├── epic_4/
+    ├── epic_5/
+    └── global/
 ```
 
 ## 路由组织
