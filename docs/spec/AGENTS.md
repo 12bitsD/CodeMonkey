@@ -16,7 +16,7 @@
 | 文件 | 说明 |
 |------|------|
 | `docs/spec/epic-N/be.md` | 后端需求 (Business Engineering) |
-| `docs/spec/epic-N/fe.md` | 前端需求 (FrontEnd) |
+| `docs/spec/epic-N/ui.md` | UI 实现文档 (User Interface) |
 | `docs/spec/epic-N/contract.md` | API 契约 (接口定义) |
 | `docs/design/BACKEND.md` | 架构约束 |
 
@@ -44,7 +44,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  1. 领任务 → 读 Epic 4 文件任务包                          │
 │     ├── be.md (做什么)                                     │
-│     ├── fe.md (前端做什么)                                 │
+│     ├── ui.md (前端做什么)                                 │
 │     ├── contract.md (接口契约)                             │
 │     └── design/BACKEND.md (架构约束)                       │
 │                                                             │

@@ -27,13 +27,15 @@ backend/
 │       ├── providers/
 │       └── configs/    # Prompt JSON 配置
 │
-└── tests/             # 测试 (按 epic_N 组织)
-    ├── epic_1/
-    ├── epic_2/
-    ├── epic_3/
-    ├── epic_4/
-    ├── epic_5/
-    └── global/
+└── tests/             # 测试
+    ├── conftest.py  # API 测试 fixtures
+    ├── epic_1/     # Epic 1 API 测试
+    ├── epic_2/     # Epic 2 API 测试
+    ├── epic_3/     # Epic 3 API 测试
+    ├── epic_4/     # Epic 4 API 测试
+    ├── epic_5/     # Epic 5 API 测试
+    ├── global/     # 全局测试 (api_contract, docs_sync, learning_history)
+    └── unit/       # 单元测试 (ai_service, models 等)
 ```
 
 ## 路由组织
