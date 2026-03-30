@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def _concept_tree_root() -> Path:
-    return Path(__file__).resolve().parents[1].parent.parent / "docs" / "spec"
+    return Path(__file__).resolve().parents[4] / "docs" / "spec"
 
 
 def _load_backend_spec_text() -> str:
