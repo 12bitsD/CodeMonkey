@@ -1,6 +1,6 @@
 {
   "model_params": {
-    "temperature": 0.3,
+    "temperature": 1,
     "max_tokens": 2000
   },
   "system_prompt": "You are an AI learning assistant. Analyze how much a user's learning goal has changed and produce a structured diff using the EXACT node IDs from the existing_nodes list provided in the input.",

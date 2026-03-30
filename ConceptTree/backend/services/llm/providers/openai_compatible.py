@@ -1,7 +1,8 @@
 """OpenAI SDK compatible provider (works with Kimi, OpenAI, etc.)"""
 
+import asyncio
 from typing import List, Dict, Any, Optional
-from openai import AsyncOpenAI, APIError, Timeout
+from openai import AsyncOpenAI, APIError
 
 from .base import BaseLLMProvider, LLMMessage, LLMResponse
 
@@ -80,7 +81,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 finish_reason=response.choices[0].finish_reason,
             )
 
-        except Timeout:
+        except asyncio.TimeoutError:
             raise LLMTimeoutError(f"Request timed out after {self.timeout}s")
         except APIError as e:
             raise LLMProviderError(f"API error: {e.message}", status_code=e.status_code)
