@@ -5,12 +5,24 @@ from pathlib import Path
 
 
 def _concept_tree_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[1].parent.parent / "docs" / "spec"
 
 
 def _load_backend_spec_text() -> str:
-    spec_path = _concept_tree_root() / "spec" / "后端-通用规范.md"
-    return spec_path.read_text(encoding="utf-8")
+    """
+    Load API spec from Epic contract files.
+
+    The old '后端-通用规范.md' has been replaced by Epic-specific contract.md files.
+    This test now reads from the Epic spec directory structure.
+    """
+    spec_path = _concept_tree_root()
+    # Collect all contract.md files from epic directories
+    contract_contents = []
+    for epic_dir in spec_path.glob("epic-*"):
+        contract_file = epic_dir / "contract.md"
+        if contract_file.exists():
+            contract_contents.append(contract_file.read_text(encoding="utf-8"))
+    return "\n\n".join(contract_contents)
 
 
 def _extract_documented_api_routes(spec_text: str) -> set[tuple[str, str]]:
@@ -90,7 +102,5 @@ def test_openapi_contains_all_implemented_spec_routes():
     openapi_routes = _only_api_prefix(_extract_openapi_routes())
 
     missing_in_openapi = sorted(spec_routes - openapi_routes)
-    message = "Spec 标记为已实现(非❌)但 OpenAPI 不存在: " + str(
-        missing_in_openapi
-    )
+    message = "Spec 标记为已实现(非❌)但 OpenAPI 不存在: " + str(missing_in_openapi)
     assert not missing_in_openapi, message

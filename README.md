@@ -213,13 +213,8 @@ AI 智能体在修改代码库时遵循这些规则：
 
 ## ✅ 文档同步机制（防止再次脱节）
 
-- 后端接口变更后，必须同步更新 [后端-通用规范.md](./docs/spec/后端-通用规范.md) 的“接口完整清单”表格
-- 通过自动化校验确认 spec 与 OpenAPI 一致（无需数据库即可跑）：
-
-```bash
-cd ConceptTree/backend
-python -m pytest -q test_docs_sync.py
-```
+- 后端接口变更后，必须同步更新对应 Epic spec 的 `contract.md`
+- Epic specs 位于 `docs/spec/epic-N/` 目录下
 
 ---
 
