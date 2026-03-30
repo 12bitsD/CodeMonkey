@@ -65,21 +65,31 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 
 | 文档 | 说明 |
 |------|------|
-| **[CLAUDE.md](./docs/spec/CLAUDE.md)** | **AI session 入口 — 每次先读这个** |
-| [进度总览.md](./docs/spec/进度总览.md) | MVP 完成状态一览 |
-| [后端-通用规范.md](./docs/spec/后端-通用规范.md) | 后端契约与通用约定 |
-| [前端-架构总览.md](./docs/spec/前端-架构总览.md) | 前端架构与 API 策略 |
-| [变更日志.md](./docs/architecture/变更日志.md) | Spec 变更历史 |
-| [学习路径规划器 - MVP PRD（最终版）.md](./docs/architecture/学习路径规划器%20-%20MVP%20PRD（最终版）.md) | 需求文档（PRD） |
-| **[部署方案.md](./docs/architecture/部署方案.md)** | **Vercel + Supabase + Docker 部署指南** |
+| **[docs/spec/AGENTS.md](./docs/spec/AGENTS.md)** | **Agent 操作手册 — 每次开发先读这个** |
+| **[docs/spec/CLAUDE.md](./docs/spec/CLAUDE.md)** | **AI session 入口** |
+| **[docs/spec/DOD.md](./docs/spec/DOD.md)** | 完成标准 |
+| [docs/spec/epic-1-auth/](docs/spec/epic-1-auth/) | Epic 1: 认证与用户 |
+| [docs/spec/epic-2-graph/](docs/spec/epic-2-graph/) | Epic 2: 图谱核心 |
+| [docs/spec/epic-3-notes/](docs/spec/epic-3-notes/) | Epic 3: 笔记 |
+| [docs/spec/epic-4-ai/](docs/spec/epic-4-ai/) | Epic 4: AI 服务 |
+| [docs/spec/epic-5-stats/](docs/spec/epic-5-stats/) | Epic 5: 统计 |
+| [docs/design/](docs/design/) | 架构约束 (BACKEND.md, FRONTEND.md) |
 
 ```
 📁 ConceptTree/
 ├── 📁 backend/                ← FastAPI 应用
-│   ├── routers/               ← API 端点
-│   ├── services/              ← 业务逻辑（含 llm/ AI 服务）
-│   ├── utils/                 ← 通用能力
-│   └── tests/                 ← 测试
+│   ├── epic_1/               ← Epic 1 模型/工具
+│   ├── epic_2/               ← Epic 2 模型/工具
+│   ├── epic_3/               ← Epic 3 模型/工具
+│   ├── epic_4/               ← Epic 4 模型/工具
+│   ├── epic_5/               ← Epic 5 模型/工具
+│   ├── routers/              ← API 端点
+│   ├── services/             ← 业务逻辑（含 llm/ AI 服务）
+│   ├── tests/                ← 测试（按 epic_N/ 组织）
+│   │   ├── epic_1/          ← Epic 1 测试
+│   │   ├── epic_2/          ← Epic 2 测试
+│   │   └── global/          ← 全局测试
+│   └── utils/                ← 通用能力
 └── 📁 frontend/               ← React + Vite 应用
     ├── pages/                 ← 路由组件
     ├── components/            ← 可复用 UI
@@ -87,31 +97,32 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
     ├── contexts/              ← 状态管理（AppContext / AuthContext）
     └── tests/                 ← Playwright E2E 测试
 📁 docs/
-├── 📁 spec/                   ← AI 必读合同（session 开始先读）
-│   ├── CLAUDE.md              ← AI 入口：stack/约束/patterns
-│   ├── 进度总览.md             ← MVP 完成状态（唯一状态真相）
-│   ├── 后端-通用规范.md         ← 后端契约
-│   ├── 前端-架构总览.md         ← 前端架构
-│   └── archive/               ← 已完成模块归档（*-done.md）
-├── 📁 architecture/           ← 人类读，AI 按需注入
-│   ├── ConceptTree-Architecture.md
-│   ├── AI服务Mermaid图解.md
-│   ├── 变更日志.md
-│   └── 学习路径规划器 - MVP PRD（最终版）.md
-└── 📁 devlog/                 ← Session 日志（时效性内容）
+├── 📁 spec/                   ← Epic 规格文档
+│   ├── AGENTS.md             ← Agent 操作手册
+│   ├── DOD.md               ← 完成标准
+│   ├── CLAUDE.md            ← AI session 入口
+│   ├── epic-1-auth/         ← Epic 1: 认证与用户
+│   ├── epic-2-graph/         ← Epic 2: 图谱核心
+│   ├── epic-3-notes/         ← Epic 3: 笔记
+│   ├── epic-4-ai/           ← Epic 4: AI 服务
+│   └── epic-5-stats/         ← Epic 5: 统计
+└── 📁 design/                ← 架构约束
+    ├── BACKEND.md            ← 后端架构
+    └── FRONTEND.md           ← 前端架构
+```
     ├── DEVLOG.md              ← 滚动日志（最新在最上）
     └── archive/               ← 历史 session 详细报告
 ```
 
 ### 为什么这样设计？
 
-1. **规范先于代码** — 每个功能在实现前都会先写入 `/spec`。AI 先读规范，再写测试，最后写代码。
+1. **规范先于代码** — 每个功能先写入 Epic spec (be.md + contract.md)。AI 先读规范，再写测试，最后实现。
 
-2. **扁平且明确** — 没有深层嵌套的文件夹。每个文件都有清晰、单一的职责。
+2. **4 文件任务包** — 每个 Epic 有 be.md (后端需求) + fe.md (前端需求) + contract.md (API 契约) + design/ (架构约束)。
 
-3. **约定优于配置** — 命名模式严格且可预测。AI 可以从名称推断文件位置。
+3. **按 Epic 模块化** — 代码和测试按 epic_N/ 组织，便于定位和归属。
 
-4. **测试驱动** — 测试即可执行的文档。AI 用测试验证自己的工作。
+4. **TDD 驱动** — 测试即可执行的文档。AI 用测试验证自己的工作。
 
 ---
 
