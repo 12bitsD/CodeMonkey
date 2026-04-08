@@ -51,7 +51,7 @@ services:
         VITE_API_BASE_URL: /api
     container_name: concepttree-frontend
     ports:
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:18080:80"
     depends_on:
       - backend
     restart: unless-stopped
