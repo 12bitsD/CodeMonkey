@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --frozen-lockfile
+RUN npm config set registry https://registry.npmmirror.com && npm ci --frozen-lockfile
 
 COPY . .
 
