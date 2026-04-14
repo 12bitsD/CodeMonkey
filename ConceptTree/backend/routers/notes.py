@@ -2,9 +2,34 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
 from datetime import datetime
 import uuid
+from pydantic import BaseModel, field_validator
 
 from database import get_db
 from utils.auth import get_current_user_id
+
+
+class CreateNoteRequest(BaseModel):
+    planId: str
+    nodeId: Optional[str] = None
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def content_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("content cannot be empty")
+        return v
+
+
+class UpdateNoteRequest(BaseModel):
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def content_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("content cannot be empty")
+        return v
 
 router = APIRouter(prefix="/api", tags=["notes"])
 
@@ -75,25 +100,13 @@ def get_notes(
 
 @router.post("/notes")
 def create_note(
-    body: dict,
+    body: CreateNoteRequest,
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    planId = body.get("planId")
-    nodeId = body.get("nodeId")
-    content = body.get("content")
-
-    if not content or not content.strip():
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "success": False,
-                "error": {
-                    "code": "CONTENT_REQUIRED",
-                    "message": "Content is required",
-                },
-            },
-        )
+    planId = body.planId
+    nodeId = body.nodeId
+    content = body.content
 
     plan = db.execute(
         "SELECT user_id FROM plans WHERE id = ?",
@@ -159,23 +172,11 @@ def create_note(
 @router.put("/notes/{note_id}")
 def update_note(
     note_id: str,
-    body: dict,
+    body: UpdateNoteRequest,
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    content = body.get("content")
-
-    if not content or not content.strip():
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "success": False,
-                "error": {
-                    "code": "CONTENT_REQUIRED",
-                    "message": "Content is required",
-                },
-            },
-        )
+    content = body.content
 
     note = db.execute(
         "SELECT id, user_id FROM notes WHERE id = ?",

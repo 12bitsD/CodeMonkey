@@ -47,8 +47,8 @@ def create_plan(
         total_nodes = len(request.nodes)
         db.execute(
             """INSERT INTO plans (id, user_id, title, original_input,
-               target_node_id, status, total)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               target_node_id, status, total, learning_purpose)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 plan_id,
                 user_id,
@@ -57,6 +57,7 @@ def create_plan(
                 target_node_id,
                 "active",
                 total_nodes,
+                request.learning_purpose,
             ),
         )
 
@@ -64,8 +65,9 @@ def create_plan(
         for node in request.nodes:
             db.execute(
                 """INSERT INTO nodes (id, plan_id, name, status, x, y, why,
-                   what, mastery, prompt, resources, is_target, domain)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   what, mastery, prompt, resources, is_target, domain,
+                   phase, phase_order, depth_level)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     node_id_map[node.id],
                     plan_id,
@@ -80,6 +82,9 @@ def create_plan(
                     [r.model_dump() for r in node.resources],
                     node.isTarget,
                     node.domain,
+                    node.phase,
+                    node.phase_order,
+                    node.depth_level,
                 ),
             )
 
@@ -116,7 +121,7 @@ def create_plan(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "CREATE_PLAN_ERROR", "message": str(e)},
+                "error": {"code": "CREATE_PLAN_ERROR", "message": "创建学习计划失败，请稍后重试"},
             },
         ) from e
 
@@ -175,7 +180,7 @@ def update_plan(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "UPDATE_PLAN_ERROR", "message": str(e)},
+                "error": {"code": "UPDATE_PLAN_ERROR", "message": "更新学习计划失败，请稍后重试"},
             },
         ) from e
 
@@ -228,7 +233,7 @@ def get_plans(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "GET_PLANS_ERROR", "message": str(e)},
+                "error": {"code": "GET_PLANS_ERROR", "message": "获取学习计划失败，请稍后重试"},
             },
         ) from e
 
@@ -318,7 +323,7 @@ def archive_plan(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "ARCHIVE_PLAN_ERROR", "message": str(e)},
+                "error": {"code": "ARCHIVE_PLAN_ERROR", "message": "归档学习计划失败，请稍后重试"},
             },
         ) from e
 
@@ -408,7 +413,7 @@ def restore_plan(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "RESTORE_PLAN_ERROR", "message": str(e)},
+                "error": {"code": "RESTORE_PLAN_ERROR", "message": "恢复学习计划失败，请稍后重试"},
             },
         ) from e
 
@@ -458,6 +463,6 @@ def delete_plan(
             status_code=500,
             detail={
                 "success": False,
-                "error": {"code": "DELETE_PLAN_ERROR", "message": str(e)},
+                "error": {"code": "DELETE_PLAN_ERROR", "message": "删除学习计划失败，请稍后重试"},
             },
         ) from e

@@ -2,20 +2,35 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
-from config import get_cors_origins, settings
+from config import get_cors_origins, get_cors_allow_credentials, settings
 from routers import ai, auth, graph, notes, plans, stats, user
+from utils.limiter import limiter
+
+# 生产环境关闭 OpenAPI 文档（S12）
+_docs_url = "/docs" if settings.DEBUG else None
+_redoc_url = "/redoc" if settings.DEBUG else None
+_openapi_url = "/openapi.json" if settings.DEBUG else None
 
 app = FastAPI(
     title="PathFinder API",
     description="Learning Path Planner Backend",
     version="1.0.0",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
-    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_credentials=get_cors_allow_credentials(),
     allow_methods=["*"],
     allow_headers=["*"],
 )

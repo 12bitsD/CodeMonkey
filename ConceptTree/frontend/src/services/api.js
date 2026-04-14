@@ -25,7 +25,21 @@ const fetchApi = async (endpoint, options = {}) => {
       headers,
       ...options,
     });
-    const json = await res.json();
+    const raw = await res.text();
+    let json = null;
+
+    if (raw) {
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        throw new Error(`Invalid JSON response (${res.status})`);
+      }
+    }
+
+    if (!json) {
+      throw new Error(`Empty response from server (${res.status})`);
+    }
+
     if (!json.success) {
       throw new Error(json.error?.message || "API Error");
     }
@@ -114,7 +128,7 @@ export const plansApi = {
     }
   },
 
-  create: async ({ title, originalInput, targetNodeId, nodes, edges }) => {
+  create: async ({ title, originalInput, targetNodeId, nodes, edges, learning_purpose = "apply" }) => {
     return await fetchApi("/plans", {
       method: "POST",
       body: JSON.stringify({
@@ -123,6 +137,7 @@ export const plansApi = {
         targetNodeId,
         nodes,
         edges: mapEdgesToBackend(edges),
+        learning_purpose,
       }),
     });
   },
@@ -177,6 +192,8 @@ export const graphApi = {
     input,
     userProfileOrInterpretation = null,
     userProfile = null,
+    learningPurpose = "apply",
+    onProgress = null,
   ) => {
     // 检测是否是旧调用（第二个参数是 profile）还是新调用（第二个是 interpretation）
     let interpretation, profile;
@@ -193,18 +210,74 @@ export const graphApi = {
       profile = userProfile;
     }
 
-    const body = { input, interpretation };
+    const body = { input, interpretation, learning_purpose: learningPurpose };
     const userBackground = mapUserProfileToBackground(profile);
     if (userBackground) {
       body.userBackground = userBackground;
     }
-    const result = await fetchApi("/ai/generate-graph", {
+
+    // F5: SSE streaming client — POST + ReadableStream
+    const token = tokenManager.get();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(buildApiUrl("/ai/generate-graph"), {
       method: "POST",
+      headers,
       body: JSON.stringify(body),
     });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: Failed to generate graph`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let meta = null;
+    const nodes = [];
+    let edges = [];
+
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop(); // keep last incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+        const event = JSON.parse(jsonStr);
+
+        if (event.type === "error") {
+          throw new Error(event.error?.message || "Generation failed");
+        } else if (event.type === "meta") {
+          meta = event;
+          if (onProgress) onProgress({ type: "meta", ...event });
+        } else if (event.type === "node") {
+          nodes.push(event.node);
+          if (onProgress)
+            onProgress({
+              type: "node",
+              node: event.node,
+              received: nodes.length,
+              total: meta?.totalNodes,
+            });
+        } else if (event.type === "edges") {
+          edges = event.edges;
+        } else if (event.type === "done") {
+          break outer;
+        }
+      }
+    }
+
     return {
-      ...result,
-      edges: mapEdgesFromBackend(result.edges),
+      interpretation: meta?.interpretation,
+      targetNodeId: meta?.targetNodeId,
+      nodes,
+      edges: mapEdgesFromBackend(edges),
     };
   },
 
@@ -295,6 +368,100 @@ export const aiApi = {
       method: "POST",
       body: JSON.stringify({ planId }),
     });
+  },
+
+  /**
+   * F7: Stream AI explanation for a what-item topic.
+   * Calls onChunk(text) for each chunk, returns full text when done.
+   */
+  explainTopic: async (nodeId, topicIndex, topicText, nodeContext, onChunk) => {
+    const token = tokenManager.get();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(buildApiUrl("/ai/explain-topic"), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ nodeId, topicIndex, topicText, nodeContext }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: explain-topic failed`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let fullText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+        const event = JSON.parse(jsonStr);
+        if (event.type === "chunk") {
+          fullText += event.text;
+          if (onChunk) onChunk(event.text);
+        } else if (event.type === "error") {
+          console.error("[explainTopic SSE] error event:", event.error);
+          throw new Error(event.error?.message || "explain-topic error");
+        } else if (event.type === "done") {
+          // Stream complete
+        }
+      }
+    }
+    return fullText;
+  },
+
+  /**
+   * F4: Stream AI chat response.
+   * messages: [{role, content}], nodeContext: {nodeName, planTitle, why}
+   * Calls onChunk(text) for each chunk, returns full text when done.
+   */
+  chatStream: async (messages, nodeContext, onChunk) => {
+    const token = tokenManager.get();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(buildApiUrl("/ai/chat"), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ messages, nodeContext }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: chat failed`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let fullText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+        const event = JSON.parse(jsonStr);
+        if (event.type === "chunk") {
+          fullText += event.text;
+          if (onChunk) onChunk(event.text);
+        } else if (event.type === "error") {
+          throw new Error(event.error?.message || "chat error");
+        }
+      }
+    }
+    return fullText;
   },
 };
 

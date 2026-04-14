@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from config import settings
 from .providers import (
@@ -130,6 +130,32 @@ class UnifiedLLMClient:
         raise LLMServiceError(
             f"LLM request failed after {self.max_retries} retries: {str(last_error)}"
         )
+
+    async def chat_stream(
+        self,
+        messages: List[LLMMessage],
+        temperature: Optional[float] = None,
+        max_tokens: int = 1024,
+        model: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream chat completion, yielding text chunks.
+
+        Uses primary provider only (no retry/fallback for streams).
+        """
+        provider = self.primary
+        if not provider or not provider.is_available():
+            raise LLMServiceError("No LLM provider available")
+
+        temp = temperature if temperature is not None else settings.LLM_TEMPERATURE
+
+        async for chunk in provider.chat_stream(
+            messages=messages,
+            temperature=temp,
+            max_tokens=max_tokens,
+            model=model,
+        ):
+            yield chunk
 
     async def chat_json(
         self,

@@ -77,7 +77,11 @@ def get_graph(
                 "mastery": parse_json_field(node["mastery"]),
                 "prompt": node["prompt"],
                 "resources": parse_json_field(node["resources"]),
+                "contentCache": parse_json_field(node["content_cache"]) or {},
                 "isTarget": bool(node["is_target"]),
+                "phase": node["phase"],
+                "phase_order": node["phase_order"] or 0,
+                "depth_level": node["depth_level"] or 2,
             }
         )
 

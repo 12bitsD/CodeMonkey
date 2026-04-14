@@ -14,6 +14,19 @@ ACCESS_TOKEN_EXPIRE_DAYS = settings.JWT_EXPIRE_DAYS
 
 security = HTTPBearer(auto_error=False)
 
+# 内存 Token 黑名单（S7）
+# 生产环境建议替换为 Redis，以支持多实例部署
+_token_blacklist: set[str] = set()
+
+
+def add_token_to_blacklist(token: str) -> None:
+    """将 JWT token 加入黑名单，使其立即失效。"""
+    _token_blacklist.add(token)
+
+
+def is_token_blacklisted(token: str) -> bool:
+    return token in _token_blacklist
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """创建JWT token"""
@@ -28,7 +41,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def verify_token(token: str) -> dict:
-    """验证JWT token"""
+    """验证JWT token（含黑名单检查）"""
+    if is_token_blacklisted(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+        )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload

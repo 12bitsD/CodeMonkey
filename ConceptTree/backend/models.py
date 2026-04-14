@@ -9,6 +9,12 @@ class NodeStatus(str, Enum):
     skipped = "skipped"
 
 
+class LearningPurpose(str, Enum):
+    explore = "explore"   # 了解这个领域 → 认知层+理解层（depth 1-2）
+    apply   = "apply"     # 项目/工作中能用 → 认知+理解+应用层（depth 1-3）
+    master  = "master"    # 系统精通 → 全4层（含内化/自测）
+
+
 # ========== 认证和用户相关模型 ==========
 
 
@@ -74,8 +80,12 @@ class NodeData(BaseModel):
     mastery: List[str] = []
     prompt: Optional[str] = None
     resources: List[Resource] = []
+    contentCache: Dict[str, str] = {}
     isTarget: bool = False
     domain: Optional[str] = None
+    phase: Optional[str] = None
+    phase_order: int = 0
+    depth_level: int = 2
 
 
 class NodeBase(BaseModel):
@@ -89,7 +99,11 @@ class NodeBase(BaseModel):
     mastery: List[str] = []
     prompt: Optional[str] = None
     resources: List[Dict[str, str]] = []
+    contentCache: Dict[str, str] = {}
     isTarget: bool = False
+    phase: Optional[str] = None
+    phase_order: int = 0
+    depth_level: int = 2
 
 
 class NodeCreate(BaseModel):
@@ -147,6 +161,7 @@ class PlanCreateRequest(BaseModel):
     nodes: List[NodeData]
     edges: List[Edge]
     targetNodeId: str
+    learning_purpose: str = "apply"  # F1: explore / apply / master
 
 
 class PlanCreateResponse(BaseModel):
@@ -279,6 +294,10 @@ class GraphNode(BaseModel):
     resources: List[Resource] = []
     isTarget: bool = False
     domain: Optional[str] = None
+    # F3 — 阶段分组字段
+    phase: Optional[str] = None        # 地基 / 核心 / 应用 / 进阶
+    phase_order: int = 0               # 阶段排序
+    depth_level: int = 2               # 内容深度（由 learning_purpose 决定）
 
 
 class GraphEdge(BaseModel):
@@ -345,3 +364,33 @@ class RecommendNextAIResult(BaseModel):
     success: bool
     data: Optional[RecommendNextResponse] = None
     error: Optional[ApiError] = None
+
+
+# ========== Sprint 3: AI Deep Content + Chat 模型 ==========
+
+
+class NodeContextInput(BaseModel):
+    """节点学习上下文（用于 explain-topic 和 chat）"""
+    nodeName: str
+    why: Optional[str] = None
+    planTitle: Optional[str] = None
+
+
+class ExplainTopicRequest(BaseModel):
+    """F7: 解释 what 列表中的某个主题"""
+    nodeId: str
+    topicIndex: int
+    topicText: str
+    nodeContext: NodeContextInput
+
+
+class ChatMessage(BaseModel):
+    """单条聊天消息"""
+    role: str   # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    """F4: 节点聊天请求"""
+    messages: List[ChatMessage]
+    nodeContext: Optional[NodeContextInput] = None

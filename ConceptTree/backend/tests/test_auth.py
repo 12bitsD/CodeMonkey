@@ -80,11 +80,11 @@ def test_login_user_not_found(client):
 def test_login_wrong_password(client):
     client.post(
         "/api/auth/register",
-        json={"email": "wrongpw@example.com", "password": "correctpassword"},
+        json={"email": "wrongpw@example.com", "password": "correct1password"},
     )
     resp = client.post(
         "/api/auth/login",
-        json={"email": "wrongpw@example.com", "password": "wrongpassword"},
+        json={"email": "wrongpw@example.com", "password": "wrong2password"},
     )
     assert resp.status_code == 401
     body = resp.json()

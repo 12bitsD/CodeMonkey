@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -18,6 +18,10 @@ import {
   Copy,
   ChevronRight,
   Save,
+  MessageCircle,
+  Send,
+  ChevronDown,
+  Loader,
 } from "lucide-react";
 import { Button, Modal } from "../components/ui";
 import { InfoSection } from "../components/common";
@@ -28,6 +32,33 @@ import { useAppContext } from "../contexts/AppContext";
 import { useToast } from "../contexts/ToastContext";
 import { graphApi, aiApi, plansApi } from "../services/api";
 import { toggleNodeStatus, isAllComplete } from "../utils/graphUtils";
+
+const PHASE_STYLE = {
+  地基: { bg: "rgba(245,243,255,0.7)", border: "rgba(167,139,250,0.3)", label: "地基", labelColor: "#7c3aed" },
+  核心: { bg: "rgba(240,253,250,0.7)", border: "rgba(45,212,191,0.3)", label: "核心", labelColor: "#0d9488" },
+  应用: { bg: "rgba(240,249,255,0.7)", border: "rgba(96,165,250,0.3)", label: "应用", labelColor: "#2563eb" },
+  进阶: { bg: "rgba(255,247,237,0.7)", border: "rgba(251,146,60,0.3)", label: "进阶", labelColor: "#ea580c" },
+};
+
+const buildCurvedEdgePath = (from, to, edgeIndex) => {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance === 0) {
+    return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  }
+
+  const midX = (from.x + to.x) / 2;
+  const midY = (from.y + to.y) / 2;
+  const normalX = -dy / distance;
+  const normalY = dx / distance;
+  const bend = Math.min(Math.max(distance * 0.08, 10), 30);
+  const direction = edgeIndex % 2 === 0 ? 1 : -1;
+  const controlX = midX + normalX * bend * direction;
+  const controlY = midY + normalY * bend * direction;
+
+  return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
+};
 
 const GraphPage = () => {
   const { planId } = useParams();
@@ -134,6 +165,51 @@ const GraphPage = () => {
   const [isClarifying, setIsClarifying] = useState(false);
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const [noteContent, setNoteContent] = useState("");
+  const isNodeDragging = Boolean(draggingNodeId);
+
+  // F7: per-topic AI explain state: { [`${nodeId}_${i}`]: { loading, content, expanded } }
+  const [explainStates, setExplainStates] = useState({});
+
+  useEffect(() => {
+    if (!nodes.length) return;
+
+    const preloaded = {};
+    for (const node of nodes) {
+      const cache = node.contentCache || {};
+      for (const [indexStr, text] of Object.entries(cache)) {
+        if (text) {
+          preloaded[`${node.id}_${indexStr}`] = {
+            loading: false,
+            content: text,
+            expanded: false,
+          };
+        }
+      }
+    }
+
+    setExplainStates((prev) => ({ ...preloaded, ...prev }));
+  }, [nodes]);
+
+  // F4: contextual chat panel
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = React.useRef(null);
+
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages]);
+
+  // Reset chat when switching nodes
+  useEffect(() => {
+    setChatMessages([]);
+    setChatInput("");
+    setChatLoading(false);
+  }, [selectedNodeId]);
 
   const nodeNotes = allNotes.filter(
     (n) => n.planId === planId && n.nodeId === selectedNodeId,
@@ -141,6 +217,62 @@ const GraphPage = () => {
 
   const learnedCount = nodes.filter((n) => n.status === "learned").length;
   const totalCount = nodes.filter((n) => n.status !== "skipped").length;
+
+  const nodeMap = useMemo(
+    () => new Map(nodes.map((node) => [node.id, node])),
+    [nodes],
+  );
+
+  const phaseRegions = useMemo(() => {
+    const phaseMap = {};
+    for (const node of nodes) {
+      if (!node.phase) continue;
+      if (!phaseMap[node.phase]) phaseMap[node.phase] = [];
+      phaseMap[node.phase].push(node);
+    }
+
+    const PAD = 60;
+    return Object.entries(phaseMap).flatMap(([phase, phaseNodes]) => {
+      const style = PHASE_STYLE[phase];
+      if (!style || phaseNodes.length === 0) return [];
+
+      const xs = phaseNodes.map((node) => node.x);
+      const ys = phaseNodes.map((node) => node.y);
+      return [
+        {
+          key: phase,
+          style,
+          x: Math.min(...xs) - PAD,
+          y: Math.min(...ys) - PAD,
+          width: Math.max(...xs) - Math.min(...xs) + PAD * 2,
+          height: Math.max(...ys) - Math.min(...ys) + PAD * 2,
+        },
+      ];
+    });
+  }, [nodes]);
+
+  const edgeGeometries = useMemo(
+    () =>
+      edges.flatMap((edge, index) => {
+        const from = nodeMap.get(edge.from);
+        const to = nodeMap.get(edge.to);
+        if (!from || !to) return [];
+
+        return [
+          {
+            key: `${edge.from}-${edge.to}-${index}`,
+            path: buildCurvedEdgePath(from, to, index),
+            midpoint: {
+              x: (from.x + to.x) / 2,
+              y: (from.y + to.y) / 2,
+            },
+            isTraversed: from.status === "learned",
+            isSkipped: from.status === "skipped",
+          },
+        ];
+      }),
+    [edges, nodeMap],
+  );
 
   const handleSaveNote = async () => {
     if (noteContent.trim()) {
@@ -234,6 +366,117 @@ const GraphPage = () => {
       toast.error("保存失败，请重试");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // F7: click a what-item → stream AI explanation
+  const handleExplainTopic = async (topicText, topicIndex) => {
+    if (!selectedNode) return;
+    const key = `${selectedNode.id}_${topicIndex}`;
+    const nodeId = selectedNode.id;
+    const current = explainStates[key];
+
+    // Toggle off if already loaded
+    if (current?.content) {
+      setExplainStates((prev) => ({
+        ...prev,
+        [key]: { ...prev[key], expanded: !prev[key].expanded },
+      }));
+      return;
+    }
+
+    setExplainStates((prev) => ({ ...prev, [key]: { loading: true, content: "", expanded: true } }));
+
+    try {
+      let accumulated = "";
+      await aiApi.explainTopic(
+        selectedNode.id,
+        topicIndex,
+        topicText,
+        {
+          nodeName: selectedNode.name,
+          why: selectedNode.why,
+          planTitle: planTitle || plan?.title,
+        },
+        (chunk) => {
+          accumulated += chunk;
+          setExplainStates((prev) => ({
+            ...prev,
+            [key]: { loading: false, content: accumulated, expanded: true },
+          }));
+        },
+      );
+      // Stream finished — ensure loading is cleared even if no chunks arrived
+      setExplainStates((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          content: prev[key]?.content || "内容生成为空，请重试。",
+          expanded: true,
+        },
+      }));
+      if (accumulated) {
+        setNodes((prev) =>
+          prev.map((node) =>
+            node.id === nodeId
+              ? {
+                  ...node,
+                  contentCache: {
+                    ...(node.contentCache || {}),
+                    [topicIndex]: accumulated,
+                  },
+                }
+              : node,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error("[explainTopic] error:", err);
+      setExplainStates((prev) => ({
+        ...prev,
+        [key]: { loading: false, content: "解释生成失败，请重试。", expanded: true },
+      }));
+    }
+  };
+
+  // F4: send chat message
+  const handleChatSend = async () => {
+    if (!chatInput.trim() || chatLoading || !selectedNode) return;
+    const userMsg = { role: "user", content: chatInput.trim() };
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
+    setChatInput("");
+    setChatLoading(true);
+
+    // Add placeholder assistant message
+    setChatMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+    try {
+      let accumulated = "";
+      await aiApi.chatStream(
+        newMessages,
+        {
+          nodeName: selectedNode.name,
+          why: selectedNode.why,
+          planTitle: planTitle || plan?.title,
+        },
+        (chunk) => {
+          accumulated += chunk;
+          setChatMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: "assistant", content: accumulated };
+            return updated;
+          });
+        },
+      );
+    } catch (err) {
+      setChatMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: "assistant", content: "回复失败，请重试。" };
+        return updated;
+      });
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -382,9 +625,110 @@ const GraphPage = () => {
             transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
           }}
         >
+          {/* F3: Phase background regions */}
+          {phaseRegions.map((region) => (
+            <div
+              key={region.key}
+              className="absolute pointer-events-none"
+              style={{
+                left: region.x,
+                top: region.y,
+                width: region.width,
+                height: region.height,
+                background: region.style.bg,
+                border: `1.5px solid ${region.style.border}`,
+                borderRadius: 20,
+              }}
+            >
+              <span
+                className="absolute top-3 left-4 text-xs font-bold tracking-widest uppercase"
+                style={{ color: region.style.labelColor }}
+              >
+                {region.style.label}
+              </span>
+            </div>
+          ))}
+          {false && (() => {
+            const PHASE_STYLE = {
+              '地基': { bg: 'rgba(245,243,255,0.7)', border: 'rgba(167,139,250,0.3)', label: '地基', labelColor: '#7c3aed' },
+              '核心': { bg: 'rgba(240,253,250,0.7)', border: 'rgba(45,212,191,0.3)', label: '核心', labelColor: '#0d9488' },
+              '应用': { bg: 'rgba(240,249,255,0.7)', border: 'rgba(96,165,250,0.3)', label: '应用', labelColor: '#2563eb' },
+              '进阶': { bg: 'rgba(255,247,237,0.7)', border: 'rgba(251,146,60,0.3)', label: '进阶', labelColor: '#ea580c' },
+            };
+            const phaseMap = {};
+            nodes.forEach(n => {
+              if (!n.phase) return;
+              if (!phaseMap[n.phase]) phaseMap[n.phase] = [];
+              phaseMap[n.phase].push(n);
+            });
+            const PAD = 60;
+            return Object.entries(phaseMap).map(([phase, phaseNodes]) => {
+              const style = PHASE_STYLE[phase];
+              if (!style || phaseNodes.length === 0) return null;
+              const xs = phaseNodes.map(n => n.x);
+              const ys = phaseNodes.map(n => n.y);
+              const x1 = Math.min(...xs) - PAD;
+              const y1 = Math.min(...ys) - PAD;
+              const w = Math.max(...xs) - Math.min(...xs) + PAD * 2;
+              const h = Math.max(...ys) - Math.min(...ys) + PAD * 2;
+              return (
+                <div
+                  key={phase}
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: x1,
+                    top: y1,
+                    width: w,
+                    height: h,
+                    background: style.bg,
+                    border: `1.5px solid ${style.border}`,
+                    borderRadius: 20,
+                  }}
+                >
+                  <span
+                    className="absolute top-3 left-4 text-xs font-bold tracking-widest uppercase"
+                    style={{ color: style.labelColor }}
+                  >
+                    {style.label}
+                  </span>
+                </div>
+              );
+            });
+          })()}
+
           {/* Edges */}
           <svg className="absolute top-0 left-0 overflow-visible w-full h-full pointer-events-none">
-            {edges.map((edge, i) => {
+            {edgeGeometries.map((edge) => (
+              <g key={edge.key}>
+                <path
+                  d={edge.path}
+                  fill="none"
+                  stroke={edge.isTraversed ? "rgba(13, 148, 136, 0.14)" : "rgba(113, 113, 122, 0.08)"}
+                  strokeWidth={edge.isTraversed ? 6 : 5}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <path
+                  d={edge.path}
+                  fill="none"
+                  stroke={edge.isTraversed ? "#0D9488" : "#A1A1AA"}
+                  strokeOpacity={edge.isTraversed ? 0.8 : 0.72}
+                  strokeWidth={edge.isTraversed ? 2.2 : 1.6}
+                  strokeLinecap="round"
+                  strokeDasharray={edge.isSkipped ? "5,6" : undefined}
+                  vectorEffect="non-scaling-stroke"
+                />
+                {edge.isTraversed && (
+                  <circle
+                    cx={edge.midpoint.x}
+                    cy={edge.midpoint.y}
+                    r={2.4}
+                    fill="#0D9488"
+                  />
+                )}
+              </g>
+            ))}
+            {false && edges.map((edge, i) => {
               const from = nodes.find((n) => n.id === edge.from);
               const to = nodes.find((n) => n.id === edge.to);
               if (!from || !to) return null;
@@ -421,8 +765,9 @@ const GraphPage = () => {
             return (
               <div
                 key={node.id}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center cursor-pointer
+                className={`absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer
                   ${scale < 0.6 ? "w-4 h-4 rounded-full" : "w-auto h-auto px-6 py-3 rounded-full"}
+                  ${isNodeDragging ? "transition-none" : "transition-[transform,box-shadow,border-color,background-color,color] duration-200"}
                   ${isSelected ? "scale-110 shadow-[0_10px_40px_rgba(0,0,0,0.15)] z-10" : "shadow-[0_2px_12px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.15)] z-0"}
                   ${isLearned ? "bg-zinc-900 text-white border border-zinc-700" : "bg-white text-zinc-800 border border-zinc-300 hover:border-zinc-400"}
                   ${node.isTarget && !isLearned ? "ring-2 ring-teal-500/30 border-teal-500 text-teal-700 bg-teal-50" : ""}
@@ -658,17 +1003,44 @@ const GraphPage = () => {
                   <section>
                     <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                       <BookOpen size={14} /> 核心内容
+                      <span className="text-[10px] font-normal text-teal-500 ml-1">点击主题获取 AI 解释</span>
                     </h4>
                     <ul className="space-y-3">
-                      {selectedNode.what.map((item, i) => (
-                        <li
-                          key={i}
-                          className="flex items-start gap-3 text-sm text-zinc-600 group"
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 mt-2 group-hover:bg-teal-500 transition-colors" />
-                          <span className="leading-relaxed">{item}</span>
-                        </li>
-                      ))}
+                      {selectedNode.what.map((item, i) => {
+                        const key = `${selectedNode.id}_${i}`;
+                        const state = explainStates[key];
+                        return (
+                          <li key={i} className="text-sm text-zinc-600">
+                            <button
+                              className="flex items-start gap-3 w-full text-left group hover:text-teal-700 transition-colors"
+                              onClick={() => handleExplainTopic(item, i)}
+                            >
+                              <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 mt-2 group-hover:bg-teal-500 transition-colors flex-shrink-0" />
+                              <span className="leading-relaxed flex-1">{item}</span>
+                              {state?.loading ? (
+                                <Loader size={12} className="mt-1.5 text-teal-400 animate-spin flex-shrink-0" />
+                              ) : state?.content ? (
+                                <ChevronDown
+                                  size={12}
+                                  className={`mt-1.5 text-teal-400 flex-shrink-0 transition-transform ${state.expanded ? "rotate-180" : ""}`}
+                                />
+                              ) : (
+                                <Sparkles size={12} className="mt-1.5 text-zinc-300 group-hover:text-teal-400 flex-shrink-0 transition-colors" />
+                              )}
+                            </button>
+                            {state?.expanded && state?.content && (
+                              <div className="ml-4 mt-2 p-3 bg-teal-50/60 border border-teal-100 rounded-xl text-xs text-zinc-600 leading-relaxed whitespace-pre-wrap">
+                                {state.content}
+                              </div>
+                            )}
+                            {state?.loading && (
+                              <div className="ml-4 mt-2 p-3 bg-zinc-50 border border-zinc-100 rounded-xl text-xs text-zinc-400 animate-pulse">
+                                AI 正在生成解释...
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </section>
                 )}
@@ -759,6 +1131,99 @@ const GraphPage = () => {
           </>
         )}
       </div>
+
+      {/* F4: Chat Panel */}
+      {selectedNode && (
+        <>
+          {/* Floating chat button */}
+          <button
+            onClick={() => {
+              setChatOpen((v) => !v);
+              if (!chatOpen) {
+                // Reset messages when reopening for a different context
+                setChatMessages([]);
+              }
+            }}
+            className={`absolute bottom-8 left-8 z-20 w-12 h-12 rounded-2xl shadow-lg flex items-center justify-center transition-all ${
+              chatOpen
+                ? "bg-zinc-900 text-white shadow-zinc-900/20"
+                : "bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-900"
+            }`}
+            title="AI 学习助手"
+          >
+            {chatOpen ? <X size={18} strokeWidth={1.5} /> : <MessageCircle size={18} strokeWidth={1.5} />}
+          </button>
+
+          {/* Chat panel */}
+          <div
+            className={`absolute bottom-24 left-8 z-20 w-80 bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-100 flex flex-col transition-all duration-300 origin-bottom-left ${
+              chatOpen ? "opacity-100 scale-100 pointer-events-auto" : "opacity-0 scale-95 pointer-events-none"
+            }`}
+            style={{ height: 420 }}
+          >
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-zinc-50 flex items-center gap-3 flex-shrink-0">
+              <div className="w-7 h-7 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
+                <Sparkles size={13} fill="currentColor" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-zinc-800">AI 学习助手</p>
+                <p className="text-[10px] text-zinc-400 truncate max-w-[180px]">{selectedNode.name}</p>
+              </div>
+              <button
+                onClick={() => setChatMessages([])}
+                className="ml-auto text-[10px] text-zinc-300 hover:text-zinc-500 transition-colors"
+              >
+                清空
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar">
+              {chatMessages.length === 0 && (
+                <div className="text-center text-xs text-zinc-300 pt-8">
+                  <MessageCircle size={24} className="mx-auto mb-2 opacity-30" />
+                  <p>有什么关于「{selectedNode.name}」的问题？</p>
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${
+                      msg.role === "user"
+                        ? "bg-zinc-900 text-white rounded-br-sm"
+                        : "bg-zinc-50 text-zinc-700 rounded-bl-sm border border-zinc-100"
+                    }`}
+                  >
+                    {msg.content || <span className="opacity-40 animate-pulse">思考中...</span>}
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="px-3 py-3 border-t border-zinc-50 flex gap-2 flex-shrink-0">
+              <input
+                type="text"
+                className="flex-1 text-xs px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-xl outline-none focus:border-zinc-300 transition-colors"
+                placeholder="问一个问题..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
+                disabled={chatLoading}
+              />
+              <button
+                onClick={handleChatSend}
+                disabled={!chatInput.trim() || chatLoading}
+                className="w-8 h-8 rounded-xl bg-zinc-900 text-white flex items-center justify-center disabled:opacity-30 hover:bg-zinc-700 transition-colors flex-shrink-0"
+              >
+                {chatLoading ? <Loader size={12} className="animate-spin" /> : <Send size={12} />}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Goal Clarification Modal */}
       <Modal

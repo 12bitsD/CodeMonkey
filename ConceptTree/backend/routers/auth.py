@@ -1,14 +1,22 @@
 """认证路由"""
 
 import re
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Optional
 from database import get_db_context
 from models import LoginRequest, RegisterRequest
 from utils.password import hash_password, verify_password
-from utils.auth import create_access_token, get_current_user_id
+from utils.auth import (
+    create_access_token,
+    get_current_user_id,
+    add_token_to_blacklist,
+)
 from utils.id_generator import generate_user_id, generate_profile_id
+from utils.limiter import limiter
 
+_bearer = HTTPBearer(auto_error=False)
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 
@@ -19,7 +27,8 @@ def validate_email(email: str) -> bool:
 
 
 @router.post("/register")
-def register(req: RegisterRequest):
+@limiter.limit("5/15minutes")
+def register(request: Request, req: RegisterRequest):
     """用户注册"""
     # 验证邮箱格式
     if not validate_email(req.email):
@@ -31,13 +40,21 @@ def register(req: RegisterRequest):
             },
         )
 
-    # 验证密码长度
-    if len(req.password) < 6:
+    # 验证密码强度：至少8位，包含字母和数字
+    if len(req.password) < 8:
         return JSONResponse(
             status_code=400,
             content={
                 "success": False,
-                "error": {"code": "WEAK_PASSWORD", "message": "密码长度至少6位"},
+                "error": {"code": "WEAK_PASSWORD", "message": "密码长度至少8位"},
+            },
+        )
+    if not re.search(r"[A-Za-z]", req.password) or not re.search(r"\d", req.password):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": {"code": "WEAK_PASSWORD", "message": "密码须同时包含字母和数字"},
             },
         )
 
@@ -97,7 +114,8 @@ def register(req: RegisterRequest):
 
 
 @router.post("/login")
-def login(req: LoginRequest):
+@limiter.limit("5/15minutes")
+def login(request: Request, req: LoginRequest):
     """用户登录"""
     with get_db_context() as db:
         user = db.execute(
@@ -134,8 +152,11 @@ def login(req: LoginRequest):
 
 
 @router.post("/logout")
-def logout(user_id: str = Depends(get_current_user_id)):
-    """用户登出"""
-    # 在实际应用中，这里应该将token加入黑名单
-    # 目前简化实现，只返回成功消息
+def logout(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+    user_id: str = Depends(get_current_user_id),
+):
+    """用户登出（将 token 加入黑名单使其立即失效）"""
+    if credentials:
+        add_token_to_blacklist(credentials.credentials)
     return {"success": True, "data": {"message": "已登出"}}

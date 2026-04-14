@@ -61,7 +61,7 @@ export const AppProvider = ({ children }) => {
   }, [isAuthenticated, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 业务逻辑 - 计划相关
-  const createPlan = async (input, graphResult) => {
+  const createPlan = async (input, graphResult, learningPurpose = "apply") => {
     try {
       const newPlan = await plansApi.create({
         title: graphResult.interpretation || input,
@@ -69,6 +69,7 @@ export const AppProvider = ({ children }) => {
         targetNodeId: graphResult.targetNodeId,
         nodes: graphResult.nodes,
         edges: graphResult.edges,
+        learning_purpose: learningPurpose,
       });
       setPlans(prev => [newPlan, ...prev]);
       return newPlan;

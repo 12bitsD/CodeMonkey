@@ -1,6 +1,6 @@
 """OpenAI SDK compatible provider (works with Kimi, OpenAI, etc.)"""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from openai import AsyncOpenAI, APIError, APITimeoutError
 
 from .base import BaseLLMProvider, LLMMessage, LLMResponse
@@ -99,6 +99,38 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             raise LLMProviderError(f"API error: {e.message}", status_code=e.status_code)
         except Exception as e:
             raise LLMProviderError(f"Unexpected error: {str(e)}")
+
+
+    async def chat_stream(
+        self,
+        messages: List[LLMMessage],
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        model: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream chat completion using OpenAI SDK, yielding text chunks."""
+        try:
+            openai_messages = [
+                {"role": msg.role, "content": msg.content} for msg in messages
+            ]
+            stream = await self.client.chat.completions.create(
+                model=model or self.model,
+                messages=openai_messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+            async for chunk in stream:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield delta
+        except APITimeoutError:
+            raise LLMTimeoutError(f"Stream request timed out after {self.timeout}s")
+        except APIError as e:
+            raise LLMProviderError(f"API error during stream: {e.message}", status_code=e.status_code)
+        except Exception as e:
+            raise LLMProviderError(f"Unexpected error during stream: {str(e)}")
 
 
 class LLMProviderError(Exception):

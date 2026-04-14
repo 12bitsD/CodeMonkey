@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
 export const useGraphInteraction = (initialNodes = [], initialEdges = [], aiRecommendation = null) => {
   const [nodes, setNodes] = useState(initialNodes);
@@ -9,6 +9,8 @@ export const useGraphInteraction = (initialNodes = [], initialEdges = [], aiReco
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [draggingNodeId, setDraggingNodeId] = useState(null);
+  const dragFrameRef = useRef(null);
+  const latestNodePositionRef = useRef(null);
 
   const selectedNode = useMemo(() => 
     nodes.find(n => n.id === selectedNodeId),
@@ -57,21 +59,41 @@ export const useGraphInteraction = (initialNodes = [], initialEdges = [], aiReco
     }
     if (draggingNodeId && containerRef?.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      setNodes(prev => prev.map(n => 
-        n.id === draggingNodeId 
-          ? { 
-              ...n, 
-              x: (e.clientX - rect.left - position.x) / scale, 
-              y: (e.clientY - rect.top - position.y) / scale 
-            } 
-          : n
-      ));
+      latestNodePositionRef.current = {
+        id: draggingNodeId,
+        x: (e.clientX - rect.left - position.x) / scale,
+        y: (e.clientY - rect.top - position.y) / scale,
+      };
+
+      if (dragFrameRef.current === null) {
+        dragFrameRef.current = requestAnimationFrame(() => {
+          const next = latestNodePositionRef.current;
+          dragFrameRef.current = null;
+          if (!next) return;
+
+          setNodes(prev => prev.map(n =>
+            n.id === next.id
+              ? {
+                  ...n,
+                  x: next.x,
+                  y: next.y,
+                }
+              : n
+          ));
+        });
+      }
     }
   }, [isDragging, dragStart, draggingNodeId, position, scale]);
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
     setDraggingNodeId(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (dragFrameRef.current !== null) {
+      cancelAnimationFrame(dragFrameRef.current);
+    }
   }, []);
 
   const setNodeStatus = useCallback((id, status) => {

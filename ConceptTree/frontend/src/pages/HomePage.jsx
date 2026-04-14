@@ -29,8 +29,10 @@ const HomePage = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [streamProgress, setStreamProgress] = useState(null); // {received, total}
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [parsedGoal, setParsedGoal] = useState(null);
+  const [learningPurpose, setLearningPurpose] = useState('apply');
   
   const [activeMenuPlanId, setActiveMenuPlanId] = useState(null);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -62,7 +64,8 @@ const HomePage = () => {
 
     setShowConfirmModal(false);
     setIsGenerating(true);
-    
+    setStreamProgress(null);
+
     // 启动加载动画计时器
     let step = 0;
     const interval = setInterval(() => {
@@ -74,28 +77,36 @@ const HomePage = () => {
     }, 800);
 
     try {
-      // 1. 生成图谱数据
+      // 1. 生成图谱数据（SSE 流式接收）
       const graphResult = await graphApi.generate(
         inputText,
         confirmedInterpretation,
         userProfile,
+        learningPurpose,
+        (evt) => {
+          if (evt.type === 'node') {
+            setStreamProgress({ received: evt.received, total: evt.total });
+          }
+        },
       );
-      
+
       // 2. 创建计划
-      const newPlan = await actions.createPlan(inputText, graphResult);
-      
+      const newPlan = await actions.createPlan(inputText, graphResult, learningPurpose);
+
       // 3. 跳转 (确保动画至少播放一会)
       clearInterval(interval);
       setTimeout(() => {
         setIsGenerating(false);
+        setStreamProgress(null);
         navigate(`/graph/${newPlan.id}`);
         setInputText('');
       }, 500);
-      
+
     } catch (error) {
       toast.error('生成图谱失败，请稍后重试');
       clearInterval(interval);
       setIsGenerating(false);
+      setStreamProgress(null);
     }
   };
 
@@ -238,7 +249,9 @@ const HomePage = () => {
             <div className="absolute inset-0 bg-white/98 z-10 flex flex-col items-center justify-center text-zinc-800 transition-opacity duration-500">
               <div className="w-12 h-12 border-[3px] border-zinc-100 border-t-zinc-900 rounded-full animate-spin mb-6" />
               <p className="text-sm font-medium uppercase tracking-widest animate-pulse text-zinc-400">
-                {LOADING_TEXTS[loadingStep]}
+                {streamProgress
+                  ? `生成节点 ${streamProgress.received}/${streamProgress.total || '?'}`
+                  : LOADING_TEXTS[loadingStep]}
               </p>
             </div>
           )}
@@ -347,7 +360,36 @@ const HomePage = () => {
             </h4>
             <p className="text-xl font-light text-zinc-900">{parsedGoal?.interpretation}</p>
           </div>
-          
+
+          {/* F1: 学习目的选择器 */}
+          <div>
+            <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">学习目的</h4>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { id: 'explore', label: '了解领域', desc: '5-7 个节点', color: 'teal' },
+                { id: 'apply',   label: '项目实用', desc: '7-10 个节点', color: 'blue' },
+                { id: 'master',  label: '系统精通', desc: '10-15 个节点', color: 'violet' },
+              ].map(({ id, label, desc, color }) => {
+                const selected = learningPurpose === id;
+                const ring = {
+                  teal:   selected ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-zinc-200 hover:border-teal-300',
+                  blue:   selected ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-zinc-200 hover:border-blue-300',
+                  violet: selected ? 'border-violet-500 bg-violet-50 text-violet-800' : 'border-zinc-200 hover:border-violet-300',
+                }[color];
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setLearningPurpose(id)}
+                    className={`flex flex-col items-center gap-1 p-4 rounded-2xl border-2 transition-all ${ring}`}
+                  >
+                    <span className="text-sm font-semibold">{label}</span>
+                    <span className="text-xs opacity-60">{desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
            {parsedGoal?.backgroundSummary?.length > 0 && (
             <div className="space-y-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">基于你的背景</h4>

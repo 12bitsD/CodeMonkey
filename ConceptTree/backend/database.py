@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from contextlib import contextmanager
 from typing import Any, Generator, Optional, Sequence
 
@@ -8,6 +9,9 @@ import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 
 from config import settings
+
+# PostgreSQL schema 名合法字符白名单（字母、数字、下划线，首字符不能是数字）
+_VALID_SCHEMA_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$", re.IGNORECASE)
 
 
 def _convert_placeholders(sql: str) -> str:
@@ -51,6 +55,8 @@ def _connect() -> "psycopg2.extensions.connection":
     conn = psycopg2.connect(settings.DATABASE_URL)
     schema = os.environ.get("DATABASE_SCHEMA") or settings.DATABASE_SCHEMA
     if schema:
+        if not _VALID_SCHEMA_RE.match(schema):
+            raise ValueError(f"Invalid DATABASE_SCHEMA name: {schema!r}")
         with conn.cursor() as cur:
             cur.execute(f"SET search_path TO {schema}")
         conn.commit()

@@ -27,7 +27,7 @@ def _get_bool_env(name: str, default: bool) -> bool:
 class Settings:
     APP_NAME: str = _get_env("APP_NAME", "PathFinder API")
     APP_VERSION: str = _get_env("APP_VERSION", "1.0.0")
-    DEBUG: bool = _get_bool_env("DEBUG", True)
+    DEBUG: bool = _get_bool_env("DEBUG", False)
 
     DATABASE_URL: str = _get_env("DATABASE_URL", "")
     DATABASE_SCHEMA: str = _get_env("DATABASE_SCHEMA", "")
@@ -38,7 +38,7 @@ class Settings:
     JWT_ALGORITHM: str = _get_env("JWT_ALGORITHM", "HS256")
     JWT_EXPIRE_DAYS: int = int(_get_env("JWT_EXPIRE_DAYS", "7"))
 
-    CORS_ORIGINS_RAW: str = _get_env("CORS_ORIGINS", "*")
+    CORS_ORIGINS_RAW: str = _get_env("CORS_ORIGINS", "")
     CORS_ALLOW_CREDENTIALS: bool = _get_bool_env(
         "CORS_ALLOW_CREDENTIALS",
         True,
@@ -66,6 +66,17 @@ settings = Settings()
 
 def get_cors_origins() -> list[str]:
     raw = settings.CORS_ORIGINS_RAW.strip()
-    if raw == "*" or raw == "":
+    if raw == "*":
         return ["*"]
+    if raw == "":
+        # 未配置时默认只允许本地开发域名（生产环境需在 .env 显式设置 CORS_ORIGINS）
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
     return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def get_cors_allow_credentials() -> bool:
+    """credentials=True 不能与 allow_origins=* 同时使用（浏览器拒绝）。"""
+    origins = get_cors_origins()
+    if origins == ["*"]:
+        return False
+    return settings.CORS_ALLOW_CREDENTIALS

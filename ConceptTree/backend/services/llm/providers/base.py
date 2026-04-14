@@ -1,7 +1,7 @@
 """Abstract base class for LLM providers"""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from dataclasses import dataclass
 
 
@@ -56,6 +56,28 @@ class BaseLLMProvider(ABC):
 
         Returns:
             LLMResponse with content and metadata
+        """
+        pass
+
+    @abstractmethod
+    async def chat_stream(
+        self,
+        messages: List[LLMMessage],
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        model: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream chat completion, yielding text chunks as they arrive.
+
+        Args:
+            messages: List of messages
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens in response
+            model: Optional model override
+
+        Yields:
+            Text chunks from the LLM response
         """
         pass
 

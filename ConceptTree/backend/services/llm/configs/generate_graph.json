@@ -4,7 +4,7 @@
     "temperature": 0.7,
     "max_tokens": 4096
   },
-  "system_prompt": "You are an AI learning assistant. Generate a knowledge dependency graph for the given learning goal.",
+  "system_prompt": "You are an AI learning assistant. Generate a knowledge dependency graph for the given learning goal. The user's learning purpose is: {{learning_purpose}}.\n\nLearning purpose definitions:\n- explore: 了解这个领域（认知+理解，depth_level=2）, target 5-7 nodes\n- apply: 项目/工作中能用（认知+理解+应用，depth_level=3）, target 7-10 nodes\n- master: 系统精通（全4层含内化，depth_level=4）, target 10-15 nodes\n\nPhase grouping rules:\n- 地基 (phase_order=1): 最基础的前置知识节点\n- 核心 (phase_order=2): 直接支撑学习目标的关键概念\n- 应用 (phase_order=3): 实践/应用/工具类节点\n- 进阶 (phase_order=4, master模式专用): 深度扩展节点",
   "output_format": {
     "interpretation": "The learning goal (echo back)",
     "nodes": [
@@ -22,7 +22,10 @@
           {"name": "Resource name", "url": "optional url", "reason": "Why this resource"}
         ],
         "isTarget": false,
-        "domain": "领域分类如: 数学基础/编程/机器学习"
+        "domain": "领域分类如: 数学基础/编程/机器学习",
+        "phase": "地基",
+        "phase_order": 1,
+        "depth_level": 2
       }
     ],
     "edges": [
@@ -31,16 +34,19 @@
     "targetNodeId": "id of the target node"
   },
   "rules": [
-    "Node Count: Generate 5-12 nodes depending on goal complexity",
+    "Node Count: Calibrate by learning_purpose — explore: 5-7 nodes, apply: 7-10 nodes, master: 10-15 nodes",
     "Node Fields: id MUST be n1, n2 format. name MUST be Chinese. isTarget MUST be true for exactly ONE node.",
+    "Phase Assignment: Every node MUST have a phase field. Assign 地基/核心/应用 for explore and apply. Add 进阶 only for master. Target node is always in 核心 phase.",
+    "phase_order: 地基=1, 核心=2, 应用=3, 进阶=4. All nodes in the same phase share the same phase_order value.",
+    "depth_level: Set uniformly based on learning_purpose — explore=2, apply=3, master=4. Apply to ALL nodes.",
     "Dependencies (edges): Create logical prerequisite chains. Target node should have at least 2 incoming edges. Avoid circular dependencies.",
-    "Layout STRICT: Target node x=0, y=0. Direct prerequisites y=-200. Their prerequisites y=-400. Foundational nodes y=-600. Spread x values: use -300,-150,0,150,300 to avoid overlap. NEVER use y=-1 or y=0 for non-target nodes.",
+    "Layout STRICT: Target node x=0, y=0. Direct prerequisites y=-200. Their prerequisites y=-400. Foundational nodes y=-600. Spread x values: use -300,-150,0,150,300 to avoid overlap.",
     "Background Adaptation: If user has strengths, skip basic nodes. If weaknesses, add foundation nodes."
   ],
   "examples": [
     {
-      "input": "理解反向传播的数学原理",
-      "output": "Nodes: 导数基础, 偏导数, 链式法则, 梯度下降, 反向传播. Edges: 导数基础->偏导数, 偏导数->链式法则, 链式法则->反向传播, 链式法则->梯度下降, 梯度下降->反向传播"
+      "input": "理解反向传播的数学原理 (learning_purpose=apply)",
+      "output": "Nodes(8): 导数基础(地基,p1,d3), 偏导数(地基,p1,d3), 链式法则(核心,p2,d3), 梯度下降(核心,p2,d3), 反向传播(核心,p2,d3,isTarget), 矩阵运算(地基,p1,d3), 实现梯度下降(应用,p3,d3), 调试神经网络(应用,p3,d3)"
     }
   ]
 }

@@ -101,3 +101,17 @@ ON notes(user_id, plan_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_learning_sessions_user_created
 ON learning_sessions(user_id, created_at DESC);
+
+-- ─── Sprint 2 迁移：F1/F3 新增字段 ───────────────────────────────────────────
+-- 学习目的（explore=了解领域 / apply=项目能用 / master=系统精通）
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS learning_purpose TEXT DEFAULT 'apply';
+
+-- 节点阶段分组（地基/核心/应用等）
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS phase TEXT;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS phase_order INTEGER DEFAULT 0;
+
+-- 节点内容深度等级（1-4，由 learning_purpose 决定）
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS depth_level INTEGER DEFAULT 2;
+
+-- 各层内容缓存（避免重复调用 LLM），格式：{"1": "...", "2": "..."}
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS content_cache JSONB DEFAULT '{}'::jsonb;
