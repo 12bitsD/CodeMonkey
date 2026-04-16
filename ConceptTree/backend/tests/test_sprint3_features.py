@@ -513,8 +513,18 @@ class TestSSEEndpoints:
         types = [e.get("type") for e in events]
         assert "done" in types, f"No 'done' event in stream. Types: {types}"
 
-    def test_chat_sse_done_event(self, _make_ai_app):
+    def test_chat_sse_done_event(self, _make_ai_app, monkeypatch):
         """chat SSE stream ends with done event."""
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+        import routers.ai as ai_router_module
+
+        class _FakeAIService:
+            async def chat_stream(self, **_kwargs):
+                yield "测试回答"
+
+        monkeypatch.setattr(ai_router_module, "get_ai_service", lambda: _FakeAIService())
+
         client, uid, pid, nid = _make_ai_app
         resp = client.post("/api/ai/chat", json={
             "messages": [{"role": "user", "content": "链式法则的应用场景是什么？"}],

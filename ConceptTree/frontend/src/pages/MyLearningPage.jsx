@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button, Badge } from '../components/ui';
 import { StatCard, ChartBar } from '../components/common';
+import MarkdownContent from '../components/common/MarkdownContent';
 import { useNoteContext } from '../contexts/NoteContext';
 import { usePlanContext } from '../contexts/PlanContext';
 import { statsApi } from '../services/api';
@@ -338,7 +339,12 @@ const MyLearningPage = () => {
                                 </div>
                                 <CornerDownLeft size={13} className="text-zinc-300 group-hover:text-teal-500 transition-colors flex-shrink-0 mt-1" />
                               </div>
-                              <p className="text-sm text-zinc-600 leading-relaxed line-clamp-3">{note.content}</p>
+                              <div className="max-h-28 overflow-hidden">
+                                <MarkdownContent
+                                  content={note.content}
+                                  className="space-y-2 text-sm leading-6 text-zinc-600"
+                                />
+                              </div>
                             </div>
                           </div>
                         ))}

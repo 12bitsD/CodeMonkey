@@ -13,6 +13,8 @@ import {
   LogOut
 } from 'lucide-react';
 import { Button, Modal } from '../components/ui';
+import GoalAnalysisLoader from '../components/loaders/GoalAnalysisLoader';
+import GraphGenerationLoader from '../components/loaders/GraphGenerationLoader';
 import { LOADING_TEXTS } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlanContext } from '../contexts/PlanContext';
@@ -27,6 +29,7 @@ const HomePage = () => {
   
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [streamProgress, setStreamProgress] = useState(null); // {received, total}
@@ -46,6 +49,12 @@ const HomePage = () => {
   const handleStartAnalysis = async () => {
     if (!inputText.trim()) return;
     setIsAnalyzing(true);
+    setAnalysisStep(0);
+    let step = 0;
+    const interval = setInterval(() => {
+      step += 1;
+      setAnalysisStep(step);
+    }, 900);
     
     try {
       // 调用 AI 解析 API
@@ -55,6 +64,7 @@ const HomePage = () => {
     } catch (error) {
       toast.error('解析目标失败，请稍后重试');
     } finally {
+      clearInterval(interval);
       setIsAnalyzing(false);
     }
   };
@@ -64,6 +74,7 @@ const HomePage = () => {
 
     setShowConfirmModal(false);
     setIsGenerating(true);
+    setLoadingStep(0);
     setStreamProgress(null);
 
     // 启动加载动画计时器
@@ -222,6 +233,7 @@ const HomePage = () => {
             placeholder="例如：我想理解深度学习中的反向传播，我有Python基础但数学不好..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
+            disabled={isAnalyzing || isGenerating}
           />
           
           <div className="px-6 pb-6 flex justify-between items-end">
@@ -237,7 +249,7 @@ const HomePage = () => {
             </div>
             <Button 
               onClick={handleStartAnalysis} 
-              disabled={!inputText.trim() || isAnalyzing} 
+              disabled={!inputText.trim() || isAnalyzing || isGenerating} 
               size="md" 
               icon={Sparkles}
             >
@@ -245,7 +257,14 @@ const HomePage = () => {
             </Button>
           </div>
 
+          {isAnalyzing && <GoalAnalysisLoader step={analysisStep} />}
           {isGenerating && (
+            <GraphGenerationLoader
+              loadingStep={loadingStep}
+              streamProgress={streamProgress}
+            />
+          )}
+          {false && (
             <div className="absolute inset-0 bg-white/98 z-10 flex flex-col items-center justify-center text-zinc-800 transition-opacity duration-500">
               <div className="w-12 h-12 border-[3px] border-zinc-100 border-t-zinc-900 rounded-full animate-spin mb-6" />
               <p className="text-sm font-medium uppercase tracking-widest animate-pulse text-zinc-400">

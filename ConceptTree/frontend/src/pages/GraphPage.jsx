@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { Button, Modal } from "../components/ui";
 import { InfoSection } from "../components/common";
+import ChatMarkdownMessage from "../components/chat/ChatMarkdownMessage";
+import MarkdownContent from "../components/common/MarkdownContent";
 import { MasteryChecklist } from "../components/node/MasteryChecklist";
 import { ResourceList } from "../components/node/ResourceList";
 import { useGraphInteraction } from "../hooks/useGraphInteraction";
@@ -34,6 +36,15 @@ import { usePlanContext } from "../contexts/PlanContext";
 import { useToast } from "../contexts/ToastContext";
 import { graphApi, aiApi, plansApi } from "../services/api";
 import { toggleNodeStatus, isAllComplete } from "../utils/graphUtils";
+import {
+  clampChatPanelSize,
+  getDefaultChatPanelSize,
+  getResizedChatPanelSize,
+} from "../utils/chatPanel";
+import {
+  saveChatSummaryToNotes,
+  saveExplainNoteToNotes,
+} from "../utils/noteCapture";
 
 const PHASE_STYLE = {
   地基: { bg: "rgba(245,243,255,0.7)", border: "rgba(167,139,250,0.3)", label: "地基", labelColor: "#7c3aed" },
@@ -213,11 +224,24 @@ const GraphPage = () => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [isSavingChatSummary, setIsSavingChatSummary] = useState(false);
+  const [chatSummarySaved, setChatSummarySaved] = useState(false);
+  const [savingExplainNotes, setSavingExplainNotes] = useState({});
+  const [savedExplainNotes, setSavedExplainNotes] = useState({});
+  const [chatPanelSize, setChatPanelSize] = useState(() =>
+    getDefaultChatPanelSize(
+      typeof window === "undefined"
+        ? undefined
+        : { width: window.innerWidth, height: window.innerHeight },
+    ),
+  );
+  const [isChatResizing, setIsChatResizing] = useState(false);
   const chatEndRef = React.useRef(null);
+  const chatResizeStartRef = useRef(null);
 
   // Scroll chat to bottom on new messages
   useEffect(() => {
-    if (chatEndRef.current) {
+    if (chatEndRef.current && typeof chatEndRef.current.scrollIntoView === "function") {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages]);
@@ -227,11 +251,82 @@ const GraphPage = () => {
     setChatMessages([]);
     setChatInput("");
     setChatLoading(false);
+    setIsSavingChatSummary(false);
+    setChatSummarySaved(false);
+    setSavingExplainNotes({});
+    setSavedExplainNotes({});
   }, [selectedNodeId]);
+
+  useEffect(() => {
+    setChatSummarySaved(false);
+  }, [chatMessages]);
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setChatPanelSize((prev) =>
+        clampChatPanelSize(prev, {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        }),
+      );
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isChatResizing) return undefined;
+
+    const handleMouseMove = (event) => {
+      const resizeStart = chatResizeStartRef.current;
+      if (!resizeStart) return;
+
+      setChatPanelSize(
+        getResizedChatPanelSize(
+          resizeStart.size,
+          event.clientX - resizeStart.pointerX,
+          event.clientY - resizeStart.pointerY,
+          {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          },
+        ),
+      );
+    };
+
+    const handleMouseUp = () => {
+      setIsChatResizing(false);
+      chatResizeStartRef.current = null;
+    };
+
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isChatResizing]);
 
   const nodeNotes = allNotes.filter(
     (n) => n.planId === planId && n.nodeId === selectedNodeId,
   );
+
+  const handleChatResizeStart = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    chatResizeStartRef.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      size: chatPanelSize,
+    };
+    setIsChatResizing(true);
+  };
 
   const learnedCount = nodes.filter((n) => n.status === "learned").length;
   const totalCount = nodes.filter((n) => n.status !== "skipped").length;
@@ -302,6 +397,54 @@ const GraphPage = () => {
 
   const handleCopyPrompt = (prompt) => {
     navigator.clipboard.writeText(prompt);
+  };
+
+  const handleSaveExplainNote = async (topicText, topicIndex) => {
+    if (!selectedNode) return;
+
+    const explainKey = `${selectedNode.id}_${topicIndex}`;
+    const content = explainStates[explainKey]?.content || "";
+
+    setSavingExplainNotes((prev) => ({ ...prev, [explainKey]: true }));
+    try {
+      const result = await saveExplainNoteToNotes({
+        topicText,
+        explainContent: content,
+        nodeName: selectedNode.name,
+        existingNotes: nodeNotes,
+        planId,
+        selectedNodeId,
+        noteActions,
+        toast,
+      });
+      if (result.saved) {
+        setSavedExplainNotes((prev) => ({ ...prev, [explainKey]: true }));
+      }
+    } finally {
+      setSavingExplainNotes((prev) => ({ ...prev, [explainKey]: false }));
+    }
+  };
+
+  const handleSaveChatSummary = async () => {
+    if (!selectedNode) return;
+
+    setIsSavingChatSummary(true);
+    try {
+      const result = await saveChatSummaryToNotes({
+        messages: chatMessages,
+        nodeName: selectedNode.name,
+        existingNotes: nodeNotes,
+        planId,
+        selectedNodeId,
+        noteActions,
+        toast,
+      });
+      if (result.saved) {
+        setChatSummarySaved(true);
+      }
+    } finally {
+      setIsSavingChatSummary(false);
+    }
   };
 
   const handleClarifyGoal = async () => {
@@ -1045,6 +1188,8 @@ const GraphPage = () => {
                       {selectedNode.what.map((item, i) => {
                         const key = `${selectedNode.id}_${i}`;
                         const state = explainStates[key];
+                        const isSavingExplainNote = Boolean(savingExplainNotes[key]);
+                        const isExplainSaved = Boolean(savedExplainNotes[key]);
                         return (
                           <li key={i} className="text-sm text-zinc-600">
                             <button
@@ -1065,8 +1210,31 @@ const GraphPage = () => {
                               )}
                             </button>
                             {state?.expanded && state?.content && (
-                              <div className="ml-4 mt-2 p-3 bg-teal-50/60 border border-teal-100 rounded-xl text-xs text-zinc-600 leading-relaxed whitespace-pre-wrap">
-                                {state.content}
+                              <div className="ml-4 mt-3 rounded-2xl border border-teal-100/90 bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-4 shadow-[0_12px_32px_rgba(20,184,166,0.08)]">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-teal-500">
+                                    AI 解释
+                                  </span>
+                                  <button
+                                    type="button"
+                                    aria-label={`保存主题“${item}”到笔记`}
+                                    onClick={() => handleSaveExplainNote(item, i)}
+                                    disabled={isSavingExplainNote}
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-teal-700 transition-colors hover:border-teal-300 hover:text-teal-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {isSavingExplainNote ? (
+                                      <Loader size={12} className="animate-spin" />
+                                    ) : (
+                                      <Save size={12} />
+                                    )}
+                                    {isSavingExplainNote
+                                      ? "保存中..."
+                                      : isExplainSaved
+                                        ? "已保存"
+                                        : "保存到笔记"}
+                                  </button>
+                                </div>
+                                <MarkdownContent content={state.content} />
                               </div>
                             )}
                             {state?.loading && (
@@ -1149,7 +1317,10 @@ const GraphPage = () => {
                               <X size={12} />
                             </button>
                           </div>
-                          <p className="leading-relaxed">{note.content}</p>
+                          <MarkdownContent
+                            content={note.content}
+                            className="space-y-2 leading-6 text-zinc-700"
+                          />
                         </div>
                       ))
                     ) : (
@@ -1192,13 +1363,23 @@ const GraphPage = () => {
 
           {/* Chat panel */}
           <div
-            className={`absolute bottom-24 left-8 z-20 w-80 bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-zinc-100 flex flex-col transition-all duration-300 origin-bottom-left ${
+            className={`absolute bottom-24 left-8 z-20 flex flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-white/95 shadow-2xl backdrop-blur-xl transition-all duration-300 origin-bottom-left ${
               chatOpen ? "opacity-100 scale-100 pointer-events-auto" : "opacity-0 scale-95 pointer-events-none"
             }`}
-            style={{ height: 420 }}
+            style={{ width: chatPanelSize.width, height: chatPanelSize.height }}
           >
+            <button
+              type="button"
+              onMouseDown={handleChatResizeStart}
+              className={`absolute right-3 top-3 z-10 flex h-5 w-5 cursor-nesw-resize items-center justify-center rounded-full border border-zinc-200 bg-white/90 text-zinc-400 shadow-sm transition-colors ${
+                isChatResizing ? "border-teal-300 text-teal-500" : "hover:border-zinc-300 hover:text-zinc-600"
+              }`}
+              title="拖动调整助手窗口大小"
+            >
+              <span className="pointer-events-none text-[10px] leading-none">⋰</span>
+            </button>
             {/* Header */}
-            <div className="px-5 py-4 border-b border-zinc-50 flex items-center gap-3 flex-shrink-0">
+            <div className="px-5 py-4 border-b border-zinc-50 flex items-center gap-3 flex-shrink-0 pr-11">
               <div className="w-7 h-7 rounded-xl bg-teal-50 flex items-center justify-center text-teal-600">
                 <Sparkles size={13} fill="currentColor" />
               </div>
@@ -1207,8 +1388,20 @@ const GraphPage = () => {
                 <p className="text-[10px] text-zinc-400 truncate max-w-[180px]">{selectedNode.name}</p>
               </div>
               <button
+                type="button"
+                onClick={handleSaveChatSummary}
+                disabled={!chatMessages.length || isSavingChatSummary}
+                className="ml-auto rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-[10px] font-medium text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSavingChatSummary
+                  ? "保存中..."
+                  : chatSummarySaved
+                    ? "已保存"
+                    : "总结并保存"}
+              </button>
+              <button
                 onClick={() => setChatMessages([])}
-                className="ml-auto text-[10px] text-zinc-300 hover:text-zinc-500 transition-colors"
+                className="text-[10px] text-zinc-300 hover:text-zinc-500 transition-colors"
               >
                 清空
               </button>
@@ -1224,15 +1417,13 @@ const GraphPage = () => {
               )}
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-zinc-900 text-white rounded-br-sm"
-                        : "bg-zinc-50 text-zinc-700 rounded-bl-sm border border-zinc-100"
-                    }`}
-                  >
-                    {msg.content || <span className="opacity-40 animate-pulse">思考中...</span>}
-                  </div>
+                  {msg.role === "user" ? (
+                    <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-zinc-900 px-3 py-2 text-xs leading-relaxed text-white">
+                      {msg.content}
+                    </div>
+                  ) : (
+                    <ChatMarkdownMessage content={msg.content} isPending={!msg.content} />
+                  )}
                 </div>
               ))}
               <div ref={chatEndRef} />

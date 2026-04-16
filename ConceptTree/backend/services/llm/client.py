@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from config import settings
@@ -12,6 +13,8 @@ from .providers import (
     LLMProviderError,
     LLMTimeoutError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class UnifiedLLMClient:
@@ -141,21 +144,47 @@ class UnifiedLLMClient:
         """
         Stream chat completion, yielding text chunks.
 
-        Uses primary provider only (no retry/fallback for streams).
+        If the primary provider fails before emitting any chunk, the client will
+        transparently retry the stream using the fallback provider when available.
         """
-        provider = self.primary
-        if not provider or not provider.is_available():
+        providers = []
+        if self.primary and self.primary.is_available():
+            providers.append(("primary", self.primary))
+        if self.fallback and self.fallback.is_available():
+            providers.append(("fallback", self.fallback))
+
+        if not providers:
             raise LLMServiceError("No LLM provider available")
 
         temp = temperature if temperature is not None else settings.LLM_TEMPERATURE
+        last_error = None
 
-        async for chunk in provider.chat_stream(
-            messages=messages,
-            temperature=temp,
-            max_tokens=max_tokens,
-            model=model,
-        ):
-            yield chunk
+        for index, (provider_name, provider) in enumerate(providers):
+            emitted_any_chunk = False
+            try:
+                async for chunk in provider.chat_stream(
+                    messages=messages,
+                    temperature=temp,
+                    max_tokens=max_tokens,
+                    model=model,
+                ):
+                    emitted_any_chunk = True
+                    yield chunk
+                return
+            except (LLMTimeoutError, LLMProviderError) as error:
+                last_error = error
+
+                has_next_provider = index < len(providers) - 1
+                if emitted_any_chunk or not has_next_provider:
+                    break
+
+                logger.warning(
+                    "Stream chat failed on %s provider before first chunk, trying fallback: %s",
+                    provider_name,
+                    error,
+                )
+
+        raise LLMServiceError(f"LLM stream failed: {last_error}")
 
     async def chat_json(
         self,

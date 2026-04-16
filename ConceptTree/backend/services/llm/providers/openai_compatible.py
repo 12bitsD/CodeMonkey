@@ -1,7 +1,8 @@
 """OpenAI SDK compatible provider (works with Kimi, OpenAI, etc.)"""
 
 from typing import List, Dict, Any, Optional, AsyncGenerator
-from openai import AsyncOpenAI, APIError, APITimeoutError
+import httpx
+from openai import AsyncOpenAI, APIConnectionError, APIError, APITimeoutError
 
 from .base import BaseLLMProvider, LLMMessage, LLMResponse
 
@@ -21,6 +22,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         client_kwargs = {
             "api_key": api_key,
             "timeout": timeout,
+            # Ignore broken system proxy variables like HTTP_PROXY=127.0.0.1:9.
+            "http_client": httpx.AsyncClient(timeout=timeout, trust_env=False),
         }
         if base_url:
             client_kwargs["base_url"] = base_url
@@ -95,6 +98,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
         except APITimeoutError:
             raise LLMTimeoutError(f"Request timed out after {self.timeout}s")
+        except APIConnectionError as e:
+            raise LLMProviderError(f"Connection error: {str(e)}")
         except APIError as e:
             raise LLMProviderError(f"API error: {e.message}", status_code=e.status_code)
         except Exception as e:
@@ -127,6 +132,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                         yield delta
         except APITimeoutError:
             raise LLMTimeoutError(f"Stream request timed out after {self.timeout}s")
+        except APIConnectionError as e:
+            raise LLMProviderError(f"Connection error during stream: {str(e)}")
         except APIError as e:
             raise LLMProviderError(f"API error during stream: {e.message}", status_code=e.status_code)
         except Exception as e:
