@@ -28,7 +28,9 @@ import { InfoSection } from "../components/common";
 import { MasteryChecklist } from "../components/node/MasteryChecklist";
 import { ResourceList } from "../components/node/ResourceList";
 import { useGraphInteraction } from "../hooks/useGraphInteraction";
-import { useAppContext } from "../contexts/AppContext";
+import { useGraphContext } from "../contexts/GraphContext";
+import { useNoteContext } from "../contexts/NoteContext";
+import { usePlanContext } from "../contexts/PlanContext";
 import { useToast } from "../contexts/ToastContext";
 import { graphApi, aiApi, plansApi } from "../services/api";
 import { toggleNodeStatus, isAllComplete } from "../utils/graphUtils";
@@ -67,10 +69,13 @@ const GraphPage = () => {
   const containerRef = useRef(null);
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
   const hasCenteredRef = useRef(false);
-  const { plans, allNotes, actions } = useAppContext();
+  const { plans, actions } = usePlanContext();
+  const { allNotes, actions: noteActions } = useNoteContext();
+  const { graphsByPlanId, actions: graphActions } = useGraphContext();
   const toast = useToast();
 
   const plan = plans.find((p) => p.id === planId);
+  const cachedGraph = planId ? graphsByPlanId[planId] : null;
   const [planTitle, setPlanTitle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
@@ -104,15 +109,28 @@ const GraphPage = () => {
   } = useGraphInteraction([], [], aiRecommendation);
 
   useEffect(() => {
+    if (!cachedGraph) return;
+    if (cachedGraph.title) setPlanTitle(cachedGraph.title);
+    setNodes(cachedGraph.nodes || []);
+    setEdges(cachedGraph.edges || []);
+    setLoading(false);
+  }, [cachedGraph, setEdges, setNodes]);
+
+  useEffect(() => {
     const loadGraph = async () => {
       if (!planId) return;
-      setLoading(true);
+      setLoading(!cachedGraph);
       try {
         const data = await graphApi.get(planId);
         if (data && data.nodes) {
           if (data.title) setPlanTitle(data.title);
           setNodes(data.nodes);
           setEdges(data.edges || []);
+          graphActions.setGraph(planId, {
+            title: data.title || null,
+            nodes: data.nodes,
+            edges: data.edges || [],
+          });
         }
       } catch (err) {
         console.error("Failed to load graph", err);
@@ -123,7 +141,7 @@ const GraphPage = () => {
 
     loadGraph();
     hasCenteredRef.current = false;
-  }, [planId, setNodes, setEdges]);
+  }, [cachedGraph, graphActions, planId, setEdges, setNodes]);
 
   // 当节点加载完且画布容器可用时自动居中（多次重试直到成功）
   useEffect(() => {
@@ -276,7 +294,7 @@ const GraphPage = () => {
 
   const handleSaveNote = async () => {
     if (noteContent.trim()) {
-      await actions.addNote(planId, selectedNodeId, noteContent);
+      await noteActions.addNote(planId, selectedNodeId, noteContent);
     }
     setNoteContent("");
     setShowNoteEditor(false);
@@ -328,6 +346,11 @@ const GraphPage = () => {
       if (data?.nodes) {
         setNodes(data.nodes);
         setEdges(data.edges || []);
+        graphActions.setGraph(planId, {
+          title: data.title || null,
+          nodes: data.nodes,
+          edges: data.edges || [],
+        });
       }
       toast.success("目标已更新");
     } catch (err) {
@@ -417,6 +440,19 @@ const GraphPage = () => {
       }));
       if (accumulated) {
         setNodes((prev) =>
+          prev.map((node) =>
+            node.id === nodeId
+              ? {
+                  ...node,
+                  contentCache: {
+                    ...(node.contentCache || {}),
+                    [topicIndex]: accumulated,
+                  },
+                }
+              : node,
+          ),
+        );
+        graphActions.updateGraphNodes(planId, (prev) =>
           prev.map((node) =>
             node.id === nodeId
               ? {
@@ -1106,7 +1142,7 @@ const GraphPage = () => {
                               {note.date}
                             </span>
                             <button
-                              onClick={() => actions.deleteNote(note.id)}
+                              onClick={() => noteActions.deleteNote(note.id)}
                               className="p-0.5 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                               title="删除笔记"
                             >

@@ -14,14 +14,14 @@ import {
 } from 'lucide-react';
 import { Button, Modal } from '../components/ui';
 import { LOADING_TEXTS } from '../constants';
-import { useAppContext } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlanContext } from '../contexts/PlanContext';
 import { useToast } from '../contexts/ToastContext';
 import { graphApi, aiApi } from '../services/api';
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const { userProfile, plans, actions } = useAppContext();
+  const { userProfile, plans, actions } = usePlanContext();
   const { isAuthenticated, login, register, logout } = useAuth();
   const toast = useToast();
   

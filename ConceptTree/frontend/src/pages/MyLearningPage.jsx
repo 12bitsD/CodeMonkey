@@ -14,12 +14,14 @@ import {
 } from 'lucide-react';
 import { Button, Badge } from '../components/ui';
 import { StatCard, ChartBar } from '../components/common';
-import { useAppContext } from '../contexts/AppContext';
+import { useNoteContext } from '../contexts/NoteContext';
+import { usePlanContext } from '../contexts/PlanContext';
 import { statsApi } from '../services/api';
 
 const MyLearningPage = () => {
   const navigate = useNavigate();
-  const { userProfile, plans, allNotes, actions } = useAppContext();
+  const { userProfile, plans, actions } = usePlanContext();
+  const { allNotes, actions: noteActions } = useNoteContext();
   
   const [activeTab, setActiveTab] = useState('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -317,7 +319,7 @@ const MyLearningPage = () => {
                             className="group relative p-6 bg-zinc-50 rounded-2xl border border-zinc-100/50 hover:bg-white hover:shadow-md transition-all"
                           >
                             <button
-                              onClick={() => actions.deleteNote(note.id)}
+                              onClick={() => noteActions.deleteNote(note.id)}
                               className="absolute top-3 right-3 p-1 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-full hover:bg-red-50"
                               title="删除笔记"
                             >

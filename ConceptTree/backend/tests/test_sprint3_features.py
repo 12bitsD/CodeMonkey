@@ -10,6 +10,7 @@ import asyncio
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from sql_utils import split_sql_statements
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,7 +48,7 @@ def s3_db_schema():
     # Execute each statement with schema search_path
     cur.execute(f'SET search_path TO "{schema}"')
     conn.autocommit = False
-    for stmt in raw.split(";"):
+    for stmt in split_sql_statements(raw):
         stmt = stmt.strip()
         if stmt:
             try:

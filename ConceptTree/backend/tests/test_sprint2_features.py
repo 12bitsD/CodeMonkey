@@ -22,6 +22,7 @@ import psycopg2.extras
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sql_utils import split_sql_statements
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -222,16 +223,13 @@ def s2_db_schema():
     schema_sql = schema_path.read_text(encoding="utf-8")
     schema = f"ct_s2_{uuid.uuid4().hex[:8]}"
 
-    def split(sql):
-        return [p.strip() for p in sql.split(";") if p.strip()]
-
     conn = psycopg2.connect(url)
     try:
         with conn:
             with conn.cursor() as cur:
                 cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
                 cur.execute(f'SET search_path TO "{schema}"')
-                for stmt in split(schema_sql):
+                for stmt in split_sql_statements(schema_sql):
                     cur.execute(stmt)
                 # seed a test user
                 cur.execute(

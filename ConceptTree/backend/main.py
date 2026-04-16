@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from config import get_cors_origins, get_cors_allow_credentials, settings
+from database import close_connection_pool
 from routers import ai, auth, graph, notes, plans, stats, user
 from utils.limiter import limiter
 
@@ -15,6 +18,12 @@ _docs_url = "/docs" if settings.DEBUG else None
 _redoc_url = "/redoc" if settings.DEBUG else None
 _openapi_url = "/openapi.json" if settings.DEBUG else None
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    close_connection_pool()
+
 app = FastAPI(
     title="PathFinder API",
     description="Learning Path Planner Backend",
@@ -22,6 +31,7 @@ app = FastAPI(
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
@@ -34,6 +44,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        (
+            "default-src 'self'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'; "
+            "object-src 'none'; "
+            "img-src 'self' data: https:; "
+            "style-src 'self' 'unsafe-inline' https:; "
+            "script-src 'self' 'unsafe-inline' https:; "
+            "connect-src 'self' http: https:"
+        ),
+    )
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=()",
+    )
+    return response
 
 app.include_router(auth.router)
 app.include_router(user.router)

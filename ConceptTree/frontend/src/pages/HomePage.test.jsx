@@ -31,8 +31,8 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
 }));
 
-vi.mock('../contexts/AppContext', () => ({
-  useAppContext: () => ({
+vi.mock('../contexts/PlanContext', () => ({
+  usePlanContext: () => ({
     userProfile,
     plans: [],
     actions: {
@@ -107,6 +107,8 @@ describe('HomePage confirm generation', () => {
         rawInput,
         '理解深度学习中的反向传播',
         userProfile,
+        'apply',
+        expect.any(Function),
       );
     });
   });
@@ -141,6 +143,8 @@ describe('HomePage confirm generation', () => {
         rawInput,
         rawInput,
         userProfile,
+        'apply',
+        expect.any(Function),
       );
     });
   });
@@ -175,6 +179,8 @@ describe('HomePage confirm generation', () => {
         rawInput,
         rawInput,
         userProfile,
+        'apply',
+        expect.any(Function),
       );
     });
   });

@@ -31,6 +31,8 @@ class Settings:
 
     DATABASE_URL: str = _get_env("DATABASE_URL", "")
     DATABASE_SCHEMA: str = _get_env("DATABASE_SCHEMA", "")
+    DB_POOL_MIN_SIZE: int = int(_get_env("DB_POOL_MIN_SIZE", "1"))
+    DB_POOL_MAX_SIZE: int = int(_get_env("DB_POOL_MAX_SIZE", "10"))
 
     JWT_SECRET_KEY: str = _get_env(
         "JWT_SECRET_KEY", "your-secret-key-change-in-production"

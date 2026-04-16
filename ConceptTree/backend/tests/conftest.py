@@ -10,6 +10,7 @@ import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from psycopg2.extras import Json
+from sql_utils import split_sql_statements
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -29,8 +30,7 @@ def _read_schema_sql() -> str:
 
 
 def _split_statements(sql: str) -> list[str]:
-    parts = [part.strip() for part in sql.split(";")]
-    return [part for part in parts if part]
+    return split_sql_statements(sql)
 
 
 @pytest.fixture(scope="session")
