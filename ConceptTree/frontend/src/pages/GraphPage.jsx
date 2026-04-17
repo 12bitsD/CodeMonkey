@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+﻿import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -45,13 +45,50 @@ import {
   saveChatSummaryToNotes,
   saveExplainNoteToNotes,
 } from "../utils/noteCapture";
+import {
+  hasExpandedResources,
+  mergeNodeResources,
+} from "../utils/resourceSearch";
+
+const PHASE_ALIASES = {
+  基础: "基础",
+  鍦板熀: "基础",
+  核心: "核心",
+  鏍稿績: "核心",
+  应用: "应用",
+  搴旂敤: "应用",
+  进阶: "进阶",
+  杩涢樁: "进阶",
+};
 
 const PHASE_STYLE = {
-  地基: { bg: "rgba(245,243,255,0.7)", border: "rgba(167,139,250,0.3)", label: "地基", labelColor: "#7c3aed" },
-  核心: { bg: "rgba(240,253,250,0.7)", border: "rgba(45,212,191,0.3)", label: "核心", labelColor: "#0d9488" },
-  应用: { bg: "rgba(240,249,255,0.7)", border: "rgba(96,165,250,0.3)", label: "应用", labelColor: "#2563eb" },
-  进阶: { bg: "rgba(255,247,237,0.7)", border: "rgba(251,146,60,0.3)", label: "进阶", labelColor: "#ea580c" },
+  基础: {
+    bg: "rgba(245,243,255,0.7)",
+    border: "rgba(167,139,250,0.3)",
+    label: "基础",
+    labelColor: "#7c3aed",
+  },
+  核心: {
+    bg: "rgba(240,253,250,0.7)",
+    border: "rgba(45,212,191,0.3)",
+    label: "核心",
+    labelColor: "#0d9488",
+  },
+  应用: {
+    bg: "rgba(240,249,255,0.7)",
+    border: "rgba(96,165,250,0.3)",
+    label: "应用",
+    labelColor: "#2563eb",
+  },
+  进阶: {
+    bg: "rgba(255,247,237,0.7)",
+    border: "rgba(251,146,60,0.3)",
+    label: "进阶",
+    labelColor: "#ea580c",
+  },
 };
+
+const normalizePhase = (phase) => PHASE_ALIASES[phase] || phase;
 
 const buildCurvedEdgePath = (from, to, edgeIndex) => {
   const dx = to.x - from.x;
@@ -154,7 +191,7 @@ const GraphPage = () => {
     hasCenteredRef.current = false;
   }, [cachedGraph, graphActions, planId, setEdges, setNodes]);
 
-  // 当节点加载完且画布容器可用时自动居中（多次重试直到成功）
+  // Auto-center the canvas once nodes and the container are ready.
   useEffect(() => {
     if (hasCenteredRef.current) return;
     if (nodes.length === 0) return;
@@ -193,7 +230,10 @@ const GraphPage = () => {
   const [clarifyResult, setClarifyResult] = useState(null);
   const [isClarifying, setIsClarifying] = useState(false);
   const [showNoteEditor, setShowNoteEditor] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState(null);
   const [noteContent, setNoteContent] = useState("");
+  const [resourceSearchLoading, setResourceSearchLoading] = useState({});
+  const [resourceSearchFeedback, setResourceSearchFeedback] = useState({});
   const isNodeDragging = Boolean(draggingNodeId);
 
   // F7: per-topic AI explain state: { [`${nodeId}_${i}`]: { loading, content, expanded } }
@@ -224,6 +264,7 @@ const GraphPage = () => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatWebSearchEnabled, setChatWebSearchEnabled] = useState(false);
   const [isSavingChatSummary, setIsSavingChatSummary] = useState(false);
   const [chatSummarySaved, setChatSummarySaved] = useState(false);
   const [savingExplainNotes, setSavingExplainNotes] = useState({});
@@ -238,19 +279,35 @@ const GraphPage = () => {
   const [isChatResizing, setIsChatResizing] = useState(false);
   const chatEndRef = React.useRef(null);
   const chatResizeStartRef = useRef(null);
+  const chatStreamStateRef = useRef({
+    content: "",
+    sources: [],
+    searchStatus: null,
+  });
+  const chatUpdateRafRef = useRef(null);
 
   // Scroll chat to bottom on new messages
   useEffect(() => {
     if (chatEndRef.current && typeof chatEndRef.current.scrollIntoView === "function") {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+      chatEndRef.current.scrollIntoView({ behavior: chatLoading ? "auto" : "smooth" });
     }
-  }, [chatMessages]);
+  }, [chatMessages, chatLoading]);
+
+  useEffect(
+    () => () => {
+      if (chatUpdateRafRef.current !== null) {
+        cancelAnimationFrame(chatUpdateRafRef.current);
+      }
+    },
+    [],
+  );
 
   // Reset chat when switching nodes
   useEffect(() => {
     setChatMessages([]);
     setChatInput("");
     setChatLoading(false);
+    setChatWebSearchEnabled(false);
     setIsSavingChatSummary(false);
     setChatSummarySaved(false);
     setSavingExplainNotes({});
@@ -315,6 +372,33 @@ const GraphPage = () => {
   const nodeNotes = allNotes.filter(
     (n) => n.planId === planId && n.nodeId === selectedNodeId,
   );
+  const selectedNodeResources = useMemo(
+    () =>
+      selectedNode
+        ? mergeNodeResources(
+            selectedNode.resources,
+            selectedNode.resourceSearchCache,
+          )
+        : [],
+    [selectedNode],
+  );
+  const selectedNodeResourceFeedback = selectedNode
+    ? resourceSearchFeedback[selectedNode.id]
+    : null;
+  const selectedNodeExpandedResourceCount = Array.isArray(
+    selectedNode?.resourceSearchCache?.items,
+  )
+    ? selectedNode.resourceSearchCache.items.length
+    : 0;
+  const searchMoreResourcesLabel = selectedNode
+    ? resourceSearchLoading[selectedNode.id]
+      ? "搜索中..."
+      : selectedNodeResourceFeedback?.added > 0
+        ? `已补充 ${selectedNodeResourceFeedback.added} 条资源`
+        : selectedNodeExpandedResourceCount > 0
+          ? `已扩展 ${selectedNodeExpandedResourceCount} 条资源`
+          : "搜索更多资源"
+    : "搜索更多资源";
 
   const handleChatResizeStart = (event) => {
     event.preventDefault();
@@ -340,8 +424,9 @@ const GraphPage = () => {
     const phaseMap = {};
     for (const node of nodes) {
       if (!node.phase) continue;
-      if (!phaseMap[node.phase]) phaseMap[node.phase] = [];
-      phaseMap[node.phase].push(node);
+      const phase = normalizePhase(node.phase);
+      if (!phaseMap[phase]) phaseMap[phase] = [];
+      phaseMap[phase].push(node);
     }
 
     const PAD = 60;
@@ -389,10 +474,29 @@ const GraphPage = () => {
 
   const handleSaveNote = async () => {
     if (noteContent.trim()) {
-      await noteActions.addNote(planId, selectedNodeId, noteContent);
+      if (editingNoteId) {
+        await noteActions.updateNote(editingNoteId, noteContent);
+        toast.success("笔记已更新");
+      } else {
+        await noteActions.addNote(planId, selectedNodeId, noteContent);
+        toast.success("笔记已保存");
+      }
     }
     setNoteContent("");
+    setEditingNoteId(null);
     setShowNoteEditor(false);
+  };
+
+  const openNewNoteEditor = () => {
+    setEditingNoteId(null);
+    setNoteContent("");
+    setShowNoteEditor(true);
+  };
+
+  const openEditNoteEditor = (note) => {
+    setEditingNoteId(note.id);
+    setNoteContent(note.content || "");
+    setShowNoteEditor(true);
   };
 
   const handleCopyPrompt = (prompt) => {
@@ -425,6 +529,54 @@ const GraphPage = () => {
     }
   };
 
+  const handleSearchMoreResources = async () => {
+    if (!selectedNode || !planId) return;
+
+    setResourceSearchLoading((prev) => ({ ...prev, [selectedNode.id]: true }));
+    try {
+      const result = await graphApi.searchNodeResources(planId, selectedNode.id);
+      const nextCache = result.resourceSearchCache || {};
+      const resourcesAdded = Number(result.resourcesAdded || 0);
+
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === selectedNode.id
+            ? { ...node, resourceSearchCache: nextCache }
+            : node,
+        ),
+      );
+      graphActions.updateGraphNodes(planId, (prev) =>
+        prev.map((node) =>
+          node.id === selectedNode.id
+            ? { ...node, resourceSearchCache: nextCache }
+            : node,
+        ),
+      );
+      setResourceSearchFeedback((prev) => ({
+        ...prev,
+        [selectedNode.id]: {
+          added: resourcesAdded,
+          total: Array.isArray(nextCache.items) ? nextCache.items.length : 0,
+          updatedAt: nextCache.updatedAt || null,
+        },
+      }));
+
+      if (resourcesAdded > 0) {
+        toast.success(`已补充 ${resourcesAdded} 条资源`);
+      } else {
+        toast.info("暂未找到新的高质量资源");
+      }
+    } catch (error) {
+      toast.error(
+        error?.message?.includes("写入缓存失败")
+          ? error.message
+          : "资源搜索失败，请重试",
+      );
+    } finally {
+      setResourceSearchLoading((prev) => ({ ...prev, [selectedNode.id]: false }));
+    }
+  };
+
   const handleSaveChatSummary = async () => {
     if (!selectedNode) return;
 
@@ -445,6 +597,37 @@ const GraphPage = () => {
     } finally {
       setIsSavingChatSummary(false);
     }
+  };
+
+  const updateLastAssistantMessage = (patch) => {
+    setChatMessages((prev) => {
+      if (prev.length === 0) return prev;
+      const updated = [...prev];
+      updated[updated.length - 1] = {
+        ...updated[updated.length - 1],
+        role: "assistant",
+        ...patch,
+      };
+      return updated;
+    });
+  };
+
+  const flushChatMessageNow = () => {
+    if (chatUpdateRafRef.current !== null) {
+      cancelAnimationFrame(chatUpdateRafRef.current);
+      chatUpdateRafRef.current = null;
+    }
+
+    updateLastAssistantMessage({ ...chatStreamStateRef.current });
+  };
+
+  const scheduleChatMessageFlush = () => {
+    if (chatUpdateRafRef.current !== null) return;
+
+    chatUpdateRafRef.current = requestAnimationFrame(() => {
+      chatUpdateRafRef.current = null;
+      updateLastAssistantMessage({ ...chatStreamStateRef.current });
+    });
   };
 
   const handleClarifyGoal = async () => {
@@ -502,10 +685,9 @@ const GraphPage = () => {
   };
 
   const handleNodeStatusChange = async (nodeId, newStatus) => {
-    setNodeStatus(nodeId, newStatus); // 立即更新本地 UI
+    setNodeStatus(nodeId, newStatus);
     try {
       const result = await graphApi.updateNodeStatus(planId, nodeId, newStatus);
-      // 用后端返回的 progress/total 同步 context（list 接口不含 nodes，无法本地计算）
       if (result?.plan) {
         actions.updatePlanProgress(planId, result.plan.progress, result.plan.total);
       }
@@ -535,7 +717,7 @@ const GraphPage = () => {
     }
   };
 
-  // F7: click a what-item → stream AI explanation
+  // F7: click a what-item -> stream AI explanation
   const handleExplainTopic = async (topicText, topicIndex) => {
     if (!selectedNode) return;
     const key = `${selectedNode.id}_${topicIndex}`;
@@ -572,7 +754,7 @@ const GraphPage = () => {
           }));
         },
       );
-      // Stream finished — ensure loading is cleared even if no chunks arrived
+      // Ensure loading is cleared even if no chunks arrived.
       setExplainStates((prev) => ({
         ...prev,
         [key]: {
@@ -621,39 +803,78 @@ const GraphPage = () => {
   // F4: send chat message
   const handleChatSend = async () => {
     if (!chatInput.trim() || chatLoading || !selectedNode) return;
+
     const userMsg = { role: "user", content: chatInput.trim() };
-    const newMessages = [...chatMessages, userMsg];
-    setChatMessages(newMessages);
+    const conversationMessages = [...chatMessages, userMsg];
+    const assistantPlaceholder = {
+      role: "assistant",
+      content: "",
+      sources: [],
+      searchStatus: chatWebSearchEnabled ? "searching" : null,
+    };
+
+    chatStreamStateRef.current = {
+      content: "",
+      sources: [],
+      searchStatus: assistantPlaceholder.searchStatus,
+    };
+
+    setChatMessages([...conversationMessages, assistantPlaceholder]);
     setChatInput("");
     setChatLoading(true);
 
-    // Add placeholder assistant message
-    setChatMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
     try {
-      let accumulated = "";
       await aiApi.chatStream(
-        newMessages,
+        conversationMessages,
         {
           nodeName: selectedNode.name,
           why: selectedNode.why,
           planTitle: planTitle || plan?.title,
         },
-        (chunk) => {
-          accumulated += chunk;
-          setChatMessages((prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = { role: "assistant", content: accumulated };
-            return updated;
-          });
+        {
+          enableWebSearch: chatWebSearchEnabled,
+          onChunk: (chunk) => {
+            chatStreamStateRef.current = {
+              ...chatStreamStateRef.current,
+              content: `${chatStreamStateRef.current.content}${chunk}`,
+            };
+            scheduleChatMessageFlush();
+          },
+          onSources: (sources) => {
+            chatStreamStateRef.current = {
+              ...chatStreamStateRef.current,
+              sources,
+            };
+            scheduleChatMessageFlush();
+          },
+          onSearchStatus: (status) => {
+            chatStreamStateRef.current = {
+              ...chatStreamStateRef.current,
+              searchStatus: status,
+            };
+            scheduleChatMessageFlush();
+          },
         },
       );
+
+      if (!chatStreamStateRef.current.content) {
+        chatStreamStateRef.current = {
+          ...chatStreamStateRef.current,
+          content: "内容生成为空，请重试。",
+        };
+      }
+
+      flushChatMessageNow();
     } catch (err) {
-      setChatMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: "assistant", content: "回复失败，请重试。" };
-        return updated;
-      });
+      chatStreamStateRef.current = {
+        ...chatStreamStateRef.current,
+        content: "回复失败，请重试。",
+        searchStatus:
+          chatStreamStateRef.current.searchStatus === "searching"
+            ? "fallback"
+            : chatStreamStateRef.current.searchStatus,
+      };
+      flushChatMessageNow();
     } finally {
       setChatLoading(false);
     }
@@ -742,7 +963,7 @@ const GraphPage = () => {
           <div className="bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-sm border border-zinc-200/50 pointer-events-auto flex gap-1 items-center">
             {savedAt && !isDirty ? (
               <span className="text-[10px] text-zinc-400 px-2">
-                已保存{" "}
+                已保存于{" "}
                 {savedAt.toLocaleTimeString("zh-CN", {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -760,13 +981,13 @@ const GraphPage = () => {
             ) : null}
             <button
               className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all"
-              title="Share"
+              title="分享"
             >
               <Share2 size={18} strokeWidth={1.5} />
             </button>
             <button
               className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all"
-              title="Edit Goal"
+              title="修改目标"
               onClick={() => {
                 setNewGoalInput("");
                 setClarifyResult(null);
@@ -827,53 +1048,6 @@ const GraphPage = () => {
               </span>
             </div>
           ))}
-          {false && (() => {
-            const PHASE_STYLE = {
-              '地基': { bg: 'rgba(245,243,255,0.7)', border: 'rgba(167,139,250,0.3)', label: '地基', labelColor: '#7c3aed' },
-              '核心': { bg: 'rgba(240,253,250,0.7)', border: 'rgba(45,212,191,0.3)', label: '核心', labelColor: '#0d9488' },
-              '应用': { bg: 'rgba(240,249,255,0.7)', border: 'rgba(96,165,250,0.3)', label: '应用', labelColor: '#2563eb' },
-              '进阶': { bg: 'rgba(255,247,237,0.7)', border: 'rgba(251,146,60,0.3)', label: '进阶', labelColor: '#ea580c' },
-            };
-            const phaseMap = {};
-            nodes.forEach(n => {
-              if (!n.phase) return;
-              if (!phaseMap[n.phase]) phaseMap[n.phase] = [];
-              phaseMap[n.phase].push(n);
-            });
-            const PAD = 60;
-            return Object.entries(phaseMap).map(([phase, phaseNodes]) => {
-              const style = PHASE_STYLE[phase];
-              if (!style || phaseNodes.length === 0) return null;
-              const xs = phaseNodes.map(n => n.x);
-              const ys = phaseNodes.map(n => n.y);
-              const x1 = Math.min(...xs) - PAD;
-              const y1 = Math.min(...ys) - PAD;
-              const w = Math.max(...xs) - Math.min(...xs) + PAD * 2;
-              const h = Math.max(...ys) - Math.min(...ys) + PAD * 2;
-              return (
-                <div
-                  key={phase}
-                  className="absolute pointer-events-none"
-                  style={{
-                    left: x1,
-                    top: y1,
-                    width: w,
-                    height: h,
-                    background: style.bg,
-                    border: `1.5px solid ${style.border}`,
-                    borderRadius: 20,
-                  }}
-                >
-                  <span
-                    className="absolute top-3 left-4 text-xs font-bold tracking-widest uppercase"
-                    style={{ color: style.labelColor }}
-                  >
-                    {style.label}
-                  </span>
-                </div>
-              );
-            });
-          })()}
 
           {/* Edges */}
           <svg className="absolute top-0 left-0 overflow-visible w-full h-full pointer-events-none">
@@ -1019,7 +1193,7 @@ const GraphPage = () => {
               className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-white/80 backdrop-blur-md shadow-sm border border-zinc-100 rounded-full px-4 py-2 flex items-center gap-2 z-10 cursor-pointer opacity-60 hover:opacity-100 transition-opacity"
               onClick={() => setSelectedNodeId(recommendedNode.id)}
             >
-              <span className="text-sm">💡</span>
+              <span className="text-sm">✨</span>
               <span className="text-xs font-medium text-zinc-600">
                 {recommendedNode.name}
               </span>
@@ -1096,9 +1270,9 @@ const GraphPage = () => {
           <>
             <div className="px-8 py-8 border-b border-zinc-50 flex justify-between items-start">
               <div>
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2 block">
-                  知识节点
-                </span>
+                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2 block">
+                    知识节点
+                  </span>
                 <h2 className="text-2xl font-semibold text-zinc-900 leading-tight">
                   {selectedNode.name}
                 </h2>
@@ -1269,20 +1443,27 @@ const GraphPage = () => {
                   </InfoSection>
                 )}
 
-                {selectedNode.resources?.length > 0 && (
-                  <ResourceList resources={selectedNode.resources} />
+                {selectedNodeResources.length > 0 && (
+                  <ResourceList resources={selectedNodeResources} />
                 )}
 
                 <button
-                  onClick={() =>
-                    window.open(
-                      `https://www.google.com/search?q=${encodeURIComponent(selectedNode.name + " 学习教程")}`,
-                      "_blank",
-                    )
-                  }
-                  className="w-full py-2.5 text-xs text-zinc-400 hover:text-zinc-600 border border-dashed border-zinc-200 rounded-xl hover:border-zinc-300 transition-colors"
+                  onClick={handleSearchMoreResources}
+                  disabled={Boolean(resourceSearchLoading[selectedNode.id])}
+                  className={`w-full rounded-xl border px-4 py-3 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    selectedNodeExpandedResourceCount > 0
+                      ? "border-teal-200 bg-teal-50/60 text-teal-700 hover:border-teal-300 hover:text-teal-800"
+                      : "border-dashed border-zinc-200 text-zinc-400 hover:border-zinc-300 hover:text-zinc-600"
+                  }`}
                 >
-                  搜索更多资源 ↗
+                  <span className="block font-medium">{searchMoreResourcesLabel}</span>
+                  {selectedNodeExpandedResourceCount > 0 && !resourceSearchLoading[selectedNode.id] && (
+                    <span className="mt-1 block text-[11px] text-zinc-400">
+                      {hasExpandedResources(selectedNode.resourceSearchCache)
+                        ? "刷新页面后也会保留这些扩展资源"
+                        : ""}
+                    </span>
+                  )}
                 </button>
 
                 {/* Notes */}
@@ -1292,7 +1473,7 @@ const GraphPage = () => {
                       <FileText size={14} /> 笔记
                     </h4>
                     <button
-                      onClick={() => setShowNoteEditor(true)}
+                      onClick={openNewNoteEditor}
                       className="text-xs font-medium text-teal-600 hover:text-teal-800 transition-colors"
                     >
                       + 添加
@@ -1303,19 +1484,26 @@ const GraphPage = () => {
                       nodeNotes.map((note) => (
                         <div
                           key={note.id}
-                          className="group bg-amber-50/50 border border-amber-100/50 p-4 rounded-xl text-sm text-zinc-700 relative hover:border-amber-200 transition-colors"
+                          onClick={() => openEditNoteEditor(note)}
+                          className="group cursor-pointer bg-amber-50/50 border border-amber-100/50 p-4 rounded-xl text-sm text-zinc-700 relative hover:border-amber-200 transition-colors"
                         >
                           <div className="flex justify-between items-start mb-1">
                             <span className="text-[10px] font-bold text-amber-300">
                               {note.date}
                             </span>
                             <button
-                              onClick={() => noteActions.deleteNote(note.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                noteActions.deleteNote(note.id);
+                              }}
                               className="p-0.5 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                               title="删除笔记"
                             >
                               <X size={12} />
                             </button>
+                          </div>
+                          <div className="mb-2 text-[10px] font-medium text-zinc-400">
+                            点击即可编辑
                           </div>
                           <MarkdownContent
                             content={note.content}
@@ -1325,10 +1513,10 @@ const GraphPage = () => {
                       ))
                     ) : (
                       <div
-                        onClick={() => setShowNoteEditor(true)}
+                        onClick={openNewNoteEditor}
                         className="border border-dashed border-zinc-200 rounded-xl p-6 text-center text-zinc-400 text-sm hover:bg-zinc-50 hover:border-zinc-300 cursor-pointer transition-all"
                       >
-                        空空如也。记录下你的思考吧。
+                        这里还没有内容，记下你的思考吧。
                       </div>
                     )}
                   </div>
@@ -1412,7 +1600,7 @@ const GraphPage = () => {
               {chatMessages.length === 0 && (
                 <div className="text-center text-xs text-zinc-300 pt-8">
                   <MessageCircle size={24} className="mx-auto mb-2 opacity-30" />
-                  <p>有什么关于「{selectedNode.name}」的问题？</p>
+                  <p>有什么关于“{selectedNode.name}”的问题？</p>
                 </div>
               )}
               {chatMessages.map((msg, i) => (
@@ -1422,7 +1610,12 @@ const GraphPage = () => {
                       {msg.content}
                     </div>
                   ) : (
-                    <ChatMarkdownMessage content={msg.content} isPending={!msg.content} />
+                    <ChatMarkdownMessage
+                      content={msg.content}
+                      isPending={!msg.content}
+                      sources={msg.sources || []}
+                      searchStatus={msg.searchStatus || null}
+                    />
                   )}
                 </div>
               ))}
@@ -1430,23 +1623,41 @@ const GraphPage = () => {
             </div>
 
             {/* Input */}
-            <div className="px-3 py-3 border-t border-zinc-50 flex gap-2 flex-shrink-0">
-              <input
-                type="text"
-                className="flex-1 text-xs px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-xl outline-none focus:border-zinc-300 transition-colors"
-                placeholder="问一个问题..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
-                disabled={chatLoading}
-              />
+            <div className="border-t border-zinc-50 px-3 py-3 flex-shrink-0">
               <button
-                onClick={handleChatSend}
-                disabled={!chatInput.trim() || chatLoading}
-                className="w-8 h-8 rounded-xl bg-zinc-900 text-white flex items-center justify-center disabled:opacity-30 hover:bg-zinc-700 transition-colors flex-shrink-0"
+                type="button"
+                onClick={() => setChatWebSearchEnabled((prev) => !prev)}
+                className={`mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                  chatWebSearchEnabled
+                    ? "border-teal-300 bg-teal-50 text-teal-700"
+                    : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-700"
+                }`}
               >
-                {chatLoading ? <Loader size={12} className="animate-spin" /> : <Send size={12} />}
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    chatWebSearchEnabled ? "bg-teal-400" : "bg-zinc-300"
+                  }`}
+                />
+                联网搜索
               </button>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="flex-1 rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-xs outline-none transition-colors focus:border-zinc-300"
+                  placeholder="问一个问题..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
+                  disabled={chatLoading}
+                />
+                <button
+                  onClick={handleChatSend}
+                  disabled={!chatInput.trim() || chatLoading}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white transition-colors hover:bg-zinc-700 disabled:opacity-30"
+                >
+                  {chatLoading ? <Loader size={12} className="animate-spin" /> : <Send size={12} />}
+                </button>
+              </div>
             </div>
           </div>
         </>
@@ -1505,8 +1716,8 @@ const GraphPage = () => {
             >
               <p className="text-sm font-medium mb-1">
                 {clarifyResult.isLargeChange
-                  ? "🔄 目标变化较大，建议新建计划"
-                  : "✏️ 小幅调整，将更新现有图谱"}
+                  ? "目标变化较大，建议新建计划"
+                  : "小幅调整，将更新现有图谱"}
               </p>
               <p className="text-xs text-zinc-500">{clarifyResult.reason}</p>
             </div>
@@ -1517,9 +1728,13 @@ const GraphPage = () => {
       {/* Note Editor Modal */}
       <Modal
         isOpen={showNoteEditor}
-        onClose={() => setShowNoteEditor(false)}
-        title="新笔记"
-        footer={<Button onClick={handleSaveNote}>保存笔记</Button>}
+        onClose={() => {
+          setShowNoteEditor(false);
+          setEditingNoteId(null);
+          setNoteContent("");
+        }}
+        title={editingNoteId ? "编辑笔记" : "新笔记"}
+        footer={<Button onClick={handleSaveNote}>{editingNoteId ? "保存修改" : "保存笔记"}</Button>}
       >
         <textarea
           className="w-full h-64 p-4 bg-zinc-50 border border-zinc-100 rounded-xl outline-none resize-none focus:bg-white focus:border-zinc-300 transition-colors font-mono text-sm leading-relaxed"
@@ -1566,7 +1781,7 @@ const GraphPage = () => {
           </div>
         }
       >
-        <p className="text-sm text-zinc-500">保存后可在首页继续学习</p>
+        <p className="text-sm text-zinc-500">保存后可在首页继续学习。</p>
       </Modal>
     </div>
   );

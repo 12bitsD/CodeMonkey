@@ -238,7 +238,7 @@ export const graphApi = {
     const nodes = [];
     let edges = [];
 
-    outer: while (true) {
+    outer: for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
@@ -300,6 +300,13 @@ export const graphApi = {
     return await fetchApi(`/plans/${planId}/nodes/${nodeId}/position`, {
       method: "PUT",
       body: JSON.stringify({ x, y }),
+    });
+  },
+
+  searchNodeResources: async (planId, nodeId, query = null) => {
+    return await fetchApi(`/plans/${planId}/nodes/${nodeId}/search-resources`, {
+      method: "POST",
+      body: JSON.stringify(query ? { query } : {}),
     });
   },
 
@@ -392,7 +399,7 @@ export const aiApi = {
     let buf = "";
     let fullText = "";
 
-    while (true) {
+    for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
@@ -423,7 +430,18 @@ export const aiApi = {
    * messages: [{role, content}], nodeContext: {nodeName, planTitle, why}
    * Calls onChunk(text) for each chunk, returns full text when done.
    */
-  chatStream: async (messages, nodeContext, onChunk) => {
+  chatStream: async (messages, nodeContext, onChunkOrOptions) => {
+    const options =
+      typeof onChunkOrOptions === "function"
+        ? { onChunk: onChunkOrOptions }
+        : (onChunkOrOptions || {});
+    const {
+      enableWebSearch = false,
+      onChunk,
+      onSources,
+      onSearchStatus,
+    } = options;
+
     const token = tokenManager.get();
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -431,7 +449,7 @@ export const aiApi = {
     const res = await fetch(buildApiUrl("/ai/chat"), {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages, nodeContext }),
+      body: JSON.stringify({ messages, nodeContext, enableWebSearch }),
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}: chat failed`);
@@ -441,7 +459,7 @@ export const aiApi = {
     let buf = "";
     let fullText = "";
 
-    while (true) {
+    for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
@@ -456,6 +474,10 @@ export const aiApi = {
         if (event.type === "chunk") {
           fullText += event.text;
           if (onChunk) onChunk(event.text);
+        } else if (event.type === "sources") {
+          if (onSources) onSources(event.sources || []);
+        } else if (event.type === "search_status") {
+          if (onSearchStatus) onSearchStatus(event.status || null);
         } else if (event.type === "error") {
           throw new Error(event.error?.message || "chat error");
         }

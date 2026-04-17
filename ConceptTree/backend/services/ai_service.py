@@ -17,6 +17,7 @@ from models import (
 from services.llm import get_llm_client, LLMServiceError
 from services.llm.configs import load_ai_config, ConfigLoadError
 from services.llm.providers import LLMMessage
+from services.search_service import SearchServiceError, get_search_service
 
 
 class AIService:
@@ -24,6 +25,7 @@ class AIService:
 
     def __init__(self):
         self.llm_client = get_llm_client()
+        self.search_service = get_search_service()
 
     async def parse_goal(
         self, user_input: str, user_background: Optional[dict] = None
@@ -309,11 +311,30 @@ class AIService:
         messages_input: list,
         node_name: str = "",
         plan_title: Optional[str] = None,
+        enable_web_search: bool = False,
     ) -> AsyncGenerator[str, None]:
-        """
-        F4: Stream a chat response given message history + node context.
+        """F4: Stream a chat response given message history + node context."""
+        session = await self.prepare_chat_session(
+            messages_input=messages_input,
+            node_name=node_name,
+            plan_title=plan_title,
+            enable_web_search=enable_web_search,
+        )
 
-        Yields text chunks from the LLM.
+        async for chunk in self.stream_chat_session(session):
+            yield chunk
+
+    async def prepare_chat_session(
+        self,
+        messages_input: list,
+        node_name: str = "",
+        plan_title: Optional[str] = None,
+        enable_web_search: bool = False,
+    ) -> dict:
+        """
+        Build the LLM chat payload and optionally enrich it with web-search context.
+
+        Returns a dict containing llm messages, model params, search status and sources.
         """
         import json as _json
         from pathlib import Path
@@ -331,16 +352,134 @@ class AIService:
         system_prompt = system_prompt.replace("{{plan_title}}", plan_title or "")
 
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
+        sources: list[dict] = []
+        search_status = "disabled"
+
+        if enable_web_search:
+            latest_user_message = next(
+                (
+                    str(msg.get("content", "")).strip()
+                    for msg in reversed(messages_input)
+                    if msg.get("role") == "user" and str(msg.get("content", "")).strip()
+                ),
+                "",
+            )
+            if latest_user_message:
+                try:
+                    sources = await self.search_service.search(latest_user_message)
+                    search_status = "done" if sources else "fallback"
+                except SearchServiceError:
+                    sources = []
+                    search_status = "fallback"
+            else:
+                search_status = "fallback"
+
+        if sources:
+            llm_messages.append(
+                LLMMessage(
+                    role="system",
+                    content=self._build_search_context(sources),
+                )
+            )
+
         for msg in messages_input:
             llm_messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
 
+        return {
+            "messages": llm_messages,
+            "temperature": params.get("temperature", 0.7),
+            "max_tokens": params.get("max_tokens", 1024),
+            "model": params.get("model"),
+            "sources": sources,
+            "search_status": search_status,
+        }
+
+    async def stream_chat_session(self, session: dict) -> AsyncGenerator[str, None]:
         async for chunk in self.llm_client.chat_stream(
-            messages=llm_messages,
-            temperature=params.get("temperature", 0.7),
-            max_tokens=params.get("max_tokens", 1024),
-            model=params.get("model"),
+            messages=session["messages"],
+            temperature=session["temperature"],
+            max_tokens=session["max_tokens"],
+            model=session["model"],
         ):
             yield chunk
+
+    def _build_search_context(self, sources: list[dict]) -> str:
+        source_lines = []
+        for index, source in enumerate(sources, start=1):
+            source_lines.append(
+                "\n".join(
+                    [
+                        f"[来源 {index}]",
+                        f"标题：{source.get('title', '')}",
+                        f"链接：{source.get('url', '')}",
+                        f"摘要：{source.get('snippet', '')}",
+                    ]
+                )
+            )
+
+        sources_block = "\n\n".join(source_lines)
+        return (
+            "以下是联网搜索结果，请优先依据这些资料回答。"
+            "如果搜索结果不足以支持结论，请明确说明不确定性，不要编造来源。\n\n"
+            f"{sources_block}"
+        )
+
+
+    async def summarize_resource_results(
+        self,
+        node_name: str,
+        query: str,
+        results: list[dict],
+    ) -> dict[str, str]:
+        """Generate short AI summaries for searched resources keyed by URL."""
+        if not results:
+            return {}
+
+        prompt_payload = json.dumps(
+            {
+                "node_name": node_name,
+                "query": query,
+                "results": [
+                    {
+                        "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "snippet": item.get("snippet", ""),
+                    }
+                    for item in results
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+        system_prompt = (
+            "你是学习资源整理助手。"
+            "请根据每条资源的标题与摘要，输出简短、准确、适合卡片展示的中文简介。"
+            "每条简介控制在18到36个中文字符之间，不要使用编号，不要重复标题。"
+            '只返回 JSON，格式为 {"items":[{"url":"...","summary":"..."}]}。'
+        )
+        user_prompt = (
+            f"请为知识点“{node_name}”的联网搜索结果生成资源简介。\n\n"
+            f"{prompt_payload}"
+        )
+
+        try:
+            result = await self.llm_client.chat_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.2,
+                max_tokens=1200,
+            )
+        except Exception:
+            return {}
+
+        items = result.get("items", [])
+        summary_map: dict[str, str] = {}
+        for item in items:
+            url = str(item.get("url", "")).strip()
+            summary = str(item.get("summary", "")).strip()
+            if url and summary:
+                summary_map[url] = summary
+        return summary_map
 
 
 _ai_service: Optional[AIService] = None

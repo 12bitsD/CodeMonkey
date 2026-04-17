@@ -89,3 +89,47 @@ def test_get_graph_returns_content_cache(client, auth_headers_a, db):
     assert graph.status_code == 200
     node = graph.json()["data"]["nodes"][0]
     assert node["contentCache"] == {"0": "cached explanation"}
+
+
+def test_get_graph_returns_resource_search_cache(client, auth_headers_a, db):
+    plan_data = {
+        "title": "resource cache graph",
+        "originalInput": "input",
+        "nodes": [
+            {
+                "id": "resource-node",
+                "name": "Backpropagation",
+                "status": "unlearned",
+                "x": 0,
+                "y": 0,
+                "why": "",
+                "what": ["topic"],
+                "mastery": [],
+                "prompt": "",
+                "resources": [],
+                "isTarget": True,
+                "domain": "coding",
+            }
+        ],
+        "edges": [],
+        "targetNodeId": "resource-node",
+    }
+    create = client.post("/api/plans", json=plan_data, headers=auth_headers_a)
+    plan_id = create.json()["data"]["id"]
+    stored_node_id = f"{plan_id}_resource-node"
+
+    with db.cursor() as cur:
+        cur.execute(
+            "UPDATE nodes SET resource_search_cache = %s WHERE id = %s",
+            (
+                '{"items":[{"name":"官方教程","url":"https://example.com","reason":"系统讲解","source":"web_search"}],"query":"backpropagation tutorial"}',
+                stored_node_id,
+            ),
+        )
+    db.commit()
+
+    graph = client.get(f"/api/plans/{plan_id}/graph", headers=auth_headers_a)
+    assert graph.status_code == 200
+    node = graph.json()["data"]["nodes"][0]
+    assert node["resourceSearchCache"]["query"] == "backpropagation tutorial"
+    assert node["resourceSearchCache"]["items"][0]["source"] == "web_search"

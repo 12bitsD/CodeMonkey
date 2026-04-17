@@ -69,6 +69,12 @@ class Resource(BaseModel):
     reason: str
 
 
+class ResourceSearchCache(BaseModel):
+    items: List[Dict[str, str]] = []
+    query: Optional[str] = None
+    updatedAt: Optional[str] = None
+
+
 class NodeData(BaseModel):
     id: str
     name: str
@@ -81,6 +87,7 @@ class NodeData(BaseModel):
     prompt: Optional[str] = None
     resources: List[Resource] = []
     contentCache: Dict[str, str] = {}
+    resourceSearchCache: Dict[str, Any] = {}
     isTarget: bool = False
     domain: Optional[str] = None
     phase: Optional[str] = None
@@ -100,6 +107,7 @@ class NodeBase(BaseModel):
     prompt: Optional[str] = None
     resources: List[Dict[str, str]] = []
     contentCache: Dict[str, str] = {}
+    resourceSearchCache: Dict[str, Any] = {}
     isTarget: bool = False
     phase: Optional[str] = None
     phase_order: int = 0
@@ -186,6 +194,15 @@ class PlanListResponse(BaseModel):
 class GraphApiResponse(BaseModel):
     success: bool
     data: GraphResponse
+
+
+class ResourceSearchRequest(BaseModel):
+    query: Optional[str] = None
+
+
+class ResourceSearchResponse(BaseModel):
+    success: bool
+    data: Dict[str, Any]
 
 
 class ApiError(BaseModel):
@@ -394,3 +411,4 @@ class ChatRequest(BaseModel):
     """F4: 节点聊天请求"""
     messages: List[ChatMessage]
     nodeContext: Optional[NodeContextInput] = None
+    enableWebSearch: bool = False

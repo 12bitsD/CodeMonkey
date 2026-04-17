@@ -116,6 +116,9 @@ ALTER TABLE nodes ADD COLUMN IF NOT EXISTS depth_level INTEGER DEFAULT 2;
 -- 各层内容缓存（避免重复调用 LLM），格式：{"1": "...", "2": "..."}
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS content_cache JSONB DEFAULT '{}'::jsonb;
 
+-- 节点扩展资源缓存（用于“搜索更多资源”持久化）
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS resource_search_cache JSONB DEFAULT '{}'::jsonb;
+
 -- Sprint DB Security: lock down public schema tables behind RLS.
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;

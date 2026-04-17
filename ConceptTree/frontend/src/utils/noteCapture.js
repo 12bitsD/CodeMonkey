@@ -1,4 +1,8 @@
-import { buildChatSummaryNote, buildExplainNote, hasSimilarNote } from "./noteFormatting";
+import {
+  buildChatSummaryNote,
+  buildExplainNote,
+  hasSimilarNote,
+} from "./noteFormatting";
 
 export async function persistGeneratedNote({
   content,

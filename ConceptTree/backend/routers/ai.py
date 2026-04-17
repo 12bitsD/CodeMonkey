@@ -316,13 +316,26 @@ async def _stream_chat(
     messages_input = [{"role": m.role, "content": m.content} for m in request.messages]
 
     try:
-        async for chunk in ai_service.chat_stream(
+        if request.enableWebSearch:
+            yield f"data: {json.dumps({'type': 'search_status', 'status': 'searching'}, ensure_ascii=False)}\n\n"
+
+        session = await ai_service.prepare_chat_session(
             messages_input=messages_input,
             node_name=node_name,
             plan_title=plan_title,
-        ):
+            enable_web_search=request.enableWebSearch,
+        )
+
+        async for chunk in ai_service.stream_chat_session(session):
             yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0)
+
+        if request.enableWebSearch:
+            if session["sources"]:
+                yield f"data: {json.dumps({'type': 'sources', 'sources': session['sources']}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'search_status', 'status': 'done'}, ensure_ascii=False)}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'search_status', 'status': 'fallback'}, ensure_ascii=False)}\n\n"
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'error': {'code': 'AI_ERROR', 'message': str(e)}})}\n\n"
         return

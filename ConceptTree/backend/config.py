@@ -61,6 +61,13 @@ class Settings:
     LLM_FALLBACK_API_KEY: str = _get_env("LLM_FALLBACK_API_KEY", "")
     LLM_FALLBACK_BASE_URL: str = _get_env("LLM_FALLBACK_BASE_URL", "")
     LLM_FALLBACK_MODEL: str = _get_env("LLM_FALLBACK_MODEL", "gpt-4o-mini")
+    SEARCH_ENABLED: bool = _get_bool_env("SEARCH_ENABLED", False)
+    SEARCH_PROVIDER: str = _get_env("SEARCH_PROVIDER", "tavily")
+    SEARCH_API_KEY: str = _get_env("SEARCH_API_KEY", "")
+    SEARCH_TIMEOUT: int = int(_get_env("SEARCH_TIMEOUT", "8"))
+    SEARCH_MAX_RESULTS: int = int(_get_env("SEARCH_MAX_RESULTS", "5"))
+    SEARCH_ALLOWED_DOMAINS_RAW: str = _get_env("SEARCH_ALLOWED_DOMAINS", "")
+    SEARCH_CACHE_TTL_SECONDS: int = int(_get_env("SEARCH_CACHE_TTL_SECONDS", "1800"))
 
 
 settings = Settings()
@@ -82,3 +89,10 @@ def get_cors_allow_credentials() -> bool:
     if origins == ["*"]:
         return False
     return settings.CORS_ALLOW_CREDENTIALS
+
+
+def get_search_allowed_domains() -> list[str]:
+    raw = settings.SEARCH_ALLOWED_DOMAINS_RAW.strip()
+    if raw == "":
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]

@@ -1,14 +1,14 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { notesApi } from '../services/api';
-import { useAuth } from './AuthContext';
-import { useToast } from './ToastContext';
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { notesApi } from "../services/api";
+import { useAuth } from "./AuthContext";
+import { useToast } from "./ToastContext";
 
 const NoteContext = createContext(null);
 
 export const useNoteContext = () => {
   const context = useContext(NoteContext);
   if (!context) {
-    throw new Error('useNoteContext must be used within a NoteProvider');
+    throw new Error("useNoteContext must be used within a NoteProvider");
   }
   return context;
 };
@@ -28,12 +28,14 @@ export const NoteProvider = ({ children }) => {
       try {
         if (isAuthenticated) {
           const notesList = await notesApi.list();
-          setAllNotes(Array.isArray(notesList) ? notesList : (notesList?.notes || []));
+          setAllNotes(
+            Array.isArray(notesList) ? notesList : (notesList?.notes || []),
+          );
         } else {
           setAllNotes([]);
         }
       } catch (error) {
-        toast.error('加载笔记失败，请刷新后重试');
+        toast.error("加载笔记失败，请刷新后重试");
       } finally {
         setIsLoading(false);
       }
@@ -51,7 +53,21 @@ export const NoteProvider = ({ children }) => {
           setAllNotes((prev) => [newNote, ...prev]);
           return newNote;
         } catch (error) {
-          toast.error('添加笔记失败');
+          toast.error("添加笔记失败");
+          throw error;
+        }
+      },
+      async updateNote(noteId, content) {
+        try {
+          const updatedNote = await notesApi.update(noteId, content);
+          setAllNotes((prev) =>
+            prev.map((note) =>
+              note.id === noteId ? { ...note, ...updatedNote, content } : note,
+            ),
+          );
+          return updatedNote;
+        } catch (error) {
+          toast.error("更新笔记失败");
           throw error;
         }
       },
@@ -60,7 +76,7 @@ export const NoteProvider = ({ children }) => {
           await notesApi.delete(noteId);
           setAllNotes((prev) => prev.filter((note) => note.id !== noteId));
         } catch (error) {
-          toast.error('删除笔记失败');
+          toast.error("删除笔记失败");
           throw error;
         }
       },
