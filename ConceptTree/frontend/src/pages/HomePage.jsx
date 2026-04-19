@@ -48,6 +48,11 @@ const HomePage = () => {
 
   const handleStartAnalysis = async () => {
     if (!inputText.trim()) return;
+    if (!isAuthenticated) {
+      toast.info('请先登录后再使用 AI 生成功能');
+      navigate('/auth?redirect=%2F');
+      return;
+    }
     setIsAnalyzing(true);
     setAnalysisStep(0);
     let step = 0;

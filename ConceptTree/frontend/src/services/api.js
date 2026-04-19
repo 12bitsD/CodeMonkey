@@ -2,11 +2,19 @@ import { createEmptyUserProfile } from "../types";
 import { buildApiUrl } from "../config/api";
 
 const TOKEN_KEY = "concept_tree_token";
+export const AUTH_EXPIRED_EVENT = "concept-tree-auth-expired";
 
 export const tokenManager = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (token) => localStorage.setItem(TOKEN_KEY, token),
   remove: () => localStorage.removeItem(TOKEN_KEY),
+};
+
+const notifyAuthExpired = () => {
+  tokenManager.remove();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+  }
 };
 
 const fetchApi = async (endpoint, options = {}) => {
@@ -25,6 +33,9 @@ const fetchApi = async (endpoint, options = {}) => {
       headers,
       ...options,
     });
+    if (res.status === 401) {
+      notifyAuthExpired();
+    }
     const raw = await res.text();
     let json = null;
 
@@ -227,6 +238,9 @@ export const graphApi = {
       body: JSON.stringify(body),
     });
 
+    if (res.status === 401) {
+      notifyAuthExpired();
+    }
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: Failed to generate graph`);
     }
@@ -392,6 +406,9 @@ export const aiApi = {
       body: JSON.stringify({ nodeId, topicIndex, topicText, nodeContext }),
     });
 
+    if (res.status === 401) {
+      notifyAuthExpired();
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}: explain-topic failed`);
 
     const reader = res.body.getReader();
@@ -452,6 +469,9 @@ export const aiApi = {
       body: JSON.stringify({ messages, nodeContext, enableWebSearch }),
     });
 
+    if (res.status === 401) {
+      notifyAuthExpired();
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}: chat failed`);
 
     const reader = res.body.getReader();

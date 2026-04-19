@@ -1,12 +1,46 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authApi, tokenManager } from '../services/api';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import {
+  AUTH_EXPIRED_EVENT,
+  authApi,
+  tokenManager,
+} from "../services/api";
 
 const AuthContext = createContext();
+
+const clearAuthState = (setIsAuthenticated, setUser) => {
+  tokenManager.remove();
+  setUser(null);
+  setIsAuthenticated(false);
+};
+
+const decodeBase64Url = (value) => {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const paddingLength = (4 - (normalized.length % 4)) % 4;
+  return atob(`${normalized}${"=".repeat(paddingLength)}`);
+};
+
+const parseTokenPayload = (token) => {
+  const [, payloadPart] = token.split(".");
+  if (!payloadPart) {
+    throw new Error("Missing JWT payload");
+  }
+
+  const payload = JSON.parse(decodeBase64Url(payloadPart));
+  if (!payload?.sub) {
+    throw new Error("Missing JWT subject");
+  }
+
+  if (payload.exp && Date.now() >= payload.exp * 1000) {
+    throw new Error("JWT expired");
+  }
+
+  return payload;
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
@@ -16,23 +50,30 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 初始化：检查是否有有效token
   useEffect(() => {
     const token = tokenManager.get();
     if (token) {
-      // 有token，假设已登录（可以选择验证token）
-      setIsAuthenticated(true);
-      // 从token中解析用户信息（简化版，实际应该解析JWT）
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const payload = parseTokenPayload(token);
         setUser({ id: payload.sub });
+        setIsAuthenticated(true);
       } catch (error) {
-        console.error('Failed to parse token', error);
-        tokenManager.remove();
-        setIsAuthenticated(false);
+        console.error("Failed to restore token", error);
+        clearAuthState(setIsAuthenticated, setUser);
       }
     }
     setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      clearAuthState(setIsAuthenticated, setUser);
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => {
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    };
   }, []);
 
   const register = async (email, password) => {
@@ -63,9 +104,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await authApi.logout();
     } finally {
-      tokenManager.remove();
-      setUser(null);
-      setIsAuthenticated(false);
+      clearAuthState(setIsAuthenticated, setUser);
     }
   };
 
@@ -75,12 +114,8 @@ export const AuthProvider = ({ children }) => {
     isLoading,
     register,
     login,
-    logout
+    logout,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
