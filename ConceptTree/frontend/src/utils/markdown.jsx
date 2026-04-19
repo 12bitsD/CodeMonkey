@@ -1,12 +1,43 @@
 import React from "react";
+import katex from "katex";
+
+const INLINE_TOKEN_PATTERN =
+  /(`[^`]+`|\\\((?:\\.|[^\\])+?\\\)|\$(?!\$)(?:\\.|[^$\n])+?\$|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+
+function renderMath(expression, displayMode, key) {
+  const html = katex.renderToString(expression.trim(), {
+    displayMode,
+    throwOnError: false,
+    strict: "ignore",
+  });
+
+  if (displayMode) {
+    return (
+      <div
+        key={key}
+        className="math-block overflow-x-auto py-1"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+
+  return (
+    <span
+      key={key}
+      className="math-inline"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 function parseInline(text, keyPrefix) {
-  const tokenPattern = /(`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
   const segments = [];
   let lastIndex = 0;
   let match;
 
-  while ((match = tokenPattern.exec(text)) !== null) {
+  INLINE_TOKEN_PATTERN.lastIndex = 0;
+
+  while ((match = INLINE_TOKEN_PATTERN.exec(text)) !== null) {
     if (match.index > lastIndex) {
       segments.push(text.slice(lastIndex, match.index));
     }
@@ -30,6 +61,14 @@ function parseInline(text, keyPrefix) {
           {segment.slice(1, -1)}
         </code>
       );
+    }
+
+    if (segment.startsWith("\\(") && segment.endsWith("\\)")) {
+      return renderMath(segment.slice(2, -2), false, key);
+    }
+
+    if (segment.startsWith("$") && segment.endsWith("$")) {
+      return renderMath(segment.slice(1, -1), false, key);
     }
 
     const linkMatch = segment.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -66,6 +105,54 @@ function parseInline(text, keyPrefix) {
   });
 }
 
+function consumeMathBlock(lines, startIndex) {
+  const trimmed = lines[startIndex].trim();
+
+  if (trimmed.startsWith("$$")) {
+    const inlineMatch = trimmed.match(/^\$\$\s*([\s\S]+?)\s*\$\$$/);
+    if (inlineMatch) {
+      return {
+        block: { type: "math", content: inlineMatch[1] },
+        nextIndex: startIndex + 1,
+      };
+    }
+
+    const content = [];
+    let i = startIndex + 1;
+    while (i < lines.length && lines[i].trim() !== "$$") {
+      content.push(lines[i]);
+      i += 1;
+    }
+    return {
+      block: { type: "math", content: content.join("\n").trim() },
+      nextIndex: i < lines.length ? i + 1 : i,
+    };
+  }
+
+  if (trimmed.startsWith("\\[")) {
+    const inlineMatch = trimmed.match(/^\\\[\s*([\s\S]+?)\s*\\\]$/);
+    if (inlineMatch) {
+      return {
+        block: { type: "math", content: inlineMatch[1] },
+        nextIndex: startIndex + 1,
+      };
+    }
+
+    const content = [];
+    let i = startIndex + 1;
+    while (i < lines.length && lines[i].trim() !== "\\]") {
+      content.push(lines[i]);
+      i += 1;
+    }
+    return {
+      block: { type: "math", content: content.join("\n").trim() },
+      nextIndex: i < lines.length ? i + 1 : i,
+    };
+  }
+
+  return null;
+}
+
 function parseBlocks(markdown) {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks = [];
@@ -93,6 +180,13 @@ function parseBlocks(markdown) {
         i += 1;
       }
       blocks.push({ type: "code", language, content: content.join("\n") });
+      continue;
+    }
+
+    const mathBlock = consumeMathBlock(lines, i);
+    if (mathBlock) {
+      blocks.push(mathBlock.block);
+      i = mathBlock.nextIndex;
       continue;
     }
 
@@ -143,6 +237,8 @@ function parseBlocks(markdown) {
       if (
         !current ||
         current.startsWith("```") ||
+        current.startsWith("$$") ||
+        current.startsWith("\\[") ||
         current.startsWith(">") ||
         /^#{1,3}\s+/.test(current) ||
         /^[-*+]\s+/.test(current) ||
@@ -198,6 +294,10 @@ export function renderMarkdown(markdown) {
           <code data-language={block.language || undefined}>{block.content}</code>
         </pre>
       );
+    }
+
+    if (block.type === "math") {
+      return renderMath(block.content, true, key);
     }
 
     if (block.type === "list") {

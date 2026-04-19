@@ -1,34 +1,53 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+
 import MarkdownContent from "./MarkdownContent";
 
 describe("MarkdownContent", () => {
   it("renders headings, lists, emphasis, code blocks, and links", () => {
     render(
       <MarkdownContent
-        content={`# 标题
+        content={`# Title
 
-这是 **重点**，也是 \`inline code\`。
+This is **important**, with \`inline code\`.
 
-1. 第一项
-2. 第二项
+1. First
+2. Second
 
-> 这是引用
+> Quote
 
 \`\`\`js
 const value = 1;
 \`\`\`
 
-[查看资料](https://example.com)`}
+[Open docs](https://example.com)`}
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "标题" })).toBeInTheDocument();
-    expect(screen.getByText("重点").tagName).toBe("STRONG");
+    expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
+    expect(screen.getByText("important").tagName).toBe("STRONG");
     expect(screen.getByText("inline code").tagName).toBe("CODE");
-    expect(screen.getByText("第一项")).toBeInTheDocument();
-    expect(screen.getByText("这是引用")).toBeInTheDocument();
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByText("Quote")).toBeInTheDocument();
     expect(screen.getByText("const value = 1;")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看资料" })).toHaveAttribute("href", "https://example.com");
+    expect(screen.getByRole("link", { name: "Open docs" })).toHaveAttribute(
+      "href",
+      "https://example.com",
+    );
+  });
+
+  it("renders inline and block math formulas with katex", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={`Pythagoras can be written as \\(a^2+b^2=c^2\\).
+
+$$
+\\frac{dy}{dx} = \\frac{dy}{du} \\times \\frac{du}{dx}
+$$`}
+      />,
+    );
+
+    expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+    expect(container.querySelector(".katex-display")).toBeInTheDocument();
   });
 });

@@ -18,3 +18,12 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #d4d4d8;
 }
+
+.math-inline .katex {
+  font-size: 1.02em;
+}
+
+.math-block .katex-display {
+  margin: 0;
+  padding: 0.25rem 0;
+}
