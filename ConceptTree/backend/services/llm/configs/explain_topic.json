@@ -1,6 +1,5 @@
 {
   "model_params": {
-    "model": "moonshot-v1-8k",
     "temperature": 0.5,
     "max_tokens": 1024
   },

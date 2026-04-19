@@ -118,13 +118,24 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             openai_messages = [
                 {"role": msg.role, "content": msg.content} for msg in messages
             ]
-            stream = await self.client.chat.completions.create(
-                model=model or self.model,
-                messages=openai_messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-            )
+            request_kwargs = {
+                "model": model or self.model,
+                "messages": openai_messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": True,
+            }
+
+            try:
+                stream = await self.client.chat.completions.create(**request_kwargs)
+            except APIError as e:
+                # Keep streaming compatibility aligned with non-stream requests.
+                if e.status_code == 400 and "temperature" in str(e).lower():
+                    request_kwargs["temperature"] = 1
+                    stream = await self.client.chat.completions.create(**request_kwargs)
+                else:
+                    raise
+
             async for chunk in stream:
                 if chunk.choices:
                     delta = chunk.choices[0].delta.content
