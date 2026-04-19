@@ -86,4 +86,27 @@ describe("noteCapture", () => {
     expect(noteActions.addNote).not.toHaveBeenCalled();
     expect(toast.info).toHaveBeenCalledWith("duplicate");
   });
+
+  it("prefers explicit nodeId when saving generated notes", async () => {
+    const { noteActions, toast } = createDeps();
+
+    const result = await persistGeneratedNote({
+      content: "新的笔记内容",
+      existingNotes: [],
+      planId: "plan-1",
+      nodeId: "node-current",
+      selectedNodeId: "node-stale",
+      noteActions,
+      toast,
+      successMessage: "ok",
+      duplicateMessage: "duplicate",
+    });
+
+    expect(result.saved).toBe(true);
+    expect(noteActions.addNote).toHaveBeenCalledWith(
+      "plan-1",
+      "node-current",
+      "新的笔记内容",
+    );
+  });
 });

@@ -54,7 +54,7 @@ export const NoteProvider = ({ children }) => {
           setAllNotes((prev) => [newNote, ...prev]);
           return newNote;
         } catch (error) {
-          showErrorToast("添加笔记失败");
+          showErrorToast(error?.message || "添加笔记失败");
           throw error;
         }
       },
@@ -68,7 +68,7 @@ export const NoteProvider = ({ children }) => {
           );
           return updatedNote;
         } catch (error) {
-          showErrorToast("更新笔记失败");
+          showErrorToast(error?.message || "更新笔记失败");
           throw error;
         }
       },
@@ -77,7 +77,7 @@ export const NoteProvider = ({ children }) => {
           await notesApi.delete(noteId);
           setAllNotes((prev) => prev.filter((note) => note.id !== noteId));
         } catch (error) {
-          showErrorToast("删除笔记失败");
+          showErrorToast(error?.message || "删除笔记失败");
           throw error;
         }
       },

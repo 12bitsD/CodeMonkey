@@ -8,13 +8,16 @@ export async function persistGeneratedNote({
   content,
   existingNotes,
   planId,
+  nodeId,
   selectedNodeId,
   noteActions,
   toast,
   successMessage,
   duplicateMessage,
 }) {
-  if (!selectedNodeId || !planId) {
+  const targetNodeId = nodeId || selectedNodeId;
+
+  if (!targetNodeId || !planId) {
     toast.error("请先选择一个知识点");
     return { saved: false, reason: "missing-context" };
   }
@@ -29,7 +32,7 @@ export async function persistGeneratedNote({
     return { saved: false, reason: "duplicate" };
   }
 
-  await noteActions.addNote(planId, selectedNodeId, content);
+  await noteActions.addNote(planId, targetNodeId, content);
   toast.success(successMessage);
   return { saved: true, reason: "saved" };
 }
@@ -40,6 +43,7 @@ export async function saveExplainNoteToNotes({
   nodeName,
   existingNotes,
   planId,
+  nodeId,
   selectedNodeId,
   noteActions,
   toast,
@@ -48,6 +52,7 @@ export async function saveExplainNoteToNotes({
     content: buildExplainNote(topicText, explainContent, nodeName),
     existingNotes,
     planId,
+    nodeId,
     selectedNodeId,
     noteActions,
     toast,
@@ -61,6 +66,7 @@ export async function saveChatSummaryToNotes({
   nodeName,
   existingNotes,
   planId,
+  nodeId,
   selectedNodeId,
   noteActions,
   toast,
@@ -69,6 +75,7 @@ export async function saveChatSummaryToNotes({
     content: buildChatSummaryNote(messages, nodeName),
     existingNotes,
     planId,
+    nodeId,
     selectedNodeId,
     noteActions,
     toast,
