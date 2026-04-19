@@ -50,6 +50,9 @@ import {
   mergeNodeResources,
 } from "../utils/resourceSearch";
 
+const EXPLAIN_FAILURE_MESSAGE = "解释生成失败，请重试。";
+const EXPLAIN_EMPTY_MESSAGE = "内容生成为空，请重试。";
+
 const PHASE_ALIASES = {
   基础: "基础",
   鍦板熀: "基础",
@@ -507,7 +510,13 @@ const GraphPage = () => {
     if (!selectedNode) return;
 
     const explainKey = `${selectedNode.id}_${topicIndex}`;
-    const content = explainStates[explainKey]?.content || "";
+    const explainState = explainStates[explainKey];
+    const content = explainState?.content || "";
+
+    if (!content || explainState?.status === "error") {
+      toast.error("请先成功生成解释后再保存");
+      return;
+    }
 
     setSavingExplainNotes((prev) => ({ ...prev, [explainKey]: true }));
     try {
@@ -724,8 +733,10 @@ const GraphPage = () => {
     const nodeId = selectedNode.id;
     const current = explainStates[key];
 
-    // Toggle off if already loaded
-    if (current?.content) {
+    if (current?.loading) return;
+
+    // Toggle off only for successful content; failed states should retry directly.
+    if (current?.content && current?.status !== "error") {
       setExplainStates((prev) => ({
         ...prev,
         [key]: { ...prev[key], expanded: !prev[key].expanded },
@@ -733,7 +744,11 @@ const GraphPage = () => {
       return;
     }
 
-    setExplainStates((prev) => ({ ...prev, [key]: { loading: true, content: "", expanded: true } }));
+    setSavedExplainNotes((prev) => ({ ...prev, [key]: false }));
+    setExplainStates((prev) => ({
+      ...prev,
+      [key]: { loading: true, content: "", expanded: true, status: "loading" },
+    }));
 
     try {
       let accumulated = "";
@@ -750,7 +765,7 @@ const GraphPage = () => {
           accumulated += chunk;
           setExplainStates((prev) => ({
             ...prev,
-            [key]: { loading: false, content: accumulated, expanded: true },
+            [key]: { loading: false, content: accumulated, expanded: true, status: "success" },
           }));
         },
       );
@@ -759,8 +774,9 @@ const GraphPage = () => {
         ...prev,
         [key]: {
           loading: false,
-          content: prev[key]?.content || "内容生成为空，请重试。",
+          content: prev[key]?.content || EXPLAIN_EMPTY_MESSAGE,
           expanded: true,
+          status: prev[key]?.content ? "success" : "error",
         },
       }));
       if (accumulated) {
@@ -795,7 +811,7 @@ const GraphPage = () => {
       console.error("[explainTopic] error:", err);
       setExplainStates((prev) => ({
         ...prev,
-        [key]: { loading: false, content: "解释生成失败，请重试。", expanded: true },
+        [key]: { loading: false, content: EXPLAIN_FAILURE_MESSAGE, expanded: true, status: "error" },
       }));
     }
   };
@@ -1362,6 +1378,7 @@ const GraphPage = () => {
                       {selectedNode.what.map((item, i) => {
                         const key = `${selectedNode.id}_${i}`;
                         const state = explainStates[key];
+                        const isExplainError = state?.status === "error";
                         const isSavingExplainNote = Boolean(savingExplainNotes[key]);
                         const isExplainSaved = Boolean(savedExplainNotes[key]);
                         return (
@@ -1384,29 +1401,51 @@ const GraphPage = () => {
                               )}
                             </button>
                             {state?.expanded && state?.content && (
-                              <div className="ml-4 mt-3 rounded-2xl border border-teal-100/90 bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-4 shadow-[0_12px_32px_rgba(20,184,166,0.08)]">
+                              <div
+                                className={`ml-4 mt-3 rounded-2xl border p-4 shadow-[0_12px_32px_rgba(20,184,166,0.08)] ${
+                                  isExplainError
+                                    ? "border-rose-100/90 bg-gradient-to-br from-rose-50 via-white to-orange-50"
+                                    : "border-teal-100/90 bg-gradient-to-br from-teal-50 via-white to-cyan-50"
+                                }`}
+                              >
                                 <div className="mb-3 flex items-center justify-between gap-3">
-                                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-teal-500">
+                                  <span
+                                    className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${
+                                      isExplainError ? "text-rose-500" : "text-teal-500"
+                                    }`}
+                                  >
                                     AI 解释
                                   </span>
-                                  <button
-                                    type="button"
-                                    aria-label={`保存主题“${item}”到笔记`}
-                                    onClick={() => handleSaveExplainNote(item, i)}
-                                    disabled={isSavingExplainNote}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-teal-700 transition-colors hover:border-teal-300 hover:text-teal-900 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {isSavingExplainNote ? (
-                                      <Loader size={12} className="animate-spin" />
-                                    ) : (
-                                      <Save size={12} />
-                                    )}
-                                    {isSavingExplainNote
-                                      ? "保存中..."
-                                      : isExplainSaved
-                                        ? "已保存"
-                                        : "保存到笔记"}
-                                  </button>
+                                  {isExplainError ? (
+                                    <button
+                                      type="button"
+                                      aria-label={`重新生成主题“${item}”的 AI 解释`}
+                                      onClick={() => handleExplainTopic(item, i)}
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-rose-700 transition-colors hover:border-rose-300 hover:text-rose-900"
+                                    >
+                                      <RotateCcw size={12} />
+                                      重试
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      aria-label={`保存主题“${item}”到笔记`}
+                                      onClick={() => handleSaveExplainNote(item, i)}
+                                      disabled={isSavingExplainNote}
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-teal-700 transition-colors hover:border-teal-300 hover:text-teal-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {isSavingExplainNote ? (
+                                        <Loader size={12} className="animate-spin" />
+                                      ) : (
+                                        <Save size={12} />
+                                      )}
+                                      {isSavingExplainNote
+                                        ? "保存中..."
+                                        : isExplainSaved
+                                          ? "已保存"
+                                          : "保存到笔记"}
+                                    </button>
+                                  )}
                                 </div>
                                 <MarkdownContent content={state.content} />
                               </div>
