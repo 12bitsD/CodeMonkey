@@ -1,21 +1,44 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 const ToastContext = createContext(null);
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
+  const recentToastRef = useRef({ key: null, time: 0 });
 
   const addToast = useCallback((message, type = 'info', duration = 4000) => {
-    const id = Date.now();
+    const key = `${type}:${message}`;
+    const now = Date.now();
+
+    // Prevent the same failing request from flooding the UI with identical toasts.
+    if (
+      recentToastRef.current.key === key &&
+      now - recentToastRef.current.time < 1500
+    ) {
+      return;
+    }
+
+    recentToastRef.current = { key, time: now };
+    const id = `${now}-${Math.random().toString(36).slice(2, 8)}`;
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
   }, []);
 
-  const toast = {
-    success: (msg) => addToast(msg, 'success'),
-    error: (msg) => addToast(msg, 'error'),
-    info: (msg) => addToast(msg, 'info'),
-  };
+  const toast = useMemo(
+    () => ({
+      success: (msg) => addToast(msg, 'success'),
+      error: (msg) => addToast(msg, 'error'),
+      info: (msg) => addToast(msg, 'info'),
+    }),
+    [addToast],
+  );
 
   return (
     <ToastContext.Provider value={toast}>

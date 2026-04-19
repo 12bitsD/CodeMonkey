@@ -1,15 +1,15 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { plansApi, userProfileApi } from '../services/api';
-import { createEmptyUserProfile } from '../types';
-import { useAuth } from './AuthContext';
-import { useToast } from './ToastContext';
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { plansApi, userProfileApi } from "../services/api";
+import { createEmptyUserProfile } from "../types";
+import { useAuth } from "./AuthContext";
+import { useToast } from "./ToastContext";
 
 const PlanContext = createContext(null);
 
 export const usePlanContext = () => {
   const context = useContext(PlanContext);
   if (!context) {
-    throw new Error('usePlanContext must be used within a PlanProvider');
+    throw new Error("usePlanContext must be used within a PlanProvider");
   }
   return context;
 };
@@ -17,6 +17,7 @@ export const usePlanContext = () => {
 export const PlanProvider = ({ children }) => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const toast = useToast();
+  const showErrorToast = toast.error;
 
   const [userProfile, setUserProfile] = useState(createEmptyUserProfile());
   const [plans, setPlans] = useState([]);
@@ -40,19 +41,19 @@ export const PlanProvider = ({ children }) => {
           setPlans([]);
         }
       } catch (error) {
-        toast.error('加载计划数据失败，请刷新后重试');
+        showErrorToast("加载计划数据失败，请刷新后重试");
       } finally {
         setIsLoading(false);
       }
     };
 
     loadPlanData();
-  }, [authLoading, isAuthenticated, toast]);
+  }, [authLoading, isAuthenticated, showErrorToast]);
 
   const actions = useMemo(
     () => ({
       setPlans,
-      async createPlan(input, graphResult, learningPurpose = 'apply') {
+      async createPlan(input, graphResult, learningPurpose = "apply") {
         try {
           const newPlan = await plansApi.create({
             title: graphResult.interpretation || input,
@@ -65,26 +66,30 @@ export const PlanProvider = ({ children }) => {
           setPlans((prev) => [newPlan, ...prev]);
           return newPlan;
         } catch (error) {
-          toast.error('创建计划失败');
+          showErrorToast("创建计划失败");
           throw error;
         }
       },
       async updatePlan(id, data) {
         try {
           const updated = await plansApi.update(id, data);
-          setPlans((prev) => prev.map((plan) => (plan.id === id ? { ...plan, ...updated } : plan)));
+          setPlans((prev) =>
+            prev.map((plan) => (plan.id === id ? { ...plan, ...updated } : plan)),
+          );
           return updated;
         } catch (error) {
-          toast.error('更新计划失败');
+          showErrorToast("更新计划失败");
           throw error;
         }
       },
       async archivePlan(id) {
         try {
           await plansApi.archive(id);
-          setPlans((prev) => prev.map((plan) => (plan.id === id ? { ...plan, status: 'archived' } : plan)));
+          setPlans((prev) =>
+            prev.map((plan) => (plan.id === id ? { ...plan, status: "archived" } : plan)),
+          );
         } catch (error) {
-          toast.error('归档计划失败');
+          showErrorToast("归档计划失败");
           throw error;
         }
       },
@@ -93,16 +98,18 @@ export const PlanProvider = ({ children }) => {
           await plansApi.delete(id);
           setPlans((prev) => prev.filter((plan) => plan.id !== id));
         } catch (error) {
-          toast.error('删除计划失败');
+          showErrorToast("删除计划失败");
           throw error;
         }
       },
       async restorePlan(id) {
         try {
           await plansApi.restore(id);
-          setPlans((prev) => prev.map((plan) => (plan.id === id ? { ...plan, status: 'active' } : plan)));
+          setPlans((prev) =>
+            prev.map((plan) => (plan.id === id ? { ...plan, status: "active" } : plan)),
+          );
         } catch (error) {
-          toast.error('恢复计划失败');
+          showErrorToast("恢复计划失败");
           throw error;
         }
       },
@@ -112,7 +119,7 @@ export const PlanProvider = ({ children }) => {
         );
       },
       updateNodeStatusInPlan() {
-        // Plans 列表不携带节点详情，进度由 graph 接口返回后同步。
+        // Plan list items do not include node details; progress sync happens elsewhere.
       },
       async setUserProfile(newProfile) {
         try {
@@ -120,12 +127,12 @@ export const PlanProvider = ({ children }) => {
           setUserProfile(updated);
           return updated;
         } catch (error) {
-          toast.error('更新用户画像失败');
+          showErrorToast("更新用户画像失败");
           throw error;
         }
       },
     }),
-    [toast],
+    [showErrorToast],
   );
 
   const value = useMemo(

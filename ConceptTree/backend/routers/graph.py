@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from threading import Lock
 
 from fastapi import APIRouter, HTTPException, Depends
 from psycopg2 import InterfaceError, OperationalError
@@ -25,6 +26,8 @@ from models import (
 )
 
 router = APIRouter(prefix="/api", tags=["graph"])
+_RESOURCE_SEARCH_CACHE_COLUMN_EXISTS: bool | None = None
+_RESOURCE_SEARCH_CACHE_COLUMN_LOCK = Lock()
 
 
 def parse_json_field(field_value, default=None):
@@ -81,14 +84,42 @@ def _merge_search_resources(existing_resources, cached_items, search_results):
     return merged
 
 
-def _ensure_resource_search_cache_column(db) -> None:
-    db.execute(
+def _has_resource_search_cache_column(db) -> bool:
+    global _RESOURCE_SEARCH_CACHE_COLUMN_EXISTS
+
+    with _RESOURCE_SEARCH_CACHE_COLUMN_LOCK:
+        if _RESOURCE_SEARCH_CACHE_COLUMN_EXISTS is not None:
+            return _RESOURCE_SEARCH_CACHE_COLUMN_EXISTS
+
+        row = db.execute(
+            (
+                "SELECT EXISTS ("
+                "  SELECT 1"
+                "  FROM information_schema.columns"
+                "  WHERE table_schema = current_schema()"
+                "    AND table_name = ?"
+                "    AND column_name = ?"
+                ") AS exists"
+            ),
+            ("nodes", "resource_search_cache"),
+        ).fetchone()
+        _RESOURCE_SEARCH_CACHE_COLUMN_EXISTS = bool(row["exists"]) if row else False
+        return _RESOURCE_SEARCH_CACHE_COLUMN_EXISTS
+
+
+def _select_nodes_for_graph(db, plan_id: str, include_resource_search_cache: bool):
+    if include_resource_search_cache:
+        return db.execute("SELECT * FROM nodes WHERE plan_id = ?", (plan_id,)).fetchall()
+
+    return db.execute(
         (
-            "ALTER TABLE nodes "
-            "ADD COLUMN IF NOT EXISTS resource_search_cache JSONB DEFAULT '{}'::jsonb"
-        )
-    )
-    db.commit()
+            "SELECT id, plan_id, name, status, x, y, why, what, mastery, prompt, "
+            "resources, is_target, domain, created_at, phase, phase_order, depth_level, "
+            "content_cache "
+            "FROM nodes WHERE plan_id = ?"
+        ),
+        (plan_id,),
+    ).fetchall()
 
 
 @router.get(
@@ -101,7 +132,7 @@ def get_graph(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    _ensure_resource_search_cache_column(db)
+    has_resource_search_cache_column = _has_resource_search_cache_column(db)
 
     plan = db.execute(
         "SELECT id, user_id, title, target_node_id FROM plans WHERE id = ?",
@@ -121,7 +152,11 @@ def get_graph(
             detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
-    nodes = db.execute("SELECT * FROM nodes WHERE plan_id = ?", (plan_id,)).fetchall()
+    nodes = _select_nodes_for_graph(
+        db,
+        plan_id,
+        include_resource_search_cache=has_resource_search_cache_column,
+    )
 
     parsed_nodes = []
     for node in nodes:
@@ -139,7 +174,8 @@ def get_graph(
                 "resources": parse_json_field(node["resources"]),
                 "contentCache": parse_json_field(node["content_cache"]) or {},
                 "resourceSearchCache": parse_json_field(
-                    node.get("resource_search_cache"), {}
+                    node.get("resource_search_cache") if has_resource_search_cache_column else {},
+                    {},
                 )
                 or {},
                 "isTarget": bool(node["is_target"]),
@@ -426,10 +462,12 @@ async def search_node_resources(
 ):
     plan = None
     node = None
+    has_resource_search_cache_column = False
 
     for attempt in range(2):
         try:
             with get_db_context() as read_db:
+                has_resource_search_cache_column = _has_resource_search_cache_column(read_db)
                 plan = read_db.execute(
                     "SELECT id, user_id, title FROM plans WHERE id = ?",
                     (plan_id,),
@@ -448,13 +486,19 @@ async def search_node_resources(
                         detail={"code": "FORBIDDEN", "message": "Forbidden"},
                     )
 
-                node = read_db.execute(
-                    (
-                        "SELECT id, name, resources, resource_search_cache "
-                        "FROM nodes WHERE id = ? AND plan_id = ?"
-                    ),
-                    (node_id, plan_id),
-                ).fetchone()
+                if has_resource_search_cache_column:
+                    node = read_db.execute(
+                        (
+                            "SELECT id, name, resources, resource_search_cache "
+                            "FROM nodes WHERE id = ? AND plan_id = ?"
+                        ),
+                        (node_id, plan_id),
+                    ).fetchone()
+                else:
+                    node = read_db.execute(
+                        "SELECT id, name, resources FROM nodes WHERE id = ? AND plan_id = ?",
+                        (node_id, plan_id),
+                    ).fetchone()
                 if not node:
                     raise HTTPException(
                         status_code=404,
@@ -483,7 +527,11 @@ async def search_node_resources(
         else f'{node["name"]} 学习资源 教程'
     )
     base_resources = parse_json_field(node["resources"], []) or []
-    base_cache = parse_json_field(node.get("resource_search_cache"), {}) or {}
+    base_cache = (
+        parse_json_field(node.get("resource_search_cache"), {}) or {}
+        if has_resource_search_cache_column
+        else {}
+    )
 
     ai_service = get_ai_service()
     search_service = get_search_service()
@@ -521,20 +569,28 @@ async def search_node_resources(
     for attempt in range(2):
         try:
             with get_db_context() as write_db:
-                _ensure_resource_search_cache_column(write_db)
-                latest_node = write_db.execute(
-                    (
-                        "SELECT resources, resource_search_cache "
-                        "FROM nodes WHERE id = ? AND plan_id = ?"
-                    ),
-                    (node_id, plan_id),
-                ).fetchone()
+                latest_has_resource_search_cache_column = _has_resource_search_cache_column(
+                    write_db
+                )
+                if latest_has_resource_search_cache_column:
+                    latest_node = write_db.execute(
+                        (
+                            "SELECT resources, resource_search_cache "
+                            "FROM nodes WHERE id = ? AND plan_id = ?"
+                        ),
+                        (node_id, plan_id),
+                    ).fetchone()
+                else:
+                    latest_node = write_db.execute(
+                        "SELECT resources FROM nodes WHERE id = ? AND plan_id = ?",
+                        (node_id, plan_id),
+                    ).fetchone()
                 latest_resources = (
                     parse_json_field(latest_node["resources"], []) if latest_node else base_resources
                 ) or []
                 latest_cache = (
                     parse_json_field(latest_node.get("resource_search_cache"), {})
-                    if latest_node
+                    if latest_node and latest_has_resource_search_cache_column
                     else base_cache
                 ) or {}
                 cached_items = latest_cache.get("items", [])
@@ -551,11 +607,12 @@ async def search_node_resources(
                 }
                 resources_added = max(0, len(merged_items) - len(cached_items))
 
-                write_db.execute(
-                    "UPDATE nodes SET resource_search_cache = ? WHERE id = ? AND plan_id = ?",
-                    (resource_search_cache, node_id, plan_id),
-                )
-                write_db.commit()
+                if latest_has_resource_search_cache_column:
+                    write_db.execute(
+                        "UPDATE nodes SET resource_search_cache = ? WHERE id = ? AND plan_id = ?",
+                        (resource_search_cache, node_id, plan_id),
+                    )
+                    write_db.commit()
                 break
         except (OperationalError, InterfaceError) as exc:
             if attempt == 1:

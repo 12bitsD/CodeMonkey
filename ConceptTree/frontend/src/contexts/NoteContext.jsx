@@ -16,6 +16,7 @@ export const useNoteContext = () => {
 export const NoteProvider = ({ children }) => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const toast = useToast();
+  const showErrorToast = toast.error;
 
   const [allNotes, setAllNotes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,14 +36,14 @@ export const NoteProvider = ({ children }) => {
           setAllNotes([]);
         }
       } catch (error) {
-        toast.error("加载笔记失败，请刷新后重试");
+        showErrorToast("加载笔记失败，请刷新后重试");
       } finally {
         setIsLoading(false);
       }
     };
 
     loadNotes();
-  }, [authLoading, isAuthenticated, toast]);
+  }, [authLoading, isAuthenticated, showErrorToast]);
 
   const actions = useMemo(
     () => ({
@@ -53,7 +54,7 @@ export const NoteProvider = ({ children }) => {
           setAllNotes((prev) => [newNote, ...prev]);
           return newNote;
         } catch (error) {
-          toast.error("添加笔记失败");
+          showErrorToast("添加笔记失败");
           throw error;
         }
       },
@@ -67,7 +68,7 @@ export const NoteProvider = ({ children }) => {
           );
           return updatedNote;
         } catch (error) {
-          toast.error("更新笔记失败");
+          showErrorToast("更新笔记失败");
           throw error;
         }
       },
@@ -76,12 +77,12 @@ export const NoteProvider = ({ children }) => {
           await notesApi.delete(noteId);
           setAllNotes((prev) => prev.filter((note) => note.id !== noteId));
         } catch (error) {
-          toast.error("删除笔记失败");
+          showErrorToast("删除笔记失败");
           throw error;
         }
       },
     }),
-    [toast],
+    [showErrorToast],
   );
 
   const value = useMemo(
