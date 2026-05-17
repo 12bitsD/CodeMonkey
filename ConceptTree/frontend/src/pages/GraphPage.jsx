@@ -33,6 +33,7 @@ import { InfoSection } from "../components/common";
 import ChatMarkdownMessage from "../components/chat/ChatMarkdownMessage";
 import MarkdownContent from "../components/common/MarkdownContent";
 import { MasteryChecklist } from "../components/node/MasteryChecklist";
+import MasteryQuizModal from "../components/node/MasteryQuizModal";
 import { ResourceList } from "../components/node/ResourceList";
 import { useGraphInteraction } from "../hooks/useGraphInteraction";
 import { useGraphContext } from "../contexts/GraphContext";
@@ -56,6 +57,10 @@ import {
 } from "../utils/resourceSearch";
 import { createAiRequestRegistry } from "../utils/aiRequestRegistry";
 import { calculateLayout } from "../utils/layoutEngine";
+import {
+  buildMasteryCheckKey,
+  generateMasteryQuiz,
+} from "../utils/masteryQuiz";
 
 const PHASE_ALIASES = {
   基础: "基础",
@@ -184,6 +189,9 @@ const GraphPage = () => {
   const plan = plans.find((p) => p.id === planId);
   const cachedGraph = planId ? graphsByPlanId[planId] : null;
   const cachedGraphRef = useRef(cachedGraph);
+  const masteryProgressStorageKey = planId
+    ? `concept_tree_mastery_progress:${planId}`
+    : null;
   const [planTitle, setPlanTitle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
@@ -197,6 +205,8 @@ const GraphPage = () => {
   const [isSharingPlan, setIsSharingPlan] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
   const [ghostNodeIds, setGhostNodeIds] = useState(new Set());
+  const [masteryProgress, setMasteryProgress] = useState({});
+  const [masteryQuiz, setMasteryQuiz] = useState(null);
 
   useEffect(() => {
     setPlanSettings(createPlanSettingsState(plan));
@@ -437,6 +447,19 @@ const GraphPage = () => {
   }, [chatMessages]);
 
   useEffect(() => {
+    if (!masteryProgressStorageKey) {
+      setMasteryProgress({});
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(masteryProgressStorageKey);
+      setMasteryProgress(raw ? JSON.parse(raw) : {});
+    } catch {
+      setMasteryProgress({});
+    }
+  }, [masteryProgressStorageKey]);
+
+  useEffect(() => {
     const handleWindowResize = () => {
       setChatPanelSize((prev) =>
         clampChatPanelSize(prev, {
@@ -503,6 +526,14 @@ const GraphPage = () => {
   const selectedNodeResourceFeedback = selectedNode
     ? resourceSearchFeedback[selectedNode.id]
     : null;
+  const selectedNodeMasteryPassedKeys = useMemo(() => {
+    if (!selectedNode?.mastery?.length) return new Set();
+    return new Set(
+      selectedNode.mastery
+        .map((item, index) => buildMasteryCheckKey(selectedNode.id, index, item))
+        .filter((key) => masteryProgress[key]?.passed),
+    );
+  }, [masteryProgress, selectedNode]);
   const selectedNodeDeadlineValue = selectedNode?.targetEndDate
     ? String(selectedNode.targetEndDate).slice(0, 10)
     : "";
@@ -887,6 +918,52 @@ const GraphPage = () => {
 
   const handleResetNodeDeadlineDraft = () => {
     setNodeDeadlineDraft(selectedNodeDeadlineValue);
+  };
+
+  const getMasteryItemKey = (item, index, node = selectedNode) =>
+    node ? buildMasteryCheckKey(node.id, index, item) : String(index);
+
+  const persistMasteryProgress = (nextProgress) => {
+    setMasteryProgress(nextProgress);
+    if (!masteryProgressStorageKey) return;
+    try {
+      window.localStorage.setItem(
+        masteryProgressStorageKey,
+        JSON.stringify(nextProgress),
+      );
+    } catch {
+      // Local persistence is best-effort; the UI state still updates.
+    }
+  };
+
+  const handleStartMasteryQuiz = (standard, index) => {
+    if (!selectedNode) return;
+    const key = getMasteryItemKey(standard, index, selectedNode);
+    setMasteryQuiz({
+      key,
+      nodeId: selectedNode.id,
+      nodeName: selectedNode.name,
+      index,
+      standard,
+      questions: generateMasteryQuiz({
+        nodeName: selectedNode.name,
+        standard,
+      }),
+    });
+  };
+
+  const handleMasteryQuizPassed = ({ key, score, total }) => {
+    const nextProgress = {
+      ...masteryProgress,
+      [key]: {
+        passed: true,
+        score,
+        total,
+        passedAt: new Date().toISOString(),
+      },
+    };
+    persistMasteryProgress(nextProgress);
+    toast.success("小测通过，掌握标准已打勾");
   };
 
   const openDateInputPicker = (event) => {
@@ -1955,7 +2032,14 @@ const GraphPage = () => {
                 )}
 
                 {selectedNode.mastery?.length > 0 && (
-                  <MasteryChecklist items={selectedNode.mastery} />
+                  <MasteryChecklist
+                    items={selectedNode.mastery}
+                    passedKeys={selectedNodeMasteryPassedKeys}
+                    getItemKey={(item, index) =>
+                      getMasteryItemKey(item, index, selectedNode)
+                    }
+                    onStartQuiz={handleStartMasteryQuiz}
+                  />
                 )}
 
                 {selectedNode.prompt && (
@@ -2200,6 +2284,12 @@ const GraphPage = () => {
           </div>
         </>
       )}
+
+      <MasteryQuizModal
+        quiz={masteryQuiz}
+        onClose={() => setMasteryQuiz(null)}
+        onPassed={handleMasteryQuizPassed}
+      />
 
       {/* Goal Clarification Modal */}
       <Modal
