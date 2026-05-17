@@ -1,4 +1,4 @@
-"""OpenAI SDK compatible provider (works with Kimi, OpenAI, etc.)"""
+"""OpenAI SDK compatible provider (works with MiMo, Kimi, OpenAI, etc.)"""
 
 from typing import List, Dict, Any, Optional, AsyncGenerator
 import httpx
@@ -8,7 +8,7 @@ from .base import BaseLLMProvider, LLMMessage, LLMResponse
 
 
 class OpenAICompatibleProvider(BaseLLMProvider):
-    """Provider using OpenAI SDK (compatible with Kimi 2.5)"""
+    """Provider using the OpenAI SDK against compatible chat APIs."""
 
     def __init__(
         self,
@@ -45,7 +45,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         """
         Send chat completion using OpenAI SDK.
 
-        Kimi 2.5 supports response_format={"type": "json_object"}
+        Compatible models can support response_format={"type": "json_object"}.
         """
         try:
             openai_messages = [
@@ -65,7 +65,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             try:
                 response = await self.client.chat.completions.create(**request_kwargs)
             except APIError as e:
-                # Some models (e.g. kimi-k2.5) only accept temperature=1
+                # Some compatible models only accept temperature=1.
                 if e.status_code == 400 and "temperature" in str(e).lower():
                     request_kwargs["temperature"] = 1
                     response = await self.client.chat.completions.create(**request_kwargs)

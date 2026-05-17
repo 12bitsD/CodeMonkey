@@ -31,4 +31,39 @@ const value = 1;
     expect(screen.getByText("const value = 1;")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看资料" })).toHaveAttribute("href", "https://example.com");
   });
+  it("renders deep headings and bare latex commands readably", () => {
+    render(
+      <MarkdownContent
+        content={`##### 实际意义
+
+若 \\mathbf{A}^\\top \\mathbf{A} 接近奇异，则 \\mu 很小。
+
+\\[
+f(\\mathbf{x}) = // \\mathbf{A}\\mathbf{x} - \\mathbf{b} //^2
+\\]`}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "实际意义" })).toBeInTheDocument();
+    expect(screen.queryByText(/\\mathbf/)).not.toBeInTheDocument();
+    expect(screen.getByText(/A\^T/)).toBeInTheDocument();
+    expect(screen.getByText(/mu/)).toBeInTheDocument();
+  });
+
+  it("renders common unwrapped formulas and malformed matrix latex with KaTeX", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={`f_x = 2x, f_y = 2y 令 f_x = 0.
+
+Hessian矩阵 H = \\beginbmatrix 2 & 0 \\\\ 0 & 2 \\endbmatrix.
+
+Hessian行列式 \\det(H) = 4 > 0。`}
+      />,
+    );
+
+    expect(container.querySelectorAll(".katex").length).toBeGreaterThan(0);
+    expect(container.textContent).not.toContain("\\beginbmatrix");
+    expect(container.textContent).not.toContain("\\det");
+    expect(screen.getByText(/H =/)).toBeInTheDocument();
+  });
 });

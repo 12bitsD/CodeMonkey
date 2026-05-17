@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:/Users/Victor/AppData/Local/Programs/Python/Python313/python.exe\" \"C:/Users/Victor/Desktop/CodeMonkey666/CodeMonkey/ConceptTree/.claude/hooks/check_env_write.py\"",
+            "statusMessage": "检查 .env 写入安全..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:/Users/Victor/AppData/Local/Programs/Python/Python313/python.exe\" \"C:/Users/Victor/Desktop/CodeMonkey666/CodeMonkey/ConceptTree/.claude/hooks/check_sql_fstring.py\"",
+            "statusMessage": "SQL 安全检查...",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:/Users/Victor/AppData/Local/Programs/Python/Python313/python.exe\" \"C:/Users/Victor/Desktop/CodeMonkey666/CodeMonkey/ConceptTree/.claude/hooks/check_jwt_hardcode.py\"",
+            "statusMessage": "JWT 配置检查...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

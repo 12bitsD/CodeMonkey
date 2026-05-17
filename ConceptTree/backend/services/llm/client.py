@@ -17,6 +17,11 @@ from .providers import (
 logger = logging.getLogger(__name__)
 
 
+def _is_non_retryable_provider_error(error: Exception) -> bool:
+    status_code = getattr(error, "status_code", None)
+    return status_code in {400, 401, 403, 404}
+
+
 class UnifiedLLMClient:
     """
     Unified client for LLM operations.
@@ -108,6 +113,8 @@ class UnifiedLLMClient:
 
             except (LLMTimeoutError, LLMProviderError) as e:
                 last_error = e
+                if _is_non_retryable_provider_error(e):
+                    break
                 if attempt < self.max_retries - 1:
                     wait_time = 2**attempt
                     await asyncio.sleep(wait_time)

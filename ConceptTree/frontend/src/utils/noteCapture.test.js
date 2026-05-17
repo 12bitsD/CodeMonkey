@@ -86,4 +86,26 @@ describe("noteCapture", () => {
     expect(noteActions.addNote).not.toHaveBeenCalled();
     expect(toast.info).toHaveBeenCalledWith("duplicate");
   });
+
+  it("returns a recoverable result when persistence fails", async () => {
+    const { noteActions, toast } = createDeps();
+    const error = new Error("network down");
+    noteActions.addNote.mockRejectedValue(error);
+
+    const result = await persistGeneratedNote({
+      content: "需要保存的内容",
+      existingNotes: [],
+      planId: "plan-1",
+      selectedNodeId: "node-1",
+      noteActions,
+      toast,
+      successMessage: "ok",
+      duplicateMessage: "duplicate",
+    });
+
+    expect(result.saved).toBe(false);
+    expect(result.reason).toBe("persist-error");
+    expect(result.error).toBe(error);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
 });

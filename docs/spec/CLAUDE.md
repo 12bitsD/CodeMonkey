@@ -43,7 +43,7 @@ CodeMonkey/
 | 数据验证 | Pydantic v2 | models.py 是唯一真相 |
 | 数据库 | Supabase PostgreSQL | psycopg2；schema.sql 是唯一真相 |
 | 认证 | JWT (HS256) | `utils/auth.py`；7天有效 |
-| LLM | Kimi 2.5 (kimi-k2-5) | `services/llm/`；OpenAI SDK兼容 |
+| LLM | Xiaomi MiMo Token Plan China (mimo-v2.5-pro) | `services/llm/`；OpenAI SDK兼容 |
 | 前端框架 | React 18 + Vite 4 | |
 | 路由 | React Router 6 | |
 | 状态管理 | Context API | AppContext + AuthContext |
@@ -215,9 +215,9 @@ Prompt 配置在 `services/llm/configs/*.json`，不需要改代码就能调 Pro
 ```env
 DATABASE_URL=postgresql://...    # Supabase 连接串
 JWT_SECRET_KEY=...               # JWT 签名密钥
-LLM_API_KEY=sk-...               # Kimi API Key（必填）
-LLM_BASE_URL=https://api.moonshot.cn/v1
-LLM_MODEL=kimi-k2-5
+LLM_API_KEY=tp-...               # MiMo Token Plan China API Key（必填）
+LLM_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1
+LLM_MODEL=mimo-v2.5-pro
 LLM_FALLBACK_API_KEY=...         # 备用 LLM（可选）
 ```
 

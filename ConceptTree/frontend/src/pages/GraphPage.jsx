@@ -4,6 +4,10 @@ import {
   ArrowLeft,
   Share2,
   Edit3,
+  CalendarDays,
+  Bell,
+  Pause,
+  Play,
   Plus,
   Minus,
   RotateCcw,
@@ -22,6 +26,7 @@ import {
   Send,
   ChevronDown,
   Loader,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button, Modal } from "../components/ui";
 import { InfoSection } from "../components/common";
@@ -34,7 +39,7 @@ import { useGraphContext } from "../contexts/GraphContext";
 import { useNoteContext } from "../contexts/NoteContext";
 import { usePlanContext } from "../contexts/PlanContext";
 import { useToast } from "../contexts/ToastContext";
-import { graphApi, aiApi, plansApi } from "../services/api";
+import { graphApi, aiApi } from "../services/api";
 import { toggleNodeStatus, isAllComplete } from "../utils/graphUtils";
 import {
   clampChatPanelSize,
@@ -49,6 +54,8 @@ import {
   hasExpandedResources,
   mergeNodeResources,
 } from "../utils/resourceSearch";
+import { createAiRequestRegistry } from "../utils/aiRequestRegistry";
+import { calculateLayout } from "../utils/layoutEngine";
 
 const PHASE_ALIASES = {
   基础: "基础",
@@ -90,6 +97,55 @@ const PHASE_STYLE = {
 
 const normalizePhase = (phase) => PHASE_ALIASES[phase] || phase;
 
+const PLAN_FREQUENCY_OPTIONS = [
+  { value: "flexible", label: "灵活安排" },
+  { value: "daily", label: "每天学习" },
+  { value: "weekly", label: "每周学习" },
+  { value: "custom", label: "自定义频率" },
+];
+
+const createPlanSettingsState = (plan) => ({
+  startDate: plan?.startDate ? String(plan.startDate).slice(0, 10) : "",
+  targetEndDate: plan?.targetEndDate ? String(plan.targetEndDate).slice(0, 10) : "",
+  studyFrequency: plan?.studyFrequency || "flexible",
+  studyDaysPerWeek: plan?.studyDaysPerWeek || 3,
+  reminderEnabled: Boolean(plan?.reminderEnabled),
+  reminderTime: plan?.reminderTime || "20:00",
+  reminderTimezone:
+    plan?.reminderTimezone ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    "Asia/Shanghai",
+});
+
+const getPlanFrequencyLabel = (frequency, daysPerWeek) => {
+  switch (frequency) {
+    case "daily":
+      return "每天学习";
+    case "weekly":
+      return "每周复盘";
+    case "custom":
+      return `每周 ${daysPerWeek || 3} 次`;
+    default:
+      return "灵活安排";
+  }
+};
+
+const formatPlanDateLabel = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+};
+
+const getLocalDateInputValue = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const buildCurvedEdgePath = (from, to, edgeIndex) => {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -116,7 +172,10 @@ const GraphPage = () => {
   const [searchParams] = useSearchParams();
   const containerRef = useRef(null);
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
+  const pendingNodePositionsRef = useRef(new Map());
+  const positionSaveTimerRef = useRef(null);
   const hasCenteredRef = useRef(false);
+  const viewportRef = useRef({ position: { x: 0, y: 0 }, scale: 1 });
   const { plans, actions } = usePlanContext();
   const { allNotes, actions: noteActions } = useNoteContext();
   const { graphsByPlanId, actions: graphActions } = useGraphContext();
@@ -124,13 +183,33 @@ const GraphPage = () => {
 
   const plan = plans.find((p) => p.id === planId);
   const cachedGraph = planId ? graphsByPlanId[planId] : null;
+  const cachedGraphRef = useRef(cachedGraph);
   const [planTitle, setPlanTitle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showPlanSettings, setShowPlanSettings] = useState(false);
+  const [isUpdatingPlanSettings, setIsUpdatingPlanSettings] = useState(false);
+  const [planSettings, setPlanSettings] = useState(createPlanSettingsState(plan));
+  const [isTogglingPlanStatus, setIsTogglingPlanStatus] = useState(false);
+  const [isSharingPlan, setIsSharingPlan] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
+  const [ghostNodeIds, setGhostNodeIds] = useState(new Set());
+
+  useEffect(() => {
+    setPlanSettings(createPlanSettingsState(plan));
+  }, [plan]);
+
+  useEffect(
+    () => () => {
+      if (positionSaveTimerRef.current) {
+        clearTimeout(positionSaveTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const {
     nodes,
@@ -157,6 +236,14 @@ const GraphPage = () => {
   } = useGraphInteraction([], [], aiRecommendation);
 
   useEffect(() => {
+    viewportRef.current = { position, scale };
+  }, [position, scale]);
+
+  useEffect(() => {
+    cachedGraphRef.current = cachedGraph;
+  }, [cachedGraph]);
+
+  useEffect(() => {
     if (!cachedGraph) return;
     if (cachedGraph.title) setPlanTitle(cachedGraph.title);
     setNodes(cachedGraph.nodes || []);
@@ -165,9 +252,12 @@ const GraphPage = () => {
   }, [cachedGraph, setEdges, setNodes]);
 
   useEffect(() => {
+    hasCenteredRef.current = false;
+
     const loadGraph = async () => {
       if (!planId) return;
-      setLoading(!cachedGraph);
+      const graphSnapshot = cachedGraphRef.current;
+      setLoading(!graphSnapshot);
       try {
         const data = await graphApi.get(planId);
         if (data && data.nodes) {
@@ -182,14 +272,18 @@ const GraphPage = () => {
         }
       } catch (err) {
         console.error("Failed to load graph", err);
+        if (graphSnapshot?.nodes?.length) {
+          toast.error("图谱加载失败，已显示本地缓存");
+        } else {
+          toast.error("图谱加载失败，请稍后重试");
+        }
       } finally {
         setLoading(false);
       }
     };
 
     loadGraph();
-    hasCenteredRef.current = false;
-  }, [cachedGraph, graphActions, planId, setEdges, setNodes]);
+  }, [graphActions, planId, setEdges, setNodes, toast]);
 
   // Auto-center the canvas once nodes and the container are ready.
   useEffect(() => {
@@ -215,14 +309,21 @@ const GraphPage = () => {
 
   useEffect(() => {
     if (!planId || loading) return;
+    const abortController = new AbortController();
     aiApi
-      .recommendNext(planId)
+      .recommendNext(planId, { signal: abortController.signal })
       .then((data) => {
+        if (abortController.signal.aborted) return;
         if (data?.recommended_node_id) {
           setAiRecommendation(data);
         }
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (error?.name !== "AbortError") {
+          setAiRecommendation(null);
+        }
+      });
+    return () => abortController.abort();
   }, [planId, loading]);
 
   const [showGoalClarification, setShowGoalClarification] = useState(false);
@@ -234,6 +335,9 @@ const GraphPage = () => {
   const [noteContent, setNoteContent] = useState("");
   const [resourceSearchLoading, setResourceSearchLoading] = useState({});
   const [resourceSearchFeedback, setResourceSearchFeedback] = useState({});
+  const [nodeDeadlineSaving, setNodeDeadlineSaving] = useState({});
+  const [nodeDeadlineDraft, setNodeDeadlineDraft] = useState("");
+  const minNodeDeadlineDate = useMemo(() => getLocalDateInputValue(), []);
   const isNodeDragging = Boolean(draggingNodeId);
 
   // F7: per-topic AI explain state: { [`${nodeId}_${i}`]: { loading, content, expanded } }
@@ -278,6 +382,7 @@ const GraphPage = () => {
   );
   const [isChatResizing, setIsChatResizing] = useState(false);
   const chatEndRef = React.useRef(null);
+  const chatMessagesRef = useRef(null);
   const chatResizeStartRef = useRef(null);
   const chatStreamStateRef = useRef({
     content: "",
@@ -285,12 +390,13 @@ const GraphPage = () => {
     searchStatus: null,
   });
   const chatUpdateRafRef = useRef(null);
+  const aiRequestRegistryRef = useRef(createAiRequestRegistry());
 
   // Scroll chat to bottom on new messages
   useEffect(() => {
-    if (chatEndRef.current && typeof chatEndRef.current.scrollIntoView === "function") {
-      chatEndRef.current.scrollIntoView({ behavior: chatLoading ? "auto" : "smooth" });
-    }
+    const messageContainer = chatMessagesRef.current;
+    if (!messageContainer) return;
+    messageContainer.scrollTop = messageContainer.scrollHeight;
   }, [chatMessages, chatLoading]);
 
   useEffect(
@@ -298,12 +404,24 @@ const GraphPage = () => {
       if (chatUpdateRafRef.current !== null) {
         cancelAnimationFrame(chatUpdateRafRef.current);
       }
+      aiRequestRegistryRef.current.abortAll();
     },
     [],
   );
 
   // Reset chat when switching nodes
   useEffect(() => {
+    aiRequestRegistryRef.current.abortMatching(
+      (key) => key.startsWith("chat:") || key.startsWith("explain:"),
+    );
+    setExplainStates((prev) => {
+      const next = {};
+      for (const [key, state] of Object.entries(prev)) {
+        if (state?.loading && !state?.content) continue;
+        next[key] = state?.loading ? { ...state, loading: false } : state;
+      }
+      return next;
+    });
     setChatMessages([]);
     setChatInput("");
     setChatLoading(false);
@@ -385,6 +503,12 @@ const GraphPage = () => {
   const selectedNodeResourceFeedback = selectedNode
     ? resourceSearchFeedback[selectedNode.id]
     : null;
+  const selectedNodeDeadlineValue = selectedNode?.targetEndDate
+    ? String(selectedNode.targetEndDate).slice(0, 10)
+    : "";
+  const nodeDeadlineChanged = selectedNode
+    ? nodeDeadlineDraft !== selectedNodeDeadlineValue
+    : false;
   const selectedNodeExpandedResourceCount = Array.isArray(
     selectedNode?.resourceSearchCache?.items,
   )
@@ -414,6 +538,20 @@ const GraphPage = () => {
 
   const learnedCount = nodes.filter((n) => n.status === "learned").length;
   const totalCount = nodes.filter((n) => n.status !== "skipped").length;
+
+  useEffect(() => {
+    setGhostNodeIds(
+      new Set(
+        nodes
+          .filter((node) => node._ghost || node.isGhost)
+          .map((node) => node.id),
+      ),
+    );
+  }, [nodes]);
+
+  useEffect(() => {
+    setNodeDeadlineDraft(selectedNodeDeadlineValue);
+  }, [selectedNodeId, selectedNodeDeadlineValue]);
 
   const nodeMap = useMemo(
     () => new Map(nodes.map((node) => [node.id, node])),
@@ -474,12 +612,16 @@ const GraphPage = () => {
 
   const handleSaveNote = async () => {
     if (noteContent.trim()) {
-      if (editingNoteId) {
-        await noteActions.updateNote(editingNoteId, noteContent);
-        toast.success("笔记已更新");
-      } else {
-        await noteActions.addNote(planId, selectedNodeId, noteContent);
-        toast.success("笔记已保存");
+      try {
+        if (editingNoteId) {
+          await noteActions.updateNote(editingNoteId, noteContent);
+          toast.success("笔记已更新");
+        } else {
+          await noteActions.addNote(planId, selectedNodeId, noteContent);
+          toast.success("笔记已保存");
+        }
+      } catch {
+        return;
       }
     }
     setNoteContent("");
@@ -507,6 +649,7 @@ const GraphPage = () => {
     if (!selectedNode) return;
 
     const explainKey = `${selectedNode.id}_${topicIndex}`;
+    if (savingExplainNotes[explainKey]) return;
     const content = explainStates[explainKey]?.content || "";
 
     setSavingExplainNotes((prev) => ({ ...prev, [explainKey]: true }));
@@ -578,7 +721,7 @@ const GraphPage = () => {
   };
 
   const handleSaveChatSummary = async () => {
-    if (!selectedNode) return;
+    if (!selectedNode || isSavingChatSummary) return;
 
     setIsSavingChatSummary(true);
     try {
@@ -685,6 +828,8 @@ const GraphPage = () => {
   };
 
   const handleNodeStatusChange = async (nodeId, newStatus) => {
+    const previousNode = nodes.find((node) => node.id === nodeId);
+    const previousStatus = previousNode?.status;
     setNodeStatus(nodeId, newStatus);
     try {
       const result = await graphApi.updateNodeStatus(planId, nodeId, newStatus);
@@ -693,6 +838,62 @@ const GraphPage = () => {
       }
     } catch (err) {
       console.error("Failed to save node status", err);
+      if (previousStatus) {
+        setNodeStatus(nodeId, previousStatus);
+      }
+      toast.error("节点状态保存失败，已恢复原状态");
+    }
+  };
+
+  const handleSaveNodeTargetEndDate = async () => {
+    if (!selectedNode) return;
+    const nodeId = selectedNode.id;
+    if (!planId || !nodeId) return;
+    if (!nodeDeadlineChanged) return;
+
+    if (nodeDeadlineDraft && nodeDeadlineDraft < minNodeDeadlineDate) {
+      toast.error("节点截止日期不能早于今天");
+      return;
+    }
+
+    const nextTargetEndDate = nodeDeadlineDraft || null;
+    setNodeDeadlineSaving((prev) => ({ ...prev, [nodeId]: true }));
+
+    const applyLocalUpdate = (updater) => {
+      setNodes((prev) => prev.map((node) => (node.id === nodeId ? updater(node) : node)));
+      graphActions.updateGraphNodes(planId, (prev) =>
+        prev.map((node) => (node.id === nodeId ? updater(node) : node)),
+      );
+    };
+
+    try {
+      const result = await graphApi.updateNode(planId, nodeId, {
+        targetEndDate: nextTargetEndDate,
+      });
+      applyLocalUpdate((node) => ({
+        ...node,
+        targetEndDate: result?.targetEndDate || nextTargetEndDate,
+      }));
+      setNodeDeadlineDraft(
+        result?.targetEndDate ? String(result.targetEndDate).slice(0, 10) : "",
+      );
+      toast.success(nextTargetEndDate ? "节点截止日期已更新" : "节点截止日期已清除");
+    } catch (err) {
+      toast.error("节点截止日期保存失败，请重试");
+    } finally {
+      setNodeDeadlineSaving((prev) => ({ ...prev, [nodeId]: false }));
+    }
+  };
+
+  const handleResetNodeDeadlineDraft = () => {
+    setNodeDeadlineDraft(selectedNodeDeadlineValue);
+  };
+
+  const openDateInputPicker = (event) => {
+    try {
+      event.currentTarget.showPicker?.();
+    } catch {
+      // Browsers only allow showPicker during direct user gestures.
     }
   };
 
@@ -706,7 +907,7 @@ const GraphPage = () => {
     if (!planId || isSaving || !titleToSave) return;
     setIsSaving(true);
     try {
-      await plansApi.update(planId, { title: titleToSave });
+      await actions.updatePlan(planId, { title: titleToSave });
       setSavedAt(new Date());
       setIsDirty(false);
       toast.success("计划已保存");
@@ -717,12 +918,95 @@ const GraphPage = () => {
     }
   };
 
+  const handlePlanSettingChange = (field, value) => {
+    setPlanSettings((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSavePlanSettings = async () => {
+    if (!planId || isUpdatingPlanSettings) return;
+    setIsUpdatingPlanSettings(true);
+    try {
+      await actions.updatePlan(planId, {
+        startDate: planSettings.startDate || null,
+        targetEndDate: planSettings.targetEndDate || null,
+        studyFrequency: planSettings.studyFrequency,
+        studyDaysPerWeek: Number(planSettings.studyDaysPerWeek) || 3,
+        reminderEnabled: planSettings.reminderEnabled,
+        reminderTime: planSettings.reminderEnabled
+          ? planSettings.reminderTime || null
+          : null,
+        reminderTimezone: planSettings.reminderEnabled
+          ? planSettings.reminderTimezone || null
+          : null,
+      });
+      setShowPlanSettings(false);
+      toast.success("学习计划设置已更新");
+    } catch (error) {
+      toast.error("更新计划设置失败");
+    } finally {
+      setIsUpdatingPlanSettings(false);
+    }
+  };
+
+  const handlePauseOrResumePlan = async () => {
+    if (!planId || !plan || isTogglingPlanStatus) return;
+    setIsTogglingPlanStatus(true);
+    try {
+      if (plan.status === "paused") {
+        await actions.resumePlan(planId);
+        toast.success("计划已恢复");
+      } else {
+        await actions.pausePlan(planId);
+        toast.success("计划已暂停");
+      }
+    } catch (error) {
+      // Toast handled in context.
+    } finally {
+      setIsTogglingPlanStatus(false);
+    }
+  };
+
+  const handleSharePlan = async () => {
+    if (!planId || isSharingPlan) return;
+    setIsSharingPlan(true);
+    const shareUrl = `${window.location.origin}/graph/${planId}`;
+    const shareTitle = planTitle || plan?.title || "学习计划";
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: shareTitle,
+          text: `查看我的学习计划：${shareTitle}`,
+          url: shareUrl,
+        });
+        toast.success("分享面板已打开");
+        return;
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("计划链接已复制");
+        return;
+      }
+
+      toast.error("当前环境暂不支持分享，请手动复制地址栏链接");
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        toast.error("分享失败，请重试");
+      }
+    } finally {
+      setIsSharingPlan(false);
+    }
+  };
+
   // F7: click a what-item -> stream AI explanation
   const handleExplainTopic = async (topicText, topicIndex) => {
     if (!selectedNode) return;
     const key = `${selectedNode.id}_${topicIndex}`;
+    const requestKey = `explain:${planId}:${selectedNode.id}:${topicIndex}`;
     const nodeId = selectedNode.id;
     const current = explainStates[key];
+
+    if (current?.loading) return;
 
     // Toggle off if already loaded
     if (current?.content) {
@@ -733,12 +1017,15 @@ const GraphPage = () => {
       return;
     }
 
+    const request = aiRequestRegistryRef.current.begin(requestKey, { dedupe: true });
+    if (request.deduped) return;
+
     setExplainStates((prev) => ({ ...prev, [key]: { loading: true, content: "", expanded: true } }));
 
     try {
       let accumulated = "";
       await aiApi.explainTopic(
-        selectedNode.id,
+        nodeId,
         topicIndex,
         topicText,
         {
@@ -747,13 +1034,21 @@ const GraphPage = () => {
           planTitle: planTitle || plan?.title,
         },
         (chunk) => {
+          if (!aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) return;
           accumulated += chunk;
           setExplainStates((prev) => ({
             ...prev,
             [key]: { loading: false, content: accumulated, expanded: true },
           }));
         },
+        { signal: request.signal },
       );
+      if (
+        request.signal.aborted ||
+        !aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)
+      ) {
+        return;
+      }
       // Ensure loading is cleared even if no chunks arrived.
       setExplainStates((prev) => ({
         ...prev,
@@ -792,11 +1087,15 @@ const GraphPage = () => {
         );
       }
     } catch (err) {
+      if (err?.name === "AbortError") return;
+      if (!aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) return;
       console.error("[explainTopic] error:", err);
       setExplainStates((prev) => ({
         ...prev,
         [key]: { loading: false, content: "解释生成失败，请重试。", expanded: true },
       }));
+    } finally {
+      aiRequestRegistryRef.current.finish(requestKey, request.requestId);
     }
   };
 
@@ -823,6 +1122,9 @@ const GraphPage = () => {
     setChatInput("");
     setChatLoading(true);
 
+    const requestKey = `chat:${planId}:${selectedNode.id}`;
+    const request = aiRequestRegistryRef.current.begin(requestKey);
+
     try {
       await aiApi.chatStream(
         conversationMessages,
@@ -834,6 +1136,7 @@ const GraphPage = () => {
         {
           enableWebSearch: chatWebSearchEnabled,
           onChunk: (chunk) => {
+            if (!aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) return;
             chatStreamStateRef.current = {
               ...chatStreamStateRef.current,
               content: `${chatStreamStateRef.current.content}${chunk}`,
@@ -841,6 +1144,7 @@ const GraphPage = () => {
             scheduleChatMessageFlush();
           },
           onSources: (sources) => {
+            if (!aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) return;
             chatStreamStateRef.current = {
               ...chatStreamStateRef.current,
               sources,
@@ -848,14 +1152,22 @@ const GraphPage = () => {
             scheduleChatMessageFlush();
           },
           onSearchStatus: (status) => {
+            if (!aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) return;
             chatStreamStateRef.current = {
               ...chatStreamStateRef.current,
               searchStatus: status,
             };
             scheduleChatMessageFlush();
           },
+          signal: request.signal,
         },
       );
+      if (
+        request.signal.aborted ||
+        !aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)
+      ) {
+        return;
+      }
 
       if (!chatStreamStateRef.current.content) {
         chatStreamStateRef.current = {
@@ -866,6 +1178,8 @@ const GraphPage = () => {
 
       flushChatMessageNow();
     } catch (err) {
+      if (err?.name === "AbortError") return;
+      if (!aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) return;
       chatStreamStateRef.current = {
         ...chatStreamStateRef.current,
         content: "回复失败，请重试。",
@@ -876,7 +1190,10 @@ const GraphPage = () => {
       };
       flushChatMessageNow();
     } finally {
-      setChatLoading(false);
+      if (aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) {
+        aiRequestRegistryRef.current.finish(requestKey, request.requestId);
+        setChatLoading(false);
+      }
     }
   };
 
@@ -888,14 +1205,38 @@ const GraphPage = () => {
     }
   };
 
+  const flushPendingNodePositions = () => {
+    if (!planId || pendingNodePositionsRef.current.size === 0) return;
+    const positions = Array.from(pendingNodePositionsRef.current.values());
+    pendingNodePositionsRef.current.clear();
+
+    graphApi.updateNodePositions(planId, positions).catch((err) => {
+      console.error("Failed to save node positions", err);
+      toast.error("节点位置同步失败，稍后会以当前画布为准");
+    });
+  };
+
+  const scheduleNodePositionSave = (id, x, y) => {
+    if (!id) return;
+    pendingNodePositionsRef.current.set(id, { nodeId: id, x, y });
+    if (positionSaveTimerRef.current) {
+      clearTimeout(positionSaveTimerRef.current);
+    }
+    positionSaveTimerRef.current = setTimeout(() => {
+      positionSaveTimerRef.current = null;
+      flushPendingNodePositions();
+    }, 500);
+  };
+
   const handleContainerMouseMove = (e) => {
     handleMouseMove(e, containerRef);
     if (draggingNodeId && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
+      const viewport = viewportRef.current;
       draggingPosRef.current = {
         id: draggingNodeId,
-        x: (e.clientX - rect.left - position.x) / scale,
-        y: (e.clientY - rect.top - position.y) / scale,
+        x: (e.clientX - rect.left - viewport.position.x) / viewport.scale,
+        y: (e.clientY - rect.top - viewport.position.y) / viewport.scale,
       };
     }
   };
@@ -904,10 +1245,48 @@ const GraphPage = () => {
     const { id, x, y } = draggingPosRef.current;
     handleMouseUp();
     if (id) {
-      graphApi.updateNodePosition(planId, id, x, y).catch((err) => {
-        console.error("Failed to save node position", err);
-      });
+      scheduleNodePositionSave(id, x, y);
       draggingPosRef.current = { id: null, x: 0, y: 0 };
+    }
+  };
+
+  const handleRelayoutGraph = () => {
+    if (!nodes.length) return;
+    const targetNode = nodes.find((node) => node.isTarget);
+    const targetNodeId = targetNode?.id || plan?.targetNodeId || nodes[nodes.length - 1]?.id;
+    const positions = calculateLayout(nodes, edges, targetNodeId);
+    const nextNodes = nodes.map((node) => ({
+      ...node,
+      x: positions[node.id]?.x ?? node.x,
+      y: positions[node.id]?.y ?? node.y,
+    }));
+
+    setNodes(nextNodes);
+    graphActions.setGraph(planId, {
+      title: planTitle || plan?.title || null,
+      nodes: nextNodes,
+      edges,
+    });
+
+    if (planId) {
+      graphApi
+        .updateNodePositions(
+          planId,
+          nextNodes.map((node) => ({ nodeId: node.id, x: node.x, y: node.y })),
+        )
+        .catch((err) => {
+          console.error("Failed to save relayout", err);
+          toast.error("路径布局已更新，位置同步稍后会重试");
+        });
+    }
+
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const xs = nextNodes.map((node) => node.x);
+      const ys = nextNodes.map((node) => node.y);
+      const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+      const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+      setPosition({ x: rect.width / 2 - cx, y: rect.height / 2 - cy });
     }
   };
 
@@ -957,6 +1336,33 @@ const GraphPage = () => {
                   {learnedCount}/{totalCount} 已掌握
                 </span>
               </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-medium text-zinc-500">
+                  <CalendarDays size={11} />
+                  {getPlanFrequencyLabel(plan?.studyFrequency, plan?.studyDaysPerWeek)}
+                </span>
+                {plan?.targetEndDate ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700">
+                    截止 {formatPlanDateLabel(plan.targetEndDate)}
+                  </span>
+                ) : null}
+                {plan?.reminderEnabled ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-1 text-[10px] font-medium text-teal-700">
+                    <Bell size={11} />
+                    {plan?.reminderTime || "已开启提醒"}
+                  </span>
+                ) : null}
+                {plan?.status === "paused" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white">
+                    已暂停
+                  </span>
+                ) : null}
+                {plan?.status === "archived" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white">
+                    已归档
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -981,9 +1387,46 @@ const GraphPage = () => {
             ) : null}
             <button
               className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all"
-              title="分享"
+              title="计划设置"
+              onClick={() => setShowPlanSettings(true)}
             >
-              <Share2 size={18} strokeWidth={1.5} />
+              <SlidersHorizontal size={18} strokeWidth={1.5} />
+            </button>
+            {plan?.status !== "archived" ? (
+              <button
+                className={`p-2 rounded-xl transition-all disabled:opacity-50 ${
+                  plan?.status === "paused"
+                    ? "bg-zinc-900 text-white hover:bg-zinc-700"
+                    : "text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50"
+                }`}
+                title={plan?.status === "paused" ? "恢复计划" : "暂停计划"}
+                onClick={handlePauseOrResumePlan}
+                disabled={isTogglingPlanStatus}
+              >
+                {isTogglingPlanStatus ? (
+                  <Loader size={18} className="animate-spin" strokeWidth={1.5} />
+                ) : plan?.status === "paused" ? (
+                  <Play size={18} strokeWidth={1.5} />
+                ) : (
+                  <Pause size={18} strokeWidth={1.5} />
+                )}
+              </button>
+            ) : null}
+            <button
+              className={`p-2 rounded-xl transition-all disabled:opacity-50 ${
+                isSharingPlan
+                  ? "bg-zinc-900 text-white"
+                  : "text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50"
+              }`}
+              title="分享"
+              onClick={handleSharePlan}
+              disabled={isSharingPlan}
+            >
+              {isSharingPlan ? (
+                <Loader size={18} className="animate-spin" strokeWidth={1.5} />
+              ) : (
+                <Share2 size={18} strokeWidth={1.5} />
+              )}
             </button>
             <button
               className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all"
@@ -1115,15 +1558,17 @@ const GraphPage = () => {
           {nodes.map((node) => {
             const isSelected = selectedNodeId === node.id;
             const isLearned = node.status === "learned";
+            const isGhost = ghostNodeIds.has(node.id);
             return (
               <div
                 key={node.id}
                 className={`absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer
                   ${scale < 0.6 ? "w-4 h-4 rounded-full" : "w-auto h-auto px-6 py-3 rounded-full"}
-                  ${isNodeDragging ? "transition-none" : "transition-[transform,box-shadow,border-color,background-color,color] duration-200"}
+                  ${isNodeDragging ? "transition-none" : "transition-[opacity,transform,box-shadow,border-color,background-color,color] duration-300"}
                   ${isSelected ? "scale-110 shadow-[0_10px_40px_rgba(0,0,0,0.15)] z-10" : "shadow-[0_2px_12px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.15)] z-0"}
                   ${isLearned ? "bg-zinc-900 text-white border border-zinc-700" : "bg-white text-zinc-800 border border-zinc-300 hover:border-zinc-400"}
                   ${node.isTarget && !isLearned ? "ring-2 ring-teal-500/30 border-teal-500 text-teal-700 bg-teal-50" : ""}
+                  ${isGhost ? "opacity-[0.45] scale-[0.97]" : "opacity-100"}
                 `}
                 style={{ left: node.x, top: node.y }}
                 onClick={(e) => {
@@ -1139,14 +1584,18 @@ const GraphPage = () => {
                 }}
               >
                 {scale < 0.6 ? (
-                  isLearned ? (
+                  isGhost ? (
+                    <div className="h-2.5 w-2.5 animate-spin rounded-full border border-zinc-200 border-t-blue-400" />
+                  ) : isLearned ? (
                     <div className="w-2 h-2 bg-emerald-400 rounded-full" />
                   ) : (
                     <div className="w-2 h-2 bg-zinc-400 rounded-full" />
                   )
                 ) : (
                   <div className="flex items-center gap-3">
-                    {isLearned ? (
+                    {isGhost ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-200 border-t-blue-400" />
+                    ) : isLearned ? (
                       <CheckCircle2
                         size={16}
                         className="text-emerald-400"
@@ -1244,6 +1693,13 @@ const GraphPage = () => {
           </button>
         </div>
         <button
+          onClick={handleRelayoutGraph}
+          title="按学习路径整理布局"
+          className="bg-white/90 backdrop-blur p-4 rounded-2xl shadow-sm border border-zinc-200/50 text-zinc-500 hover:text-zinc-900 transition-colors"
+        >
+          <Sparkles size={18} strokeWidth={1.5} />
+        </button>
+        <button
           onClick={() => {
             if (containerRef.current && nodes.length > 0) {
               const rect = containerRef.current.getBoundingClientRect();
@@ -1327,6 +1783,81 @@ const GraphPage = () => {
                     <Minus size={16} />
                   )}
                 </Button>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+                <label className="flex items-center justify-between gap-4">
+                  <span className="flex items-center gap-2 text-xs font-medium text-zinc-500">
+                    <CalendarDays size={14} /> 节点截止日期
+                  </span>
+                  {nodeDeadlineSaving[selectedNode.id] ? (
+                    <span className="flex items-center gap-1 text-[11px] text-teal-500">
+                      <Loader size={12} className="animate-spin" /> 保存中
+                    </span>
+                  ) : null}
+                </label>
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="date"
+                    min={minNodeDeadlineDate}
+                    inputMode="none"
+                    className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                    value={nodeDeadlineDraft}
+                    onChange={(event) => setNodeDeadlineDraft(event.target.value)}
+                    onBeforeInput={(event) => event.preventDefault()}
+                    onKeyDown={(event) => event.preventDefault()}
+                    onPaste={(event) => event.preventDefault()}
+                    onDrop={(event) => event.preventDefault()}
+                    onFocus={openDateInputPicker}
+                    onClick={openDateInputPicker}
+                    title="请通过日历选择今天或之后的日期"
+                  />
+                  {nodeDeadlineDraft ? (
+                    <button
+                      type="button"
+                      onClick={() => setNodeDeadlineDraft("")}
+                      disabled={Boolean(nodeDeadlineSaving[selectedNode.id])}
+                      className="rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
+                    >
+                      清除
+                    </button>
+                  ) : null}
+                  {nodeDeadlineChanged ? (
+                    <button
+                      type="button"
+                      onClick={handleResetNodeDeadlineDraft}
+                      disabled={Boolean(nodeDeadlineSaving[selectedNode.id])}
+                      className="rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
+                    >
+                      取消
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleSaveNodeTargetEndDate}
+                    disabled={
+                      Boolean(nodeDeadlineSaving[selectedNode.id]) ||
+                      !nodeDeadlineChanged ||
+                      Boolean(nodeDeadlineDraft && nodeDeadlineDraft < minNodeDeadlineDate)
+                    }
+                    className="rounded-xl bg-zinc-900 px-4 text-xs font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    {nodeDeadlineSaving[selectedNode.id] ? "保存中" : "保存"}
+                  </button>
+                </div>
+                {nodeDeadlineDraft && nodeDeadlineDraft < minNodeDeadlineDate ? (
+                  <p className="mt-2 text-xs text-red-500">
+                    只能选择今天或之后的日期。
+                  </p>
+                ) : selectedNode.targetEndDate ? (
+                  <p className="mt-2 text-xs text-zinc-400">
+                    当前截止日期：{formatPlanDateLabel(selectedNode.targetEndDate)}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-zinc-400">
+                    选择日期后点击保存才会生效。
+                  </p>
+                )}
               </div>
 
               <div className="space-y-6">
@@ -1494,7 +2025,7 @@ const GraphPage = () => {
                             <button
                               onClick={(event) => {
                                 event.stopPropagation();
-                                noteActions.deleteNote(note.id);
+                                noteActions.deleteNote(note.id).catch(() => {});
                               }}
                               className="p-0.5 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                               title="删除笔记"
@@ -1551,10 +2082,14 @@ const GraphPage = () => {
 
           {/* Chat panel */}
           <div
-            className={`absolute bottom-24 left-8 z-20 flex flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-white/95 shadow-2xl backdrop-blur-xl transition-all duration-300 origin-bottom-left ${
+            className={`absolute bottom-24 left-8 z-20 flex min-h-0 flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-white/95 shadow-2xl backdrop-blur-xl transition-all duration-300 origin-bottom-left ${
               chatOpen ? "opacity-100 scale-100 pointer-events-auto" : "opacity-0 scale-95 pointer-events-none"
             }`}
-            style={{ width: chatPanelSize.width, height: chatPanelSize.height }}
+            style={{
+              width: chatPanelSize.width,
+              height: chatPanelSize.height,
+              maxHeight: "calc(100vh - 120px)",
+            }}
           >
             <button
               type="button"
@@ -1596,7 +2131,10 @@ const GraphPage = () => {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar">
+            <div
+              ref={chatMessagesRef}
+              className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar"
+            >
               {chatMessages.length === 0 && (
                 <div className="text-center text-xs text-zinc-300 pt-8">
                   <MessageCircle size={24} className="mx-auto mb-2 opacity-30" />
@@ -1722,6 +2260,136 @@ const GraphPage = () => {
               <p className="text-xs text-zinc-500">{clarifyResult.reason}</p>
             </div>
           )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showPlanSettings}
+        onClose={() => setShowPlanSettings(false)}
+        title="学习计划设置"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowPlanSettings(false)}>
+              取消
+            </Button>
+            <Button onClick={handleSavePlanSettings} disabled={isUpdatingPlanSettings}>
+              {isUpdatingPlanSettings ? "保存中..." : "保存设置"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-xs font-medium text-zinc-500">开始日期</span>
+              <input
+                type="date"
+                className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                value={planSettings.startDate}
+                onChange={(e) => handlePlanSettingChange("startDate", e.target.value)}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-medium text-zinc-500">目标完成日期</span>
+              <input
+                type="date"
+                className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                value={planSettings.targetEndDate}
+                onChange={(e) =>
+                  handlePlanSettingChange("targetEndDate", e.target.value)
+                }
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+            <label className="space-y-2">
+              <span className="text-xs font-medium text-zinc-500">学习频率</span>
+              <select
+                className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                value={planSettings.studyFrequency}
+                onChange={(e) =>
+                  handlePlanSettingChange("studyFrequency", e.target.value)
+                }
+              >
+                {PLAN_FREQUENCY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-xs font-medium text-zinc-500">每周次数</span>
+              <input
+                type="number"
+                min="1"
+                max="7"
+                className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                value={planSettings.studyDaysPerWeek}
+                onChange={(e) =>
+                  handlePlanSettingChange("studyDaysPerWeek", e.target.value)
+                }
+              />
+            </label>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4">
+            <label className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-800">学习提醒</p>
+                <p className="text-xs text-zinc-500">先用站内节奏管理，后续再接系统提醒。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  handlePlanSettingChange(
+                    "reminderEnabled",
+                    !planSettings.reminderEnabled,
+                  )
+                }
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                  planSettings.reminderEnabled ? "bg-teal-500" : "bg-zinc-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    planSettings.reminderEnabled
+                      ? "translate-x-6"
+                      : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </label>
+
+            {planSettings.reminderEnabled ? (
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-xs font-medium text-zinc-500">提醒时间</span>
+                  <input
+                    type="time"
+                    className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                    value={planSettings.reminderTime}
+                    onChange={(e) =>
+                      handlePlanSettingChange("reminderTime", e.target.value)
+                    }
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-medium text-zinc-500">时区</span>
+                  <input
+                    type="text"
+                    className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                    value={planSettings.reminderTimezone}
+                    onChange={(e) =>
+                      handlePlanSettingChange("reminderTimezone", e.target.value)
+                    }
+                  />
+                </label>
+              </div>
+            ) : null}
+          </div>
         </div>
       </Modal>
 

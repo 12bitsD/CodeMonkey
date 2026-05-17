@@ -1,7 +1,125 @@
 import React from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
+
+function sanitizeLatex(input) {
+  return String(input || "")
+    .trim()
+    .replace(/^\\\(/, "")
+    .replace(/\\\)$/, "")
+    .replace(/^\\\[/, "")
+    .replace(/\\\]$/, "")
+    .replace(/^\$\$/, "")
+    .replace(/\$\$$/, "")
+    .replace(/\\beginbmatrix/g, "\\begin{bmatrix}")
+    .replace(/\\endbmatrix/g, "\\end{bmatrix}")
+    .replace(/\\beginpmatrix/g, "\\begin{pmatrix}")
+    .replace(/\\endpmatrix/g, "\\end{pmatrix}")
+    .replace(/\/\/\s*(.*?)\s*\/\//g, "\\|$1\\|")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeLatex(input) {
+  return String(input || "")
+    .replace(/\\left/g, "")
+    .replace(/\\right/g, "")
+    .replace(/\\begin\{?bmatrix\}?/g, "[")
+    .replace(/\\end\{?bmatrix\}?/g, "]")
+    .replace(/\\begin\{?pmatrix\}?/g, "(")
+    .replace(/\\end\{?pmatrix\}?/g, ")")
+    .replace(/\\mathbf\{([^}]+)\}/g, "$1")
+    .replace(/\\mathrm\{([^}]+)\}/g, "$1")
+    .replace(/\\mathbb\{R\}/g, "R")
+    .replace(/\^\\top/g, "^T")
+    .replace(/\\top/g, "^T")
+    .replace(/\\mu/g, "mu")
+    .replace(/\\lambda/g, "lambda")
+    .replace(/\\det/g, "det")
+    .replace(/\\min/g, "min")
+    .replace(/\\max/g, "max")
+    .replace(/\\in/g, "in")
+    .replace(/\\geq?/g, ">=")
+    .replace(/\\leq?/g, "<=")
+    .replace(/\\cdot/g, "*")
+    .replace(/\\times/g, "x")
+    .replace(/\\nabla/g, "grad")
+    .replace(/\\\|/g, "||")
+    .replace(/\\\(/g, "")
+    .replace(/\\\)/g, "")
+    .replace(/\\\[/g, "")
+    .replace(/\\\]/g, "")
+    .replace(/\^\{([^}]+)\}/g, "^$1")
+    .replace(/\^\^/g, "^")
+    .replace(/_\{([^}]+)\}/g, "_$1")
+    .replace(/\{([^{}]+)\}/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function MathText({ children, block = false }) {
+  const latex = sanitizeLatex(children);
+  const fallback = normalizeLatex(latex);
+  const html = katex.renderToString(latex, {
+    displayMode: block,
+    output: "html",
+    strict: false,
+    throwOnError: false,
+    trust: false,
+  });
+
+  if (block) {
+    return (
+      <div className="my-3 overflow-x-auto rounded-2xl border border-teal-100 bg-white/80 px-4 py-3 text-[15px] leading-7 text-zinc-900">
+        <span dangerouslySetInnerHTML={{ __html: html }} />
+        <span className="sr-only">{fallback}</span>
+      </div>
+    );
+  }
+
+  return (
+    <span className="inline-flex max-w-full align-baseline text-zinc-900">
+      <span dangerouslySetInnerHTML={{ __html: html }} />
+      <span className="sr-only">{fallback}</span>
+    </span>
+  );
+}
+
+function renderPlainText(text, keyPrefix) {
+  const latexPattern =
+    /(\\begin\{?bmatrix\}?[\s\S]+?\\end\{?bmatrix\}?|\\begin\{?pmatrix\}?[\s\S]+?\\end\{?pmatrix\}?|[A-Za-z][A-Za-z0-9_\\{}()[\]\s+\-*/^=<>|&,.]*=\s*[A-Za-z0-9_\\{}()[\]\s+\-*/^=<>|&,.]+|\\(?:det|mathbf|mathrm|mathbb|frac|sqrt|mu|lambda|min|max|in|top|leq?|geq?|cdot|times|nabla)(?:\{[^}]*\})?(?:(?:\s*[A-Za-z0-9()[\]{}_^+\-=<>|,.&]+|\\[A-Za-z]+(?:\{[^}]*\})?)+)?)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = latexPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    parts.push({ math: match[0] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.map((part, index) => {
+    const key = `${keyPrefix}-plain-${index}`;
+    if (typeof part === "string") {
+      return <React.Fragment key={key}>{part}</React.Fragment>;
+    }
+    return (
+      <MathText key={key}>
+        {part.math}
+      </MathText>
+    );
+  });
+}
 
 function parseInline(text, keyPrefix) {
-  const tokenPattern = /(`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+  const tokenPattern =
+    /(\\\(.+?\\\)|\$[^$\n]+\$|`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
   const segments = [];
   let lastIndex = 0;
   let match;
@@ -27,8 +145,22 @@ function parseInline(text, keyPrefix) {
           key={key}
           className="rounded-md bg-zinc-900/5 px-1.5 py-0.5 font-mono text-[0.92em] text-teal-700"
         >
-          {segment.slice(1, -1)}
+          {normalizeLatex(segment.slice(1, -1))}
         </code>
+      );
+    }
+
+    if (
+      (segment.startsWith("\\(") && segment.endsWith("\\)")) ||
+      (segment.startsWith("$") && segment.endsWith("$"))
+    ) {
+      const content = segment.startsWith("\\(")
+        ? segment.slice(2, -2)
+        : segment.slice(1, -1);
+      return (
+        <MathText key={key}>
+          {content}
+        </MathText>
       );
     }
 
@@ -62,7 +194,7 @@ function parseInline(text, keyPrefix) {
       return <em key={key}>{parseInline(segment.slice(1, -1), key)}</em>;
     }
 
-    return <React.Fragment key={key}>{segment}</React.Fragment>;
+    return <React.Fragment key={key}>{renderPlainText(segment, key)}</React.Fragment>;
   });
 }
 
@@ -89,14 +221,32 @@ function parseBlocks(markdown) {
         content.push(lines[i]);
         i += 1;
       }
-      if (i < lines.length) {
-        i += 1;
-      }
+      if (i < lines.length) i += 1;
       blocks.push({ type: "code", language, content: content.join("\n") });
       continue;
     }
 
-    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (trimmed === "\\[" || trimmed === "$$") {
+      const closeToken = trimmed === "\\[" ? "\\]" : "$$";
+      const content = [];
+      i += 1;
+      while (i < lines.length && lines[i].trim() !== closeToken) {
+        content.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+      blocks.push({ type: "math", content: content.join(" ") });
+      continue;
+    }
+
+    const oneLineMath = trimmed.match(/^\\\[(.+)\\\]$/) || trimmed.match(/^\$\$(.+)\$\$$/);
+    if (oneLineMath) {
+      blocks.push({ type: "math", content: oneLineMath[1] });
+      i += 1;
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
       blocks.push({
         type: "heading",
@@ -143,8 +293,12 @@ function parseBlocks(markdown) {
       if (
         !current ||
         current.startsWith("```") ||
+        current === "\\[" ||
+        current === "$$" ||
+        /^\\\[.+\\\]$/.test(current) ||
+        /^\$\$.+\$\$$/.test(current) ||
         current.startsWith(">") ||
-        /^#{1,3}\s+/.test(current) ||
+        /^#{1,6}\s+/.test(current) ||
         /^[-*+]\s+/.test(current) ||
         /^\d+\.\s+/.test(current)
       ) {
@@ -197,6 +351,14 @@ export function renderMarkdown(markdown) {
         >
           <code data-language={block.language || undefined}>{block.content}</code>
         </pre>
+      );
+    }
+
+    if (block.type === "math") {
+      return (
+        <MathText key={key} block>
+          {block.content}
+        </MathText>
       );
     }
 

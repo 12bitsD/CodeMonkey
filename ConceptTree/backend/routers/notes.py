@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Header, Query
 from typing import Optional
 from datetime import datetime
 import uuid
 from pydantic import BaseModel, field_validator
 
-from database import get_db
+from database import get_db, transaction
 from utils.auth import get_current_user_id
+from utils.idempotency import get_idempotent_response, store_idempotent_response
 
 
 class CreateNoteRequest(BaseModel):
@@ -47,6 +48,44 @@ def format_date(dt_value) -> str:
     except (ValueError, TypeError):
         raw = str(dt_value)
         return raw[:10] if raw else ""
+
+
+def _resolve_node_id(db, plan_id: str, node_id: Optional[str]) -> str:
+    if not node_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "NODE_REQUIRED",
+                    "message": "Node is required",
+                },
+            },
+        )
+
+    candidates = [node_id]
+    prefixed_node_id = f"{plan_id}_{node_id}"
+    if prefixed_node_id not in candidates:
+        candidates.append(prefixed_node_id)
+
+    for candidate in candidates:
+        node = db.execute(
+            "SELECT id FROM nodes WHERE id = ? AND plan_id = ?",
+            (candidate, plan_id),
+        ).fetchone()
+        if node:
+            return node["id"]
+
+    raise HTTPException(
+        status_code=404,
+        detail={
+            "success": False,
+            "error": {
+                "code": "NODE_NOT_FOUND",
+                "message": "Node not found",
+            },
+        },
+    )
 
 
 @router.get("/notes")
@@ -101,12 +140,18 @@ def get_notes(
 @router.post("/notes")
 def create_note(
     body: CreateNoteRequest,
+    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
     planId = body.planId
     nodeId = body.nodeId
     content = body.content
+    endpoint = "POST /api/notes"
+
+    cached_response = get_idempotent_response(db, current_user_id, endpoint, idempotency_key)
+    if cached_response:
+        return cached_response
 
     plan = db.execute(
         "SELECT user_id FROM plans WHERE id = ?",
@@ -129,44 +174,40 @@ def create_note(
             detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
-    node = db.execute(
-        "SELECT id FROM nodes WHERE id = ? AND plan_id = ?", (nodeId, planId)
-    ).fetchone()
-    if not node:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "success": False,
-                "error": {
-                    "code": "NODE_NOT_FOUND",
-                    "message": "Node not found",
-                },
-            },
-        )
+    resolved_node_id = _resolve_node_id(db, planId, nodeId)
 
     note_id = f"note_{uuid.uuid4().hex[:12]}"
     user_id = current_user_id
     now = datetime.utcnow().isoformat() + "Z"
 
-    db.execute(
-        """INSERT INTO notes (id, plan_id, node_id, user_id, content, 
-           created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (note_id, planId, nodeId, user_id, content, now, now),
-    )
-    db.commit()
-
-    return {
+    response = {
         "success": True,
         "data": {
             "id": note_id,
             "planId": planId,
-            "nodeId": nodeId,
+            "nodeId": resolved_node_id,
             "content": content,
             "date": format_date(now),
             "createdAt": now,
         },
     }
+
+    with transaction(db):
+        db.execute(
+            """INSERT INTO notes (id, plan_id, node_id, user_id, content, 
+               created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (note_id, planId, resolved_node_id, user_id, content, now, now),
+        )
+        store_idempotent_response(
+            db,
+            current_user_id,
+            endpoint,
+            idempotency_key,
+            response,
+        )
+
+    return response
 
 
 @router.put("/notes/{note_id}")
@@ -200,11 +241,11 @@ def update_note(
         )
 
     now = datetime.utcnow().isoformat() + "Z"
-    db.execute(
-        "UPDATE notes SET content = ?, updated_at = ? WHERE id = ?",
-        (content, now, note_id),
-    )
-    db.commit()
+    with transaction(db):
+        db.execute(
+            "UPDATE notes SET content = ?, updated_at = ? WHERE id = ?",
+            (content, now, note_id),
+        )
 
     return {
         "success": True,
@@ -239,7 +280,7 @@ def delete_note(
             detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
-    db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-    db.commit()
+    with transaction(db):
+        db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
 
     return {"success": True, "data": {"message": "笔记已删除"}}

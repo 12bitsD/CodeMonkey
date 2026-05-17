@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from services.llm.client import LLMServiceError, UnifiedLLMClient
 from services.llm.providers.openai_compatible import LLMProviderError
 
+pytestmark = pytest.mark.no_db
+
 
 class _FakeProvider:
     def __init__(self, chunks=None, error=None):
