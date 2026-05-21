@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           // Disable response buffering so SSE chunks are forwarded immediately
           configure: (proxy) => {
-            proxy.on('proxyRes', (proxyRes, req) => {
+            proxy.on('proxyRes', (proxyRes) => {
               if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
                 proxyRes.headers['cache-control'] = 'no-cache';
                 proxyRes.headers['x-accel-buffering'] = 'no';

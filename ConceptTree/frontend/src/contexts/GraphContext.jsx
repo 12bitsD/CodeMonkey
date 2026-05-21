@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
 const GraphContext = createContext(null);
+const GRAPH_CACHE_KEY = 'concept_tree_graph_cache';
 
 const normalizeGraphSnapshot = (graph) => ({
   title: graph?.title || null,
@@ -8,6 +9,25 @@ const normalizeGraphSnapshot = (graph) => ({
   edges: Array.isArray(graph?.edges) ? graph.edges : [],
   updatedAt: Date.now(),
 });
+
+const readGraphCache = () => {
+  try {
+    const raw = window.localStorage.getItem(GRAPH_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeGraphCache = (graphsByPlanId) => {
+  try {
+    window.localStorage.setItem(GRAPH_CACHE_KEY, JSON.stringify(graphsByPlanId || {}));
+  } catch {
+    // localStorage may be unavailable; keep in-memory graph snapshots.
+  }
+};
 
 export const useGraphContext = () => {
   const context = useContext(GraphContext);
@@ -18,22 +38,27 @@ export const useGraphContext = () => {
 };
 
 export const GraphProvider = ({ children }) => {
-  const [graphsByPlanId, setGraphsByPlanId] = useState({});
+  const [graphsByPlanId, setGraphsByPlanId] = useState(() => readGraphCache());
 
   const actions = useMemo(
     () => ({
       setGraph(planId, graph) {
         if (!planId) return;
-        setGraphsByPlanId((prev) => ({
-          ...prev,
-          [planId]: normalizeGraphSnapshot(graph),
-        }));
+        setGraphsByPlanId((prev) => {
+          const next = {
+            ...prev,
+            [planId]: normalizeGraphSnapshot(graph),
+          };
+          writeGraphCache(next);
+          return next;
+        });
       },
       clearGraph(planId) {
         if (!planId) return;
         setGraphsByPlanId((prev) => {
           const next = { ...prev };
           delete next[planId];
+          writeGraphCache(next);
           return next;
         });
       },
@@ -42,7 +67,7 @@ export const GraphProvider = ({ children }) => {
         setGraphsByPlanId((prev) => {
           const current = prev[planId] || normalizeGraphSnapshot({});
           const nextNodes = typeof updater === 'function' ? updater(current.nodes) : updater;
-          return {
+          const next = {
             ...prev,
             [planId]: {
               ...current,
@@ -50,6 +75,8 @@ export const GraphProvider = ({ children }) => {
               updatedAt: Date.now(),
             },
           };
+          writeGraphCache(next);
+          return next;
         });
       },
       updateGraphEdges(planId, updater) {
@@ -57,7 +84,7 @@ export const GraphProvider = ({ children }) => {
         setGraphsByPlanId((prev) => {
           const current = prev[planId] || normalizeGraphSnapshot({});
           const nextEdges = typeof updater === 'function' ? updater(current.edges) : updater;
-          return {
+          const next = {
             ...prev,
             [planId]: {
               ...current,
@@ -65,6 +92,8 @@ export const GraphProvider = ({ children }) => {
               updatedAt: Date.now(),
             },
           };
+          writeGraphCache(next);
+          return next;
         });
       },
     }),

@@ -1,69 +1,134 @@
-import { LOADING_TEXTS } from "../../constants";
+import { useEffect, useState } from "react";
 
-export default function GraphGenerationLoader({ loadingStep = 0, streamProgress = null }) {
-  const progressLabel = streamProgress
-    ? `已生成 ${streamProgress.received}/${streamProgress.total || "?"} 个节点`
-    : LOADING_TEXTS[loadingStep % LOADING_TEXTS.length];
+const PHASE1_LINES = [
+  "分析你的学习目标与深度需求...",
+  "识别核心知识领域与概念边界...",
+  "规划知识依赖链与学习顺序...",
+];
 
-  const completionRatio = streamProgress?.total
-    ? Math.max(0.08, Math.min(1, streamProgress.received / streamProgress.total))
-    : Math.min(0.92, 0.18 + loadingStep * 0.14);
+export default function GraphGenerationLoader({
+  phase = 1,
+  skeletonNodeCount = 0,
+  readyCount = 0,
+  totalCount = 0,
+  currentlyProcessing = "",
+}) {
+  const [visibleLines, setVisibleLines] = useState(0);
+
+  useEffect(() => {
+    if (phase !== 1) return undefined;
+    setVisibleLines(0);
+    const timers = PHASE1_LINES.map((_, index) =>
+      setTimeout(() => setVisibleLines(index + 1), index * 900),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [phase]);
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.99))] px-8 text-center">
-      <div className="pointer-events-none absolute inset-0 opacity-80">
-        <div className="absolute left-[24%] top-[34%] h-3 w-3 rounded-full bg-teal-400 animate-pulse" />
-        <div className="absolute left-[48%] top-[26%] h-3.5 w-3.5 rounded-full bg-blue-500 animate-pulse [animation-delay:200ms]" />
-        <div className="absolute right-[28%] top-[38%] h-3 w-3 rounded-full bg-cyan-400 animate-pulse [animation-delay:420ms]" />
-        <div className="absolute left-[34%] bottom-[30%] h-3 w-3 rounded-full bg-zinc-400 animate-pulse [animation-delay:130ms]" />
-        <div className="absolute right-[34%] bottom-[28%] h-3 w-3 rounded-full bg-teal-500 animate-pulse [animation-delay:300ms]" />
-
-        <div className="absolute left-[25%] top-[35%] h-px w-[22%] origin-left bg-gradient-to-r from-teal-300 to-blue-300 opacity-80" />
-        <div className="absolute left-[50%] top-[27%] h-[20%] w-px bg-gradient-to-b from-blue-300 to-cyan-300 opacity-70" />
-        <div className="absolute right-[29%] top-[39%] h-px w-[20%] origin-right bg-gradient-to-l from-cyan-300 to-zinc-300 opacity-70" />
-        <div className="absolute left-[35%] bottom-[31%] h-[16%] w-px bg-gradient-to-b from-zinc-300 to-teal-300 opacity-65" />
+      <div className="pointer-events-none absolute inset-0 opacity-60">
+        {[
+          { left: "24%", top: "34%", color: "bg-teal-400", delay: "0ms" },
+          { left: "48%", top: "26%", color: "bg-blue-500", delay: "200ms" },
+          { right: "28%", top: "38%", color: "bg-cyan-400", delay: "420ms" },
+          { left: "34%", bottom: "30%", color: "bg-zinc-400", delay: "130ms" },
+          { right: "34%", bottom: "28%", color: "bg-teal-500", delay: "300ms" },
+        ].map((dot, index) => (
+          <div
+            key={index}
+            className={`absolute h-3 w-3 animate-pulse rounded-full ${dot.color}`}
+            style={{
+              left: dot.left,
+              top: dot.top,
+              right: dot.right,
+              bottom: dot.bottom,
+              animationDelay: dot.delay,
+            }}
+          />
+        ))}
       </div>
 
       <span className="mb-4 rounded-full border border-blue-200 bg-white/90 px-4 py-1 text-[10px] font-semibold uppercase tracking-[0.28em] text-blue-600">
-        Graph Generation
+        {phase === 1
+          ? "Curriculum Design"
+          : phase === 2
+            ? "Content Generation"
+            : "Integration"}
       </span>
-      <h3 className="mb-3 text-2xl font-semibold tracking-tight text-zinc-900">
-        正在为你生成学习图谱
-      </h3>
-      <p className="mb-8 max-w-md text-sm text-zinc-500">
-        从目标拆解到知识节点排序，AI 正在逐步构建一条更清晰的学习路径。
-      </p>
 
-      <div className="mb-6 flex w-full max-w-md items-center justify-between rounded-3xl border border-zinc-100 bg-white/90 px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
-        <div className="text-left">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-400">
-            Current Step
-          </p>
-          <p className="mt-1 text-sm font-medium text-zinc-700">{progressLabel}</p>
-        </div>
-        <div className="rounded-2xl bg-zinc-50 px-3 py-2 text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-            Status
-          </p>
-          <p className="mt-1 text-sm font-semibold text-teal-600">
-            {Math.round(completionRatio * 100)}%
-          </p>
-        </div>
-      </div>
+      {phase === 1 && (
+        <>
+          <h3 className="mb-3 text-2xl font-semibold tracking-tight text-zinc-900">
+            AI 正在规划你的学习路径
+          </h3>
+          <div className="mb-8 w-full max-w-sm space-y-3 text-left">
+            {PHASE1_LINES.map((line, index) => (
+              <p
+                key={line}
+                className="text-sm text-zinc-500 transition-all duration-500"
+                style={{
+                  opacity: visibleLines > index ? 1 : 0,
+                  transform:
+                    visibleLines > index ? "translateY(0)" : "translateY(6px)",
+                }}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+          <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-zinc-100">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-gradient-to-r from-teal-400 via-blue-500 to-cyan-400" />
+          </div>
+        </>
+      )}
 
-      <div className="w-full max-w-md">
-        <div className="mb-3 h-2 overflow-hidden rounded-full bg-zinc-100">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-teal-400 via-blue-500 to-cyan-400 transition-all duration-500"
-            style={{ width: `${completionRatio * 100}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-[11px] text-zinc-400">
-          <span>构建核心概念</span>
-          <span>排序依赖关系</span>
-          <span>组织学习路径</span>
-        </div>
-      </div>
+      {phase === 2 && (
+        <>
+          <h3 className="mb-2 text-2xl font-semibold tracking-tight text-zinc-900">
+            已规划 {skeletonNodeCount} 个知识节点
+          </h3>
+          <p className="mb-6 text-sm text-zinc-500">
+            AI 正在为每个概念补全学习内容...
+          </p>
+
+          {currentlyProcessing && (
+            <div className="mb-6 flex items-center gap-2 rounded-full border border-blue-100 bg-white/90 px-4 py-2 text-sm text-zinc-600 shadow-sm">
+              <span className="h-2 w-2 animate-ping rounded-full bg-blue-400" />
+              正在研究：{currentlyProcessing}
+            </div>
+          )}
+
+          <div className="mb-3 flex w-full max-w-md items-center justify-between rounded-3xl border border-zinc-100 bg-white/90 px-5 py-4 shadow-sm">
+            <p className="text-sm font-medium text-zinc-700">概念研究进度</p>
+            <p className="text-sm font-semibold text-teal-600">
+              {readyCount} / {totalCount || skeletonNodeCount || "?"}
+            </p>
+          </div>
+
+          <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-zinc-100">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-teal-400 via-blue-500 to-cyan-400 transition-all duration-500"
+              style={{
+                width:
+                  totalCount > 0
+                    ? `${Math.max(4, (readyCount / totalCount) * 100)}%`
+                    : "4%",
+              }}
+            />
+          </div>
+        </>
+      )}
+
+      {phase === 3 && (
+        <>
+          <h3 className="mb-3 text-2xl font-semibold tracking-tight text-zinc-900">
+            正在优化知识关联...
+          </h3>
+          <p className="text-sm text-zinc-500">
+            整合 {totalCount || skeletonNodeCount} 个节点的内容，消除重复主题。
+          </p>
+        </>
+      )}
     </div>
   );
 }

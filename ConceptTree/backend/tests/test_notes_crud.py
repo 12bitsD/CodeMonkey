@@ -502,3 +502,49 @@ def test_delete_note_success(client, auth_headers_a):
     get_resp = client.get("/api/notes", headers=auth_headers_a)
     notes = get_resp.json()["data"]["notes"]
     assert not any(n["id"] == note_id for n in notes)
+
+
+def test_create_note_idempotency_key_replays_same_response(client, auth_headers_a, db):
+    plan_data = {
+        "title": "idempotent notes",
+        "originalInput": "input",
+        "nodes": [
+            {
+                "id": "idempotent_note_node",
+                "name": "Note Node",
+                "status": "unlearned",
+                "x": 0,
+                "y": 0,
+                "why": "",
+                "what": [],
+                "mastery": [],
+                "prompt": "",
+                "resources": [],
+                "isTarget": True,
+            }
+        ],
+        "edges": [],
+        "targetNodeId": "idempotent_note_node",
+    }
+    create = client.post("/api/plans", json=plan_data, headers=auth_headers_a)
+    plan_id = create.json()["data"]["id"]
+    payload = {
+        "planId": plan_id,
+        "nodeId": "idempotent_note_node",
+        "content": "same click should save once",
+    }
+    headers = {**auth_headers_a, "Idempotency-Key": "note-save-double-click"}
+
+    first = client.post("/api/notes", json=payload, headers=headers)
+    second = client.post("/api/notes", json=payload, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["data"]["id"] == first.json()["data"]["id"]
+
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM notes WHERE plan_id = %s AND content = %s",
+            (plan_id, payload["content"]),
+        )
+        assert cur.fetchone()[0] == 1

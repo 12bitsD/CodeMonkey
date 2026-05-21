@@ -1,6 +1,6 @@
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Circle, HelpCircle } from 'lucide-react';
 
-export function MasteryChecklist({ items }) {
+export function MasteryChecklist({ items, passedKeys = new Set(), getItemKey, onStartQuiz }) {
   if (!items?.length) return null;
   return (
     <section data-testid="mastery-section" className="space-y-3">
@@ -8,12 +8,41 @@ export function MasteryChecklist({ items }) {
         <CheckCircle2 size={12} /> 掌握标准
       </h4>
       <ul className="space-y-2">
-        {items.map((item, i) => (
-          <li key={i} className="flex items-start gap-3 text-sm text-zinc-600">
-            <span className="mt-1 w-3.5 h-3.5 rounded-full border border-zinc-300 flex-shrink-0" />
-            {item}
-          </li>
-        ))}
+        {items.map((item, i) => {
+          const key = getItemKey ? getItemKey(item, i) : String(i);
+          const passed = passedKeys instanceof Set
+            ? passedKeys.has(key)
+            : Boolean(passedKeys?.[key]);
+
+          return (
+            <li key={key} className="text-sm text-zinc-600">
+              <button
+                type="button"
+                onClick={() => onStartQuiz?.(item, i)}
+                className={`group flex w-full items-start gap-3 rounded-2xl px-2 py-1.5 text-left transition-colors ${
+                  passed
+                    ? "bg-teal-50/70 text-teal-800"
+                    : "hover:bg-zinc-50 hover:text-zinc-900"
+                }`}
+              >
+                <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                  {passed ? (
+                    <CheckCircle2 size={16} className="text-teal-500" />
+                  ) : (
+                    <Circle size={15} className="text-zinc-300 group-hover:text-teal-400" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 leading-relaxed">{item}</span>
+                {!passed && (
+                  <HelpCircle
+                    size={14}
+                    className="mt-0.5 flex-shrink-0 text-zinc-300 group-hover:text-teal-400"
+                  />
+                )}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -93,6 +93,35 @@ def test_recommend_next_returns_node_id(client, auth_headers_a):
     assert "reason" in body["data"]
 
 
+def test_recommend_next_falls_back_to_local_rule_when_ai_fails(client, auth_headers_a):
+    plan_id = make_plan(client, auth_headers_a)
+
+    mock_result = MagicMock()
+    mock_result.success = False
+    mock_result.error = MagicMock()
+    mock_result.error.model_dump.return_value = {
+        "code": "AI_ERROR",
+        "message": "Invalid API Key",
+    }
+
+    with patch("routers.ai.get_ai_service") as mock_svc_factory:
+        mock_svc = MagicMock()
+        mock_svc.recommend_next = AsyncMock(return_value=mock_result)
+        mock_svc_factory.return_value = mock_svc
+
+        resp = client.post(
+            "/api/ai/recommend-next",
+            json={"planId": plan_id},
+            headers=auth_headers_a,
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["data"]["recommended_node_id"].endswith("_n2")
+    assert body["data"]["recommendation_source"] == "local"
+
+
 def test_recommend_next_plan_not_found(client, auth_headers_a):
     resp = client.post(
         "/api/ai/recommend-next",

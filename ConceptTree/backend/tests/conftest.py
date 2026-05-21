@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -33,6 +34,19 @@ def _split_statements(sql: str) -> list[str]:
     return split_sql_statements(sql)
 
 
+def _connect_with_retry(database_url: str, attempts: int = 5):
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return psycopg2.connect(database_url, connect_timeout=5)
+        except psycopg2.OperationalError as exc:
+            last_error = exc
+            if attempt == attempts:
+                break
+            time.sleep(min(0.5 * attempt, 2.0))
+    raise last_error
+
+
 @pytest.fixture(scope="session")
 def test_schema() -> str:
     database_url = _require_database_url()
@@ -40,7 +54,7 @@ def test_schema() -> str:
     schema_sql = _read_schema_sql()
     statements = _split_statements(schema_sql)
 
-    conn = psycopg2.connect(database_url)
+    conn = _connect_with_retry(database_url)
     try:
         with conn:
             with conn.cursor() as cur:
@@ -51,7 +65,7 @@ def test_schema() -> str:
         os.environ["DATABASE_SCHEMA"] = schema
         yield schema
     finally:
-        drop_conn = psycopg2.connect(database_url)
+        drop_conn = _connect_with_retry(database_url)
         try:
             with drop_conn:
                 with drop_conn.cursor() as cur:
@@ -70,12 +84,13 @@ def client(test_schema: str):
 
 
 @pytest.fixture(autouse=True)
-def reset_database(request, test_schema: str):
+def reset_database(request):
     if request.node.get_closest_marker("no_db"):
         yield
         return
+    test_schema = request.getfixturevalue("test_schema")
     database_url = _require_database_url()
-    conn = psycopg2.connect(database_url)
+    conn = _connect_with_retry(database_url)
     try:
         with conn:
             with conn.cursor() as cur:
@@ -83,7 +98,7 @@ def reset_database(request, test_schema: str):
                 cur.execute(search_path_sql)
                 cur.execute(
                     (
-                        "TRUNCATE TABLE notes, learning_sessions, edges, "
+                        "TRUNCATE TABLE idempotency_keys, notes, learning_sessions, edges, "
                         "nodes, plans, user_profiles, users "
                         "RESTART IDENTITY CASCADE"
                     )
@@ -143,7 +158,7 @@ def auth_headers_b():
 @pytest.fixture()
 def db(test_schema: str):
     database_url = _require_database_url()
-    conn = psycopg2.connect(database_url)
+    conn = _connect_with_retry(database_url)
     try:
         with conn.cursor() as cur:
             cur.execute(f'SET search_path TO "{test_schema}"')

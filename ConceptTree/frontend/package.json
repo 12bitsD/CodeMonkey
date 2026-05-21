@@ -15,8 +15,9 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "katex": "^0.16.45",
+    "katex": "^0.16.47",
     "lucide-react": "^0.263.1",
+    "mermaid": "^11.15.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.26.2"

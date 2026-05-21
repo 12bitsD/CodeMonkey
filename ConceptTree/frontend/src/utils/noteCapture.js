@@ -32,9 +32,13 @@ export async function persistGeneratedNote({
     return { saved: false, reason: "duplicate" };
   }
 
-  await noteActions.addNote(planId, targetNodeId, content);
-  toast.success(successMessage);
-  return { saved: true, reason: "saved" };
+  try {
+    await noteActions.addNote(planId, targetNodeId, content);
+    toast.success(successMessage);
+    return { saved: true, reason: "saved" };
+  } catch (error) {
+    return { saved: false, reason: "persist-error", error };
+  }
 }
 
 export async function saveExplainNoteToNotes({

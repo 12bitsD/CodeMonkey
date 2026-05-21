@@ -1,129 +1,232 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+import json
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+from threading import Lock
 
-from database import get_db
-from utils.auth import get_current_user_id
+from fastapi import APIRouter, Body, Depends, HTTPException
+
+from database import ensure_schema_columns, get_db, transaction
 from models import (
-    PlanListResponse,
+    ArchivePlanRequest,
+    ErrorResponse,
     PlanCreateRequest,
     PlanCreateResponse,
+    PlanListResponse,
     PlanUpdateRequest,
     PlanUpdateResponse,
-    ErrorResponse,
 )
+from utils.auth import get_current_user_id
 
 router = APIRouter(prefix="/api", tags=["plans"])
 
+_PLAN_MANAGEMENT_COLUMNS_READY = False
+_PLAN_MANAGEMENT_COLUMNS_LOCK = Lock()
 
-def _format_datetime(dt) -> Optional[str]:
-    if dt is None:
+
+def _format_datetime(value) -> Optional[str]:
+    if not value:
         return None
-    if isinstance(dt, datetime):
-        return dt.isoformat()
-    return str(dt)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _ensure_plan_management_columns(db) -> None:
+    global _PLAN_MANAGEMENT_COLUMNS_READY
+    if _PLAN_MANAGEMENT_COLUMNS_READY:
+        return
+
+    with _PLAN_MANAGEMENT_COLUMNS_LOCK:
+        if _PLAN_MANAGEMENT_COLUMNS_READY:
+            return
+
+        ensure_schema_columns(
+            db,
+            {
+                "plans": (
+                    "start_date",
+                    "target_end_date",
+                    "study_frequency",
+                    "study_days_per_week",
+                    "reminder_enabled",
+                    "reminder_time",
+                    "reminder_timezone",
+                    "archived_reason",
+                ),
+                "nodes": ("target_end_date",),
+            },
+        )
+        _PLAN_MANAGEMENT_COLUMNS_READY = True
+
+
+def _serialize_plan(plan) -> dict:
+    return {
+        "id": plan["id"],
+        "title": plan["title"],
+        "progress": plan["progress"] or 0,
+        "total": plan["total"] or 0,
+        "status": plan["status"] or "active",
+        "lastAccess": _format_datetime(plan["last_access_at"]),
+        "createdAt": _format_datetime(plan["created_at"]),
+        "startDate": _format_datetime(plan["start_date"]),
+        "targetEndDate": _format_datetime(plan["target_end_date"]),
+        "studyFrequency": plan["study_frequency"] or "flexible",
+        "studyDaysPerWeek": plan["study_days_per_week"] or 3,
+        "reminderEnabled": bool(plan["reminder_enabled"]),
+        "reminderTime": plan["reminder_time"],
+        "reminderTimezone": plan["reminder_timezone"],
+        "archivedReason": plan["archived_reason"],
+    }
+
+
+def _jsonable(value):
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    return value
+
+
+def _json_dumps(value) -> str:
+    return json.dumps(_jsonable(value or []), ensure_ascii=False)
+
+
+def _get_owned_plan(db, plan_id: str, current_user_id: str):
+    plan = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "error": {"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
+            },
+        )
+    if plan["user_id"] != current_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "error": {"code": "FORBIDDEN", "message": "Forbidden"},
+            },
+        )
+    return plan
+
+
+@router.get(
+    "/plans",
+    response_model=PlanListResponse,
+    responses={500: {"model": ErrorResponse}},
+)
+def list_plans(current_user_id: str = Depends(get_current_user_id), db=Depends(get_db)):
+    _ensure_plan_management_columns(db)
+    plans = db.execute(
+        "SELECT * FROM plans WHERE user_id = ? ORDER BY last_access_at DESC, created_at DESC",
+        (current_user_id,),
+    ).fetchall()
+    return {
+        "success": True,
+        "data": [_serialize_plan(plan) for plan in plans],
+    }
 
 
 @router.post(
     "/plans",
     response_model=PlanCreateResponse,
-    responses={500: {"model": ErrorResponse}},
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 def create_plan(
     request: PlanCreateRequest,
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    try:
-        user_id = current_user_id
-        plan_id = "p_" + str(uuid.uuid4())[:8]
+    _ensure_plan_management_columns(db)
 
-        # 将 AI 返回的节点 ID (n1/n2...) 映射为全局唯一 ID，避免跨计划冲突
-        node_id_map = {node.id: f"{plan_id}_{node.id}" for node in request.nodes}
-        target_node_id = node_id_map.get(request.targetNodeId, request.targetNodeId)
+    plan_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    node_id_map = {node.id: f"{plan_id}_{node.id}" for node in request.nodes}
 
-        # 1. 创建计划
-        total_nodes = len(request.nodes)
+    with transaction(db):
         db.execute(
-            """INSERT INTO plans (id, user_id, title, original_input,
-               target_node_id, status, total, learning_purpose)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """
+            INSERT INTO plans (
+                id, user_id, title, original_input, target_node_id, progress, total, status,
+                last_access_at, created_at, learning_purpose, start_date, target_end_date,
+                study_frequency, study_days_per_week, reminder_enabled, reminder_time,
+                reminder_timezone, archived_reason
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             (
                 plan_id,
-                user_id,
+                current_user_id,
                 request.title,
                 request.originalInput,
-                target_node_id,
+                node_id_map.get(request.targetNodeId, request.targetNodeId),
+                0,
+                len([node for node in request.nodes if node.status != "skipped"]),
                 "active",
-                total_nodes,
+                now,
+                now,
                 request.learning_purpose,
+                request.startDate or now,
+                request.targetEndDate,
+                request.studyFrequency,
+                request.studyDaysPerWeek,
+                request.reminderEnabled,
+                request.reminderTime,
+                request.reminderTimezone,
+                None,
             ),
         )
 
-        # 2. 批量创建节点（使用映射后的唯一 ID）
         for node in request.nodes:
             db.execute(
-                """INSERT INTO nodes (id, plan_id, name, status, x, y, why,
-                   what, mastery, prompt, resources, is_target, domain,
-                   phase, phase_order, depth_level)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """
+                INSERT INTO nodes (
+                    id, plan_id, name, status, x, y, why, what, mastery, prompt,
+                    resources, is_target, domain, phase, phase_order, depth_level,
+                    target_end_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     node_id_map[node.id],
                     plan_id,
                     node.name,
-                    node.status.value,
+                    node.status.value if hasattr(node.status, "value") else node.status,
                     node.x,
                     node.y,
                     node.why,
-                    node.what,
-                    node.mastery,
+                    _json_dumps(node.what),
+                    _json_dumps(node.mastery),
                     node.prompt,
-                    [r.model_dump() for r in node.resources],
+                    _json_dumps(node.resources),
                     node.isTarget,
                     node.domain,
                     node.phase,
                     node.phase_order,
                     node.depth_level,
+                    node.targetEndDate,
                 ),
             )
 
-        # 3. 批量创建边（同步映射节点 ID）
         for edge in request.edges:
-            edge_id = "e_" + uuid.uuid4().hex[:12]
             db.execute(
-                """INSERT INTO edges (id, plan_id, from_node_id, to_node_id)
-                   VALUES (?, ?, ?, ?)""",
+                """
+                INSERT INTO edges (id, plan_id, from_node_id, to_node_id)
+                VALUES (?, ?, ?, ?)
+                """,
                 (
-                    edge_id,
+                    str(uuid.uuid4()),
                     plan_id,
                     node_id_map.get(edge.from_node, edge.from_node),
                     node_id_map.get(edge.to_node, edge.to_node),
                 ),
             )
 
-        db.commit()
-        return {
-            "success": True,
-            "data": {
-                "id": plan_id,
-                "title": request.title,
-                "progress": 0,
-                "total": total_nodes,
-                "status": "active",
-                "lastAccess": None,
-                "createdAt": None,
-            },
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": {"code": "CREATE_PLAN_ERROR", "message": "创建学习计划失败，请稍后重试"},
-            },
-        ) from e
+    plan = db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+    return {"success": True, "data": _serialize_plan(plan)}
 
 
 @router.put(
@@ -137,332 +240,140 @@ def update_plan(
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    try:
-        # 检查计划是否存在
-        plan = db.execute(
-            "SELECT id, user_id FROM plans WHERE id = ?",
-            (plan_id,),
-        ).fetchone()
-        if not plan:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "success": False,
-                    "error": {
-                        "code": "PLAN_NOT_FOUND",
-                        "message": "Plan not found",
-                    },
-                },
-            )
-        if plan["user_id"] != current_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail={"code": "FORBIDDEN", "message": "Forbidden"},
-            )
+    _ensure_plan_management_columns(db)
+    _get_owned_plan(db, plan_id, current_user_id)
 
-        # 更新标题
-        if request.title:
+    updates = []
+    params = []
+
+    field_map = {
+        "title": "title",
+        "startDate": "start_date",
+        "targetEndDate": "target_end_date",
+        "studyFrequency": "study_frequency",
+        "studyDaysPerWeek": "study_days_per_week",
+        "reminderEnabled": "reminder_enabled",
+        "reminderTime": "reminder_time",
+        "reminderTimezone": "reminder_timezone",
+    }
+
+    payload = request.model_dump(exclude_unset=True)
+    for field_name, value in payload.items():
+        column = field_map.get(field_name)
+        if not column:
+            continue
+        updates.append(f"{column} = ?")
+        params.append(value)
+
+    if updates:
+        updates.append("last_access_at = CURRENT_TIMESTAMP")
+        params.append(plan_id)
+        params.append(current_user_id)
+        with transaction(db):
             db.execute(
-                "UPDATE plans SET title = ? WHERE id = ?",
-                (request.title, plan_id),
+                f"UPDATE plans SET {', '.join(updates)} WHERE id = ? AND user_id = ?",
+                tuple(params),
             )
-            db.commit()
 
-        return {
-            "success": True,
-            "data": {"id": plan_id, "title": request.title or plan["title"]},
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": {"code": "UPDATE_PLAN_ERROR", "message": "更新学习计划失败，请稍后重试"},
-            },
-        ) from e
+    plan = _get_owned_plan(db, plan_id, current_user_id)
+    return {"success": True, "data": _serialize_plan(plan)}
 
 
-@router.get(
-    "/plans",
-    response_model=PlanListResponse,
-    responses={500: {"model": ErrorResponse}},
-)
-def get_plans(
-    status: Optional[str] = None,
-    current_user_id: str = Depends(get_current_user_id),
-    db=Depends(get_db),
+def _update_plan_status(
+    db,
+    plan_id: str,
+    current_user_id: str,
+    status: str,
+    archived_reason: Optional[str] = None,
 ):
-    try:
-        if status:
-            rows = db.execute(
-                (
-                    "SELECT * FROM plans WHERE user_id = ? AND status = ? "
-                    "ORDER BY last_access_at DESC"
-                ),
-                (current_user_id, status),
-            ).fetchall()
-        else:
-            rows = db.execute(
-                (
-                    "SELECT * FROM plans WHERE user_id = ? "
-                    "ORDER BY last_access_at DESC"
-                ),
-                (current_user_id,),
-            ).fetchall()
-
-        plans = []
-        for plan in rows:
-            plans.append(
-                {
-                    "id": plan["id"],
-                    "title": plan["title"],
-                    "progress": plan["progress"] if plan["progress"] else 0,
-                    "total": plan["total"] if plan["total"] else 0,
-                    "status": plan["status"],
-                    "lastAccess": _format_datetime(plan["last_access_at"]),
-                    "createdAt": _format_datetime(plan["created_at"]),
-                }
-            )
-
-        return {"success": True, "data": plans}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": {"code": "GET_PLANS_ERROR", "message": "获取学习计划失败，请稍后重试"},
-            },
-        ) from e
+    _ensure_plan_management_columns(db)
+    _get_owned_plan(db, plan_id, current_user_id)
+    with transaction(db):
+        db.execute(
+            """
+            UPDATE plans
+            SET status = ?, archived_reason = ?, last_access_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+            """,
+            (status, archived_reason, plan_id, current_user_id),
+        )
+    return _get_owned_plan(db, plan_id, current_user_id)
 
 
 @router.put(
     "/plans/{plan_id}/archive",
-    response_model=PlanCreateResponse,
-    responses={
-        404: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
+    response_model=PlanUpdateResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 def archive_plan(
     plan_id: str,
+    request: Optional[ArchivePlanRequest] = Body(default=None),
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    try:
-        # 检查计划是否存在
-        plan = db.execute(
-            "SELECT id, user_id, status FROM plans WHERE id = ?",
-            (plan_id,),
-        ).fetchone()
-        if not plan:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
-            )
-        if plan["user_id"] != current_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail={"code": "FORBIDDEN", "message": "Forbidden"},
-            )
-
-        if plan["status"] == "archived":
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "PLAN_ALREADY_ARCHIVED",
-                    "message": "Plan already archived",
-                },
-            )
-
-        # 更新状态为归档
-        db.execute(
-            "UPDATE plans SET status = 'archived' WHERE id = ?",
-            (plan_id,),
-        )
-        db.commit()
-
-        # 获取更新后的计划摘要
-        row = db.execute(
-            "SELECT * FROM plans WHERE id = ?",
-            (plan_id,),
-        ).fetchone()
-
-        # 计算进度
-        stats = db.execute(
-            """SELECT
-                   COUNT(*) as total
-                   ,SUM(CASE WHEN status = 'learned' THEN 1
-                       ELSE 0 END) as completed
-               FROM nodes
-               WHERE plan_id = ?""",
-            (plan_id,),
-        ).fetchone()
-
-        completed = stats["completed"] if stats["completed"] else 0
-        total = stats["total"] if stats["total"] else 0
-        return {
-            "success": True,
-            "data": {
-                "id": row["id"],
-                "title": row["title"],
-                "progress": completed,
-                "total": total,
-                "status": row["status"],
-                "lastAccess": _format_datetime(row["last_access_at"]),
-                "createdAt": _format_datetime(row["created_at"]),
-            },
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": {"code": "ARCHIVE_PLAN_ERROR", "message": "归档学习计划失败，请稍后重试"},
-            },
-        ) from e
+    plan = _update_plan_status(
+        db,
+        plan_id,
+        current_user_id,
+        "archived",
+        (request.reason if request else None) or "manual",
+    )
+    return {"success": True, "data": _serialize_plan(plan)}
 
 
 @router.put(
     "/plans/{plan_id}/restore",
-    response_model=PlanCreateResponse,
-    responses={
-        404: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
+    response_model=PlanUpdateResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 def restore_plan(
     plan_id: str,
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    try:
-        # 检查计划是否存在
-        plan = db.execute(
-            "SELECT id, user_id, status FROM plans WHERE id = ?",
-            (plan_id,),
-        ).fetchone()
-        if not plan:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
-            )
-        if plan["user_id"] != current_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail={"code": "FORBIDDEN", "message": "Forbidden"},
-            )
+    plan = _update_plan_status(db, plan_id, current_user_id, "active", None)
+    return {"success": True, "data": _serialize_plan(plan)}
 
-        if plan["status"] == "active":
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "PLAN_ALREADY_ACTIVE",
-                    "message": "Plan already active",
-                },
-            )
 
-        # 更新状态为激活
-        db.execute(
-            "UPDATE plans SET status = 'active' WHERE id = ?",
-            (plan_id,),
-        )
-        db.commit()
+@router.put(
+    "/plans/{plan_id}/pause",
+    response_model=PlanUpdateResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
+def pause_plan(
+    plan_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    plan = _update_plan_status(db, plan_id, current_user_id, "paused", None)
+    return {"success": True, "data": _serialize_plan(plan)}
 
-        # 获取更新后的计划摘要
-        row = db.execute(
-            "SELECT * FROM plans WHERE id = ?",
-            (plan_id,),
-        ).fetchone()
 
-        # 计算进度
-        stats = db.execute(
-            """SELECT
-                   COUNT(*) as total
-                   ,SUM(CASE WHEN status = 'learned' THEN 1
-                       ELSE 0 END) as completed
-               FROM nodes
-               WHERE plan_id = ?""",
-            (plan_id,),
-        ).fetchone()
-
-        completed = stats["completed"] if stats["completed"] else 0
-        total = stats["total"] if stats["total"] else 0
-        return {
-            "success": True,
-            "data": {
-                "id": row["id"],
-                "title": row["title"],
-                "progress": completed,
-                "total": total,
-                "status": row["status"],
-                "lastAccess": _format_datetime(row["last_access_at"]),
-                "createdAt": _format_datetime(row["created_at"]),
-            },
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": {"code": "RESTORE_PLAN_ERROR", "message": "恢复学习计划失败，请稍后重试"},
-            },
-        ) from e
+@router.put(
+    "/plans/{plan_id}/resume",
+    response_model=PlanUpdateResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
+def resume_plan(
+    plan_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    plan = _update_plan_status(db, plan_id, current_user_id, "active", None)
+    return {"success": True, "data": _serialize_plan(plan)}
 
 
 @router.delete(
     "/plans/{plan_id}",
-    responses={
-        200: {"description": "Plan deleted"},
-        404: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
+    response_model=PlanUpdateResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 def delete_plan(
     plan_id: str,
     current_user_id: str = Depends(get_current_user_id),
     db=Depends(get_db),
 ):
-    try:
-        # 检查计划是否存在
-        plan = db.execute(
-            "SELECT id, user_id FROM plans WHERE id = ?",
-            (plan_id,),
-        ).fetchone()
-        if not plan:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "PLAN_NOT_FOUND", "message": "Plan not found"},
-            )
-        if plan["user_id"] != current_user_id:
-            raise HTTPException(
-                status_code=403,
-                detail={"code": "FORBIDDEN", "message": "Forbidden"},
-            )
-
-        db.execute(
-            "DELETE FROM plans WHERE id = ?",
-            (plan_id,),
-        )
-        db.commit()
-
-        return {"success": True, "data": {"message": "计划已删除"}}
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": {"code": "DELETE_PLAN_ERROR", "message": "删除学习计划失败，请稍后重试"},
-            },
-        ) from e
+    _get_owned_plan(db, plan_id, current_user_id)
+    with transaction(db):
+        db.execute("DELETE FROM plans WHERE id = ? AND user_id = ?", (plan_id, current_user_id))
+    return {"success": True, "data": {"id": plan_id}}

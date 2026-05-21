@@ -1,11 +1,11 @@
 /**
  * @typedef {Object} UserProfile
- * @property {string} occupation - 职业/身份
- * @property {string} education - 教育背景
- * @property {string} programmingLevel - 编程基础 (无基础/入门/熟练)
- * @property {string} mathLevel - 数学基础 (无基础/入门/熟练)
- * @property {string[]} abilities - 能力标签
- * @property {string[]} masteredKnowledge - 已掌握知识点
+ * @property {string} occupation
+ * @property {string} education
+ * @property {string} programmingLevel
+ * @property {string} mathLevel
+ * @property {string[]} abilities
+ * @property {string[]} masteredKnowledge
  */
 
 /**
@@ -13,7 +13,7 @@
  * @property {string} id
  * @property {string} planId
  * @property {string} nodeId
- * @property {string} content - Markdown 格式内容
+ * @property {string} content
  * @property {string} date
  */
 
@@ -22,14 +22,15 @@
  * @property {string} id
  * @property {string} name
  * @property {'unlearned'|'learned'|'skipped'} status
- * @property {number} x - 画布 X 坐标
- * @property {number} y - 画布 Y 坐标
- * @property {string} why - 为什么学
- * @property {string[]} what - 学什么
- * @property {string[]} mastery - 掌握标准
- * @property {string} prompt - 学习 Prompt
- * @property {Resource[]} resources - 推荐资源
- * @property {boolean} [isTarget] - 是否为目标节点
+ * @property {number} x
+ * @property {number} y
+ * @property {string} why
+ * @property {string[]} what
+ * @property {string[]} mastery
+ * @property {string} prompt
+ * @property {Resource[]} resources
+ * @property {boolean} [isTarget]
+ * @property {string | null} [targetEndDate]
  */
 
 /**
@@ -41,41 +42,51 @@
 
 /**
  * @typedef {Object} GraphEdge
- * @property {string} from - 起点节点 ID
- * @property {string} to - 终点节点 ID
+ * @property {string} from
+ * @property {string} to
  */
 
 /**
  * @typedef {Object} Plan
  * @property {string} id
  * @property {string} title
- * @property {number} progress - 已完成节点数
- * @property {number} total - 总节点数
- * @property {'active'|'archived'} status
+ * @property {number} progress
+ * @property {number} total
+ * @property {'active'|'paused'|'archived'} status
  * @property {string} lastAccess
+ * @property {string | null} [createdAt]
+ * @property {string | null} [startDate]
+ * @property {string | null} [targetEndDate]
+ * @property {string} [studyFrequency]
+ * @property {number} [studyDaysPerWeek]
+ * @property {boolean} [reminderEnabled]
+ * @property {string} [reminderTime]
+ * @property {string} [reminderTimezone]
+ * @property {string | null} [archivedReason]
  */
 
 export const createEmptyUserProfile = () => ({
-  occupation: '',
-  education: '',
-  programmingLevel: '入门',
-  mathLevel: '入门',
+  occupation: "",
+  education: "",
+  programmingLevel: "入门",
+  mathLevel: "入门",
   abilities: [],
-  masteredKnowledge: []
+  masteredKnowledge: [],
 });
 
 export const createEmptyNode = (id, name, x = 0, y = 0) => ({
   id,
   name,
-  status: 'unlearned',
+  status: "unlearned",
   x,
   y,
-  why: '',
+  why: "",
   what: [],
   mastery: [],
-  prompt: '',
+  prompt: "",
   resources: [],
-  isTarget: false
+  isTarget: false,
+  targetEndDate: null,
 });
 
 export const createEmptyPlan = (id, title) => ({
@@ -83,6 +94,15 @@ export const createEmptyPlan = (id, title) => ({
   title,
   progress: 0,
   total: 0,
-  status: 'active',
-  lastAccess: '刚刚'
+  status: "active",
+  lastAccess: "刚刚",
+  createdAt: null,
+  startDate: null,
+  targetEndDate: null,
+  studyFrequency: "flexible",
+  studyDaysPerWeek: 3,
+  reminderEnabled: false,
+  reminderTime: "",
+  reminderTimezone: "",
+  archivedReason: null,
 });

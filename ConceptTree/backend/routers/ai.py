@@ -1,14 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 from typing import Optional, AsyncGenerator
 import asyncio
 import json
 
-from database import get_db, get_db_context
+from database import ensure_schema_columns, get_db, get_db_context
 from services.ai_service import get_ai_service
 from services.learning_history import get_learning_history
-from models import ErrorResponse, UserBackgroundInput, LearningPurpose, ExplainTopicRequest, ChatRequest
+from models import (
+    ErrorResponse,
+    UserBackgroundInput,
+    LearningPurpose,
+    ExplainTopicRequest,
+    ChatRequest,
+)
 from utils.auth import get_current_user_id
 
 
@@ -134,6 +140,41 @@ async def generate_graph(
     )
 
 
+@router.post("/generate-graph-v2")
+async def generate_graph_v2(
+    request: GenerateGraphRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    """
+    Multi-agent knowledge graph generation, streamed as SSE.
+
+    Event types:
+      skeleton          -> {nodes, edges, targetNodeId, total_nodes}
+      node_ready        -> {node_id, why, what, mastery, prompt, resources}
+      node_error        -> non-fatal node content failure
+      integration_done  -> {revised_nodes}
+      done
+      error             -> fatal failure
+    """
+    ai_service = get_ai_service()
+    user_bg = request.userBackground.model_dump() if request.userBackground else None
+
+    return StreamingResponse(
+        ai_service.generate_graph_v2_stream(
+            interpretation=request.interpretation,
+            original_input=request.input,
+            user_background=user_bg,
+            learning_purpose=request.learning_purpose,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 class ClarifyGoalRequest(BaseModel):
     originalGoal: str
     newGoal: str
@@ -203,9 +244,73 @@ async def clarify_goal(
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
+def _deterministic_recommend_next(nodes, edges) -> dict:
+    def row_get(row, key, default=None):
+        if hasattr(row, "get"):
+            return row.get(key, default)
+        try:
+            return row[key]
+        except Exception:
+            return default
+
+    node_list = [
+        {
+            "id": n["id"],
+            "name": n["name"],
+            "status": n["status"],
+            "is_target": bool(n["is_target"]),
+            "target_end_date": row_get(n, "target_end_date"),
+        }
+        for n in nodes
+    ]
+    if not node_list:
+        return {
+            "recommended_node_id": None,
+            "reason": "当前计划还没有可推荐的节点。",
+            "recommendation_source": "local",
+        }
+
+    node_by_id = {node["id"]: node for node in node_list}
+    prerequisites_by_node = {}
+    for edge in edges:
+        prerequisites_by_node.setdefault(edge["to_node_id"], []).append(edge["from_node_id"])
+
+    unlearned_nodes = [node for node in node_list if node["status"] == "unlearned"]
+    ready_nodes = []
+    for node in unlearned_nodes:
+        prerequisite_ids = prerequisites_by_node.get(node["id"], [])
+        if all(node_by_id.get(prereq, {}).get("status") != "unlearned" for prereq in prerequisite_ids):
+            ready_nodes.append(node)
+
+    candidates = ready_nodes or unlearned_nodes
+    if not candidates:
+        return {
+            "recommended_node_id": None,
+            "reason": "当前计划没有未学习节点，可以复盘或归档计划。",
+            "recommendation_source": "local",
+        }
+
+    def sort_key(node):
+        due = str(node["target_end_date"] or "9999-12-31T23:59:59")
+        return (due, 0 if node["is_target"] else 1, node["name"])
+
+    selected = sorted(candidates, key=sort_key)[0]
+    if ready_nodes:
+        reason = "基于本地依赖关系推荐：这个节点的前置节点已经完成或不阻塞当前学习。"
+    else:
+        reason = "基于本地规则推荐：当前没有完全就绪节点，先从未学习节点中选择一个继续推进。"
+
+    return {
+        "recommended_node_id": selected["id"],
+        "reason": reason,
+        "recommendation_source": "local",
+    }
+
+
 @router.post("/explain-topic")
 async def explain_topic(
     request: ExplainTopicRequest,
+    http_request: Request,
     current_user_id: str = Depends(get_current_user_id),
 ):
     """F7: AI 解释 what 列表中的某个主题，带 content_cache 缓存。
@@ -272,6 +377,8 @@ async def explain_topic(
                     plan_title=plan_title,
                     why=why,
                 ):
+                    if await http_request.is_disconnected():
+                        return
                     accumulated.append(chunk)
                     chunk_count += 1
                     yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
@@ -307,6 +414,7 @@ async def explain_topic(
 async def _stream_chat(
     request: ChatRequest,
     current_user_id: str,
+    http_request: Request | None = None,
 ) -> AsyncGenerator[str, None]:
     """F4: SSE generator for contextual chat."""
     ai_service = get_ai_service()
@@ -327,6 +435,8 @@ async def _stream_chat(
         )
 
         async for chunk in ai_service.stream_chat_session(session):
+            if http_request and await http_request.is_disconnected():
+                return
             yield f"data: {json.dumps({'type': 'chunk', 'text': chunk}, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0)
 
@@ -346,11 +456,12 @@ async def _stream_chat(
 @router.post("/chat")
 async def chat_endpoint(
     request: ChatRequest,
+    http_request: Request,
     current_user_id: str = Depends(get_current_user_id),
 ):
     """F4: AI 聊天助手 — SSE 流式对话，结合节点学习上下文。"""
     return StreamingResponse(
-        _stream_chat(request, current_user_id),
+        _stream_chat(request, current_user_id, http_request),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
@@ -397,8 +508,10 @@ async def recommend_next(
             detail={"code": "FORBIDDEN", "message": "Forbidden"},
         )
 
+    ensure_schema_columns(db, {"nodes": ("target_end_date",)})
+
     nodes = db.execute(
-        "SELECT id, name, status, is_target FROM nodes WHERE plan_id = ?",
+        "SELECT id, name, status, is_target, target_end_date FROM nodes WHERE plan_id = ?",
         (request.planId,),
     ).fetchall()
     edges = db.execute(
@@ -425,6 +538,7 @@ async def recommend_next(
         ],
         "target_node_id": plan["target_node_id"],
     }
+    local_recommendation = _deterministic_recommend_next(nodes, edges)
 
     user_profile = {}
     if profile_row:
@@ -443,22 +557,28 @@ async def recommend_next(
     )
 
     ai_service = get_ai_service()
-    result = await ai_service.recommend_next(
-        graph=graph,
-        user_profile=user_profile,
-        learning_history=history,
-        learning_goal=plan["title"],
-    )
-
-    if not result.success:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": result.error.model_dump() if result.error else {},
-            },
+    try:
+        result = await asyncio.wait_for(
+            ai_service.recommend_next(
+                graph=graph,
+                user_profile=user_profile,
+                learning_history=history,
+                learning_goal=plan["title"],
+            ),
+            timeout=8,
         )
+    except Exception:
+        result = None
+
+    if not result or not result.success:
+        return {"success": True, "data": local_recommendation}
+
+    payload = result.data.model_dump(by_alias=True) if result.data else {}
+    if not payload.get("recommended_node_id"):
+        payload = local_recommendation
+    else:
+        payload["recommendation_source"] = "ai"
     return {
         "success": True,
-        "data": result.data.model_dump(by_alias=True) if result.data else {},
+        "data": payload,
     }

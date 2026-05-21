@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MasteryChecklist } from './MasteryChecklist';
 
 describe('MasteryChecklist', () => {
@@ -23,5 +23,30 @@ describe('MasteryChecklist', () => {
   it('renders correct count of items', () => {
     render(<MasteryChecklist items={['item1', 'item2', 'item3']} />);
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('starts quiz when clicking a mastery item', () => {
+    const calls = [];
+    render(
+      <MasteryChecklist
+        items={['item1']}
+        onStartQuiz={(item, index) => calls.push({ item, index })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /item1/ }));
+    expect(calls).toEqual([{ item: 'item1', index: 0 }]);
+  });
+
+  it('shows passed item with checked state', () => {
+    render(
+      <MasteryChecklist
+        items={['item1']}
+        getItemKey={() => 'node:0:item1'}
+        passedKeys={new Set(['node:0:item1'])}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /item1/ })).toHaveClass('text-teal-800');
   });
 });

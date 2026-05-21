@@ -49,6 +49,8 @@ vi.mock("../contexts/PlanContext", () => ({
       createPlan: createPlanMock,
       archivePlan: vi.fn(),
       updatePlan: vi.fn(),
+      pausePlan: vi.fn(),
+      resumePlan: vi.fn(),
     },
   }),
 }));
@@ -100,6 +102,8 @@ describe("HomePage loading scenes", () => {
 
     expect(await screen.findByText("AI 正在理解你的学习目标")).toBeInTheDocument();
 
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+
     parseDeferred.resolve({
       interpretation: "理解 layer normalization",
       backgroundSummary: [],
@@ -139,6 +143,8 @@ describe("HomePage loading scenes", () => {
 
     expect(await screen.findByText("正在为你生成学习图谱")).toBeInTheDocument();
     expect(screen.getByText(/构建核心概念/)).toBeInTheDocument();
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 
     generateDeferred.resolve({ nodes: [], edges: [] });
   });

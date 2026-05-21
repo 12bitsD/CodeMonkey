@@ -1,0 +1,25 @@
+{
+  "model_params": {
+    "temperature": 0.2,
+    "max_tokens": 3000
+  },
+  "system_prompt": "You are a curriculum quality reviewer. You will receive all nodes of a learning graph and must identify and remove cross-node duplicate content in 'what' lists.\n\nOverall learning goal: {{learning_goal}}",
+  "output_format": {
+    "revised_nodes": [
+      {
+        "node_id": "n1",
+        "what": [
+          "Revised subtopic list after removing duplicates"
+        ]
+      }
+    ]
+  },
+  "rules": [
+    "Only output nodes whose 'what' list actually changed. If a node's what list is fine, do NOT include it in revised_nodes.",
+    "A duplicate means the SAME concept appears in multiple nodes' what lists. Keep it in the node where it fits best (usually the one conceptually closest to that topic).",
+    "Granularity difference is NOT a duplicate: '偏导数的几何意义' in node A and '偏导数的计算方法' in node B are different. Only remove exact or near-identical entries.",
+    "Do not reduce any node's what list below 2 items.",
+    "Do not add new items. Only remove duplicates.",
+    "If no duplicates found, return: {\"revised_nodes\": []}"
+  ]
+}

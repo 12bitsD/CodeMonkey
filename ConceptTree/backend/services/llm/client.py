@@ -17,6 +17,11 @@ from .providers import (
 logger = logging.getLogger(__name__)
 
 
+def _is_non_retryable_provider_error(error: Exception) -> bool:
+    status_code = getattr(error, "status_code", None)
+    return status_code in {400, 401, 403, 404}
+
+
 class UnifiedLLMClient:
     """
     Unified client for LLM operations.
@@ -33,6 +38,7 @@ class UnifiedLLMClient:
         self.fallback = (
             self._create_fallback_provider() if settings.LLM_FALLBACK_ENABLED else None
         )
+        self.image = self._create_image_provider()
         self.max_retries = settings.LLM_MAX_RETRIES
 
     def _create_primary_provider(self) -> OpenAICompatibleProvider:
@@ -56,6 +62,28 @@ class UnifiedLLMClient:
             else None,
             model=settings.LLM_FALLBACK_MODEL,
             timeout=settings.LLM_TIMEOUT,
+        )
+
+    def _create_image_provider(self) -> Optional[OpenAICompatibleProvider]:
+        """Create the dedicated image generation provider."""
+        if not settings.IMAGE_API_KEY:
+            return None
+
+        return OpenAICompatibleProvider(
+            api_key=settings.IMAGE_API_KEY,
+            base_url=settings.IMAGE_BASE_URL if settings.IMAGE_BASE_URL else None,
+            model=settings.IMAGE_MODEL,
+            timeout=settings.IMAGE_TIMEOUT,
+        )
+
+    async def generate_image(self, prompt: str) -> bytes:
+        """Generate an image with the dedicated image provider."""
+        if not self.image or not self.image.is_available():
+            raise LLMServiceError("Image provider not available")
+
+        return await self.image.generate_image(
+            prompt=prompt,
+            model=settings.IMAGE_MODEL,
         )
 
     async def chat(
@@ -108,6 +136,8 @@ class UnifiedLLMClient:
 
             except (LLMTimeoutError, LLMProviderError) as e:
                 last_error = e
+                if _is_non_retryable_provider_error(e):
+                    break
                 if attempt < self.max_retries - 1:
                     wait_time = 2**attempt
                     await asyncio.sleep(wait_time)

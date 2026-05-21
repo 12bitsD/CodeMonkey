@@ -1,17 +1,32 @@
 from contextlib import asynccontextmanager
+import json
+import logging
+from pathlib import Path
+import time
+import uuid
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
+from psycopg2 import DataError, DatabaseError, IntegrityError, InterfaceError, OperationalError
+from psycopg2.pool import PoolError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from config import get_cors_origins, get_cors_allow_credentials, settings
-from database import close_connection_pool
-from routers import ai, auth, graph, notes, plans, stats, user
+from database import SchemaNotReadyError, close_connection_pool, get_db_context
+from routers import ai, auth, deep_learn, graph, notes, plans, stats, user
 from utils.limiter import limiter
+from utils.observability import (
+    get_metrics_snapshot,
+    record_db_error,
+    record_request,
+)
+
+logger = logging.getLogger(__name__)
 
 # 生产环境关闭 OpenAPI 文档（S12）
 _docs_url = "/docs" if settings.DEBUG else None
@@ -44,11 +59,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 
 
 @app.middleware("http")
-async def add_security_headers(request: Request, call_next):
+async def request_observability_and_security_headers(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    started = time.perf_counter()
     response = await call_next(request)
+    duration_ms = (time.perf_counter() - started) * 1000
+    route = getattr(request.scope.get("route"), "path", request.url.path)
+    record_request(request.method, route, response.status_code, duration_ms)
+    logger.info(
+        json.dumps(
+            {
+                "event": "http_request",
+                "requestId": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "route": route,
+                "statusCode": response.status_code,
+                "durationMs": round(duration_ms, 2),
+            },
+            ensure_ascii=False,
+        )
+    )
+    response.headers.setdefault("X-Request-ID", request_id)
     response.headers.setdefault(
         "Content-Security-Policy",
         (
@@ -78,6 +114,7 @@ app.include_router(plans.router)
 app.include_router(notes.router)
 app.include_router(stats.router)
 app.include_router(ai.router)
+app.include_router(deep_learn.router)
 
 
 def _default_error_code(status_code: int) -> str:
@@ -126,8 +163,122 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+@app.exception_handler(SchemaNotReadyError)
+async def schema_not_ready_exception_handler(request: Request, exc: SchemaNotReadyError):
+    record_db_error("SCHEMA_NOT_READY")
+    logger.warning("Database schema is not ready: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "error": {
+                "code": "SCHEMA_NOT_READY",
+                "message": "数据库结构尚未完成迁移，请先执行数据库 migration",
+                "missingColumns": exc.missing_columns,
+            },
+        },
+    )
+
+
+@app.exception_handler(PoolError)
+async def database_pool_exception_handler(request: Request, exc: PoolError):
+    record_db_error("DATABASE_UNAVAILABLE")
+    logger.warning("Database pool unavailable: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "数据库连接暂时不可用，请稍后重试",
+            },
+        },
+    )
+
+
+@app.exception_handler(OperationalError)
+async def database_operational_exception_handler(request: Request, exc: OperationalError):
+    record_db_error("DATABASE_UNAVAILABLE")
+    logger.warning("Database operational error: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "数据库暂时不可用，请稍后重试",
+            },
+        },
+    )
+
+
+@app.exception_handler(InterfaceError)
+async def database_interface_exception_handler(request: Request, exc: InterfaceError):
+    record_db_error("DATABASE_CONNECTION_LOST")
+    logger.warning("Database interface error: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_CONNECTION_LOST",
+                "message": "数据库连接已中断，请稍后重试",
+            },
+        },
+    )
+
+
+@app.exception_handler(IntegrityError)
+async def database_integrity_exception_handler(request: Request, exc: IntegrityError):
+    record_db_error("DATABASE_CONFLICT")
+    logger.warning("Database integrity error: %s", exc)
+    return JSONResponse(
+        status_code=409,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_CONFLICT",
+                "message": "数据已发生变化，请刷新后重试",
+            },
+        },
+    )
+
+
+@app.exception_handler(DataError)
+async def database_data_exception_handler(request: Request, exc: DataError):
+    record_db_error("DATABASE_INVALID_DATA")
+    logger.warning("Database data error: %s", exc)
+    return JSONResponse(
+        status_code=400,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_INVALID_DATA",
+                "message": "数据格式不合法，请检查后重试",
+            },
+        },
+    )
+
+
+@app.exception_handler(DatabaseError)
+async def database_exception_handler(request: Request, exc: DatabaseError):
+    record_db_error("DATABASE_ERROR")
+    logger.exception("Database error")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_ERROR",
+                "message": "数据库请求失败，请稍后重试",
+            },
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled request error")
     return JSONResponse(
         status_code=500,
         content={
@@ -141,6 +292,42 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/health/db")
+def database_health_check():
+    started = time.perf_counter()
+    try:
+        with get_db_context() as db:
+            db.execute("SELECT 1").fetchone()
+    except Exception as exc:
+        latency_ms = round((time.perf_counter() - started) * 1000, 2)
+        record_db_error("DATABASE_UNAVAILABLE")
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "database_health_check",
+                    "status": "degraded",
+                    "database": "unavailable",
+                    "latencyMs": latency_ms,
+                    "errorType": type(exc).__name__,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return {
+            "status": "degraded",
+            "database": "unavailable",
+            "latencyMs": latency_ms,
+        }
+
+    latency_ms = round((time.perf_counter() - started) * 1000, 2)
+    return {"status": "ok", "database": "ok", "latencyMs": latency_ms}
+
+
+@app.get("/health/metrics")
+def health_metrics():
+    return {"status": "ok", "metrics": get_metrics_snapshot()}
 
 
 @app.get("/")

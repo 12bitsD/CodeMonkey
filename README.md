@@ -119,7 +119,7 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 
 ### 1. 配置 LLM API Key
 
-本项目使用 Kimi 2.5 (moonshot-v1-8k) 作为 AI 服务的大脑。请在 `ConceptTree/backend` 目录下创建 `.env` 文件：
+本项目默认使用 Xiaomi MiMo Token Plan China 作为 AI 服务的大脑。请在 `ConceptTree/backend` 目录下创建 `.env` 文件：
 
 ```bash
 cd ConceptTree/backend
@@ -128,7 +128,11 @@ cp .env.example .env
 
 并在 `.env` 中填入你的 API Key：
 ```env
-LLM_API_KEY=sk-your-kimi-api-key
+LLM_PROVIDER=mimo_token_plan_cn
+LLM_API_KEY=tp-your-mimo-token-plan-cn-api-key
+# 注意：这里是 Token Plan China 专用地址，不是普通 api.xiaomimimo.com
+LLM_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1
+LLM_MODEL=mimo-v2.5-pro
 ```
 
 ### 2. 启动服务
@@ -262,7 +266,7 @@ python -m pytest -q test_docs_sync.py
 | 组件               | 状态      | 备注                                                     |
 | ------------------ | --------- | -------------------------------------------------------- |
 | 核心图谱引擎       | ✅ 已完成 | 节点/边/状态/位置全持久化                               |
-| 目标解析 AI        | ✅ 已完成 | 真实 Kimi 2.5，Prompt JSON 配置化                       |
+| 目标解析 AI        | ✅ 已完成 | 真实 MiMo Token Plan China，Prompt JSON 配置化           |
 | 个性化图谱         | ✅ 已完成 | user_background 全链路打通                              |
 | 用户认证           | ✅ 已完成 | JWT + 注册/登录/登出                                    |
 | 前端 UI            | ✅ 已完成 | 首页/图谱/我的学习，全局 Toast                          |

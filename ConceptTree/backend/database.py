@@ -4,7 +4,7 @@ import os
 import re
 from contextlib import contextmanager
 from threading import Lock
-from typing import Any, Callable, Generator, Optional, Sequence
+from typing import Any, Callable, Generator, Mapping, Optional, Sequence
 
 import psycopg2
 from psycopg2 import pool as psycopg2_pool
@@ -15,6 +15,13 @@ from config import settings
 _VALID_SCHEMA_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$", re.IGNORECASE)
 _CONNECTION_POOL: Optional["psycopg2_pool.ThreadedConnectionPool"] = None
 _POOL_LOCK = Lock()
+
+
+class SchemaNotReadyError(RuntimeError):
+    def __init__(self, missing_columns: Sequence[str]):
+        self.missing_columns = list(missing_columns)
+        missing = ", ".join(self.missing_columns)
+        super().__init__(f"Database schema is missing required columns: {missing}")
 
 
 def _convert_placeholders(sql: str) -> str:
@@ -45,10 +52,15 @@ def _validate_schema_name(schema: str) -> None:
 def _configure_connection(conn: "psycopg2.extensions.connection") -> None:
     schema = _get_database_schema()
     _validate_schema_name(schema)
-    if not schema:
-        return
     with conn.cursor() as cur:
-        cur.execute(f'SET search_path TO "{schema}"')
+        cur.execute("SET statement_timeout TO %s", (settings.DB_STATEMENT_TIMEOUT_MS,))
+        cur.execute("SET lock_timeout TO %s", (settings.DB_LOCK_TIMEOUT_MS,))
+        cur.execute(
+            "SET idle_in_transaction_session_timeout TO %s",
+            (settings.DB_IDLE_IN_TX_TIMEOUT_MS,),
+        )
+        if schema:
+            cur.execute(f'SET search_path TO "{schema}"')
     conn.commit()
 
 
@@ -66,6 +78,7 @@ def get_connection_pool() -> "psycopg2_pool.ThreadedConnectionPool":
                 minconn=min_size,
                 maxconn=max_size,
                 dsn=settings.DATABASE_URL,
+                connect_timeout=max(1, settings.DB_CONNECT_TIMEOUT),
             )
         return _CONNECTION_POOL
 
@@ -80,19 +93,41 @@ def close_connection_pool() -> None:
 
 
 def _acquire_connection() -> "psycopg2.extensions.connection":
-    conn = get_connection_pool().getconn()
-    _configure_connection(conn)
-    return conn
+    connection_pool = get_connection_pool()
+    last_error: Optional[Exception] = None
+
+    for _attempt in range(2):
+        conn = connection_pool.getconn()
+        try:
+            if getattr(conn, "closed", 0):
+                raise psycopg2.OperationalError("pooled connection is closed")
+            _configure_connection(conn)
+            return conn
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as error:
+            last_error = error
+            try:
+                connection_pool.putconn(conn, close=True)
+            except Exception:
+                pass
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("Unable to acquire database connection")
 
 
 def _release_connection(conn: "psycopg2.extensions.connection") -> None:
-    if getattr(conn, "closed", 0):
-        return
+    close_connection = bool(getattr(conn, "closed", 0))
     try:
-        conn.rollback()
+        if not close_connection:
+            conn.rollback()
+    except Exception:
+        close_connection = True
+    try:
+        get_connection_pool().putconn(conn, close=close_connection)
+    except TypeError:
+        get_connection_pool().putconn(conn)
     except Exception:
         pass
-    get_connection_pool().putconn(conn)
 
 
 class DbSession:
@@ -121,6 +156,40 @@ class DbSession:
             return
         self._closed = True
         self._close_connection(self._conn)
+
+
+def ensure_schema_columns(
+    db: DbSession,
+    required_columns: Mapping[str, Sequence[str]],
+) -> None:
+    missing: list[str] = []
+
+    for table_name, columns in required_columns.items():
+        rows = db.execute(
+            (
+                "SELECT column_name "
+                "FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = ?"
+            ),
+            (table_name,),
+        ).fetchall()
+        present = {row["column_name"] for row in rows}
+        for column in columns:
+            if column not in present:
+                missing.append(f"{table_name}.{column}")
+
+    if missing:
+        raise SchemaNotReadyError(missing)
+
+
+@contextmanager
+def transaction(db: DbSession) -> Generator[DbSession, None, None]:
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def get_db() -> Generator[DbSession, None, None]:

@@ -11,12 +11,13 @@ export default function ChatMarkdownMessage({
   isPending = false,
   sources = [],
   searchStatus = null,
+  className = "",
 }) {
   const showStatus =
     searchStatus && SEARCH_STATUS_LABELS[searchStatus] && searchStatus !== "done";
 
   return (
-    <div className="max-w-[88%] rounded-[22px] rounded-bl-sm border border-teal-100/80 bg-gradient-to-br from-white via-teal-50/70 to-cyan-50/80 px-4 py-3 text-zinc-700 shadow-[0_10px_30px_rgba(20,184,166,0.08)]">
+    <div className={`max-w-[88%] rounded-[22px] rounded-bl-sm border border-teal-100/80 bg-gradient-to-br from-white via-teal-50/70 to-cyan-50/80 px-4 py-3 text-zinc-700 shadow-[0_10px_30px_rgba(20,184,166,0.08)] ${className}`.trim()}>
       <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-teal-500">
         <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
         AI 回复

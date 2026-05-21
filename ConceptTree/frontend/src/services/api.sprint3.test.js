@@ -97,6 +97,23 @@ describe("aiApi.explainTopic", () => {
     expect(options.headers["Authorization"]).toBe(`Bearer ${TOKEN}`);
   });
 
+  it("passes AbortController signal to explain-topic fetch", async () => {
+    mockFetch([{ type: "chunk", text: "内容" }, { type: "done" }]);
+    const controller = new AbortController();
+
+    await aiApi.explainTopic(
+      "n1",
+      0,
+      "topic",
+      { nodeName: "节点" },
+      () => {},
+      { signal: controller.signal },
+    );
+
+    const [, options] = fetch.mock.calls[0];
+    expect(options.signal).toBe(controller.signal);
+  });
+
   it("calls onChunk for each chunk event", async () => {
     mockFetch([
       { type: "chunk", text: "第一段" },
@@ -199,6 +216,19 @@ describe("aiApi.chatStream", () => {
 
     const [, options] = fetch.mock.calls[0];
     expect(options.headers["Authorization"]).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("passes AbortController signal to chat fetch", async () => {
+    mockFetch([{ type: "chunk", text: "ok" }, { type: "done" }]);
+    const controller = new AbortController();
+
+    await aiApi.chatStream([{ role: "user", content: "hi" }], null, {
+      onChunk: () => {},
+      signal: controller.signal,
+    });
+
+    const [, options] = fetch.mock.calls[0];
+    expect(options.signal).toBe(controller.signal);
   });
 
   it("calls onChunk for each chunk", async () => {

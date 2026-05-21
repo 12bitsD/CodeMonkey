@@ -28,10 +28,10 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_EXPIRE_DAYS: ${JWT_EXPIRE_DAYS:-7}
-      LLM_PROVIDER: ${LLM_PROVIDER:-kimi}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mimo_token_plan_cn}
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.moonshot.cn/v1}
-      LLM_MODEL: ${LLM_MODEL:-moonshot-v1-32k}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://token-plan-cn.xiaomimimo.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-mimo-v2.5-pro}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
       LLM_FALLBACK_ENABLED: ${LLM_FALLBACK_ENABLED:-false}

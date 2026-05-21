@@ -93,6 +93,7 @@ class NodeData(BaseModel):
     phase: Optional[str] = None
     phase_order: int = 0
     depth_level: int = 2
+    targetEndDate: Optional[str] = None
 
 
 class NodeBase(BaseModel):
@@ -112,6 +113,7 @@ class NodeBase(BaseModel):
     phase: Optional[str] = None
     phase_order: int = 0
     depth_level: int = 2
+    targetEndDate: Optional[str] = None
 
 
 class NodeCreate(BaseModel):
@@ -128,6 +130,7 @@ class NodeCreate(BaseModel):
     resources: List[Dict[str, str]] = []
     is_target: bool = Field(False, alias="isTarget")
     domain: Optional[str] = None
+    targetEndDate: Optional[str] = None
 
 
 class NodeUpdate(BaseModel):
@@ -139,6 +142,7 @@ class NodeUpdate(BaseModel):
     mastery: Optional[List[str]] = None
     prompt: Optional[str] = None
     resources: Optional[List[Dict[str, str]]] = None
+    targetEndDate: Optional[str] = None
 
 
 class Edge(BaseModel):
@@ -153,14 +157,28 @@ class GraphResponse(BaseModel):
     edges: List[Edge]
 
 
+class PlanStatus(str, Enum):
+    active = "active"
+    paused = "paused"
+    archived = "archived"
+
+
 class PlanSummary(BaseModel):
     id: str
     title: str
     progress: Optional[int] = 0
     total: Optional[int] = 0
-    status: Optional[str] = "active"
+    status: PlanStatus = PlanStatus.active
     lastAccess: Optional[str] = None
     createdAt: Optional[str] = None
+    startDate: Optional[str] = None
+    targetEndDate: Optional[str] = None
+    studyFrequency: str = "flexible"
+    studyDaysPerWeek: int = 3
+    reminderEnabled: bool = False
+    reminderTime: Optional[str] = None
+    reminderTimezone: Optional[str] = None
+    archivedReason: Optional[str] = None
 
 
 class PlanCreateRequest(BaseModel):
@@ -170,6 +188,13 @@ class PlanCreateRequest(BaseModel):
     edges: List[Edge]
     targetNodeId: str
     learning_purpose: str = "apply"  # F1: explore / apply / master
+    startDate: Optional[str] = None
+    targetEndDate: Optional[str] = None
+    studyFrequency: str = "flexible"
+    studyDaysPerWeek: int = Field(default=3, ge=1, le=7)
+    reminderEnabled: bool = False
+    reminderTime: Optional[str] = None
+    reminderTimezone: Optional[str] = None
 
 
 class PlanCreateResponse(BaseModel):
@@ -178,7 +203,18 @@ class PlanCreateResponse(BaseModel):
 
 
 class PlanUpdateRequest(BaseModel):
-    title: str
+    title: Optional[str] = None
+    startDate: Optional[str] = None
+    targetEndDate: Optional[str] = None
+    studyFrequency: Optional[str] = None
+    studyDaysPerWeek: Optional[int] = Field(default=None, ge=1, le=7)
+    reminderEnabled: Optional[bool] = None
+    reminderTime: Optional[str] = None
+    reminderTimezone: Optional[str] = None
+
+
+class ArchivePlanRequest(BaseModel):
+    reason: Optional[str] = "manual"
 
 
 class PlanUpdateResponse(BaseModel):
@@ -338,6 +374,73 @@ class GenerateGraphAIResult(BaseModel):
 
     success: bool
     data: Optional[GenerateGraphResponse] = None
+    error: Optional[ApiError] = None
+
+
+# ========== Multi-Agent v2 models ==========
+
+
+class SkeletonNode(BaseModel):
+    """Phase 1 output: single node skeleton"""
+
+    id: str
+    name: str
+    domain: Optional[str] = None
+
+
+class SkeletonGraph(BaseModel):
+    """Phase 1 output: full graph skeleton"""
+
+    nodes: List[SkeletonNode]
+    edges: List[GraphEdge]
+    targetNodeId: str
+
+
+class GeneratedNodeContent(BaseModel):
+    """Phase 2 output: content for one node"""
+
+    node_id: str
+    why: str
+    what: List[str]
+    mastery: List[str]
+    prompt: str
+    resources: List[Resource] = []
+
+
+class IntegrationRevision(BaseModel):
+    """One entry in Phase 3 output"""
+
+    node_id: str
+    what: List[str]
+
+
+class IntegrationResult(BaseModel):
+    """Phase 3 output"""
+
+    revised_nodes: List[IntegrationRevision] = []
+
+
+class GraphNodeV2(BaseModel):
+    """Fully assembled node after all 3 phases"""
+
+    id: str
+    name: str
+    domain: Optional[str] = None
+    status: str = "unlearned"
+    x: float = 0.0
+    y: float = 0.0
+    isTarget: bool = False
+    why: str = ""
+    what: List[str] = []
+    mastery: List[str] = []
+    prompt: str = ""
+    resources: List[Resource] = []
+
+
+class GenerateGraphV2AIResult(BaseModel):
+    """Wrapper returned by ai_service.generate_graph_v2_stream caller"""
+
+    success: bool
     error: Optional[ApiError] = None
 
 

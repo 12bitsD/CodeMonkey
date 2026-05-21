@@ -33,6 +33,10 @@ class Settings:
     DATABASE_SCHEMA: str = _get_env("DATABASE_SCHEMA", "")
     DB_POOL_MIN_SIZE: int = int(_get_env("DB_POOL_MIN_SIZE", "1"))
     DB_POOL_MAX_SIZE: int = int(_get_env("DB_POOL_MAX_SIZE", "10"))
+    DB_CONNECT_TIMEOUT: int = int(_get_env("DB_CONNECT_TIMEOUT", "5"))
+    DB_STATEMENT_TIMEOUT_MS: int = int(_get_env("DB_STATEMENT_TIMEOUT_MS", "15000"))
+    DB_LOCK_TIMEOUT_MS: int = int(_get_env("DB_LOCK_TIMEOUT_MS", "3000"))
+    DB_IDLE_IN_TX_TIMEOUT_MS: int = int(_get_env("DB_IDLE_IN_TX_TIMEOUT_MS", "10000"))
 
     JWT_SECRET_KEY: str = _get_env(
         "JWT_SECRET_KEY", "your-secret-key-change-in-production"
@@ -47,16 +51,26 @@ class Settings:
     )
 
     # LLM Configuration
-    LLM_PROVIDER: str = _get_env("LLM_PROVIDER", "kimi")
+    LLM_PROVIDER: str = _get_env("LLM_PROVIDER", "mimo_token_plan_cn")
     LLM_API_KEY: str = _get_env("LLM_API_KEY", "")
-    LLM_BASE_URL: str = _get_env("LLM_BASE_URL", "https://api.moonshot.cn/v1")
-    LLM_MODEL: str = _get_env("LLM_MODEL", "kimi-k2-5")
+    LLM_BASE_URL: str = _get_env(
+        "LLM_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"
+    )
+    LLM_MODEL: str = _get_env("LLM_MODEL", "mimo-v2.5-pro")
     LLM_TIMEOUT: int = int(_get_env("LLM_TIMEOUT", "30"))
-    LLM_MAX_RETRIES: int = int(_get_env("LLM_MAX_RETRIES", "3"))
+    LLM_MAX_RETRIES: int = int(_get_env("LLM_MAX_RETRIES", "2"))
     LLM_TEMPERATURE: float = float(_get_env("LLM_TEMPERATURE", "0.7"))
 
+    # Image generation provider. Keep separate from the chat LLM so OpenRouter
+    # credits/config can be used only when image_type == "dalle".
+    IMAGE_PROVIDER: str = _get_env("IMAGE_PROVIDER", "openrouter")
+    IMAGE_API_KEY: str = _get_env("IMAGE_API_KEY", _get_env("OPENROUTER_API_KEY", ""))
+    IMAGE_BASE_URL: str = _get_env("IMAGE_BASE_URL", "https://openrouter.ai/api/v1")
+    IMAGE_MODEL: str = _get_env("IMAGE_MODEL", "openai/gpt-5.4-image-2")
+    IMAGE_TIMEOUT: int = int(_get_env("IMAGE_TIMEOUT", "300"))
+
     # Fallback configuration
-    LLM_FALLBACK_ENABLED: bool = _get_bool_env("LLM_FALLBACK_ENABLED", True)
+    LLM_FALLBACK_ENABLED: bool = _get_bool_env("LLM_FALLBACK_ENABLED", False)
     LLM_FALLBACK_PROVIDER: str = _get_env("LLM_FALLBACK_PROVIDER", "openai")
     LLM_FALLBACK_API_KEY: str = _get_env("LLM_FALLBACK_API_KEY", "")
     LLM_FALLBACK_BASE_URL: str = _get_env("LLM_FALLBACK_BASE_URL", "")
@@ -68,6 +82,11 @@ class Settings:
     SEARCH_MAX_RESULTS: int = int(_get_env("SEARCH_MAX_RESULTS", "5"))
     SEARCH_ALLOWED_DOMAINS_RAW: str = _get_env("SEARCH_ALLOWED_DOMAINS", "")
     SEARCH_CACHE_TTL_SECONDS: int = int(_get_env("SEARCH_CACHE_TTL_SECONDS", "1800"))
+
+    # Supabase Storage (for DALL-E image uploads)
+    SUPABASE_URL: str = _get_env("SUPABASE_URL", "")
+    SUPABASE_SERVICE_ROLE_KEY: str = _get_env("SUPABASE_SERVICE_ROLE_KEY", "")
+    BACKEND_PUBLIC_BASE_URL: str = _get_env("BACKEND_PUBLIC_BASE_URL", "http://127.0.0.1:8000")
 
 
 settings = Settings()
