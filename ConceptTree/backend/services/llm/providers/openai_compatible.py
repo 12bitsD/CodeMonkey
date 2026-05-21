@@ -1,5 +1,6 @@
 """OpenAI SDK compatible provider (works with MiMo, Kimi, OpenAI, etc.)"""
 
+import base64
 from typing import List, Dict, Any, Optional, AsyncGenerator
 import httpx
 from openai import AsyncOpenAI, APIConnectionError, APIError, APITimeoutError
@@ -105,6 +106,43 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         except Exception as e:
             raise LLMProviderError(f"Unexpected error: {str(e)}")
 
+
+    async def generate_image(
+        self,
+        prompt: str,
+        *,
+        model: str = "openai/gpt-image-2",
+        size: str = "1024x1024",
+        quality: str = "standard",
+    ) -> bytes:
+        """Call OpenRouter image generation API, return PNG bytes."""
+        try:
+            response = await self.client.images.generate(
+                model=model,
+                prompt=prompt,
+                n=1,
+                size=size,
+                response_format="b64_json",
+            )
+            image = response.data[0]
+            b64 = getattr(image, "b64_json", None)
+            if b64:
+                return base64.b64decode(b64)
+            image_url = getattr(image, "url", None)
+            if image_url:
+                async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+                    downloaded = await client.get(image_url)
+                    downloaded.raise_for_status()
+                    return downloaded.content
+            raise LLMProviderError("Image API returned neither b64_json nor url")
+        except APITimeoutError:
+            raise LLMProviderError(f"Image generation timed out after {self.timeout}s")
+        except APIConnectionError as e:
+            raise LLMProviderError(f"Connection error during image generation: {str(e)}")
+        except APIError as e:
+            raise LLMProviderError(f"Image API error: {e.message}", status_code=e.status_code)
+        except Exception as e:
+            raise LLMProviderError(f"Unexpected error during image generation: {str(e)}")
 
     async def chat_stream(
         self,

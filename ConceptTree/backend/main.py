@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import json
 import logging
+from pathlib import Path
 import time
 import uuid
 
@@ -8,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from psycopg2 import DataError, DatabaseError, IntegrityError, InterfaceError, OperationalError
 from psycopg2.pool import PoolError
 from slowapi import _rate_limit_exceeded_handler
@@ -16,7 +18,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from config import get_cors_origins, get_cors_allow_credentials, settings
 from database import SchemaNotReadyError, close_connection_pool, get_db_context
-from routers import ai, auth, graph, notes, plans, stats, user
+from routers import ai, auth, deep_learn, graph, notes, plans, stats, user
 from utils.limiter import limiter
 from utils.observability import (
     get_metrics_snapshot,
@@ -57,6 +59,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 
 
 @app.middleware("http")
@@ -111,6 +114,7 @@ app.include_router(plans.router)
 app.include_router(notes.router)
 app.include_router(stats.router)
 app.include_router(ai.router)
+app.include_router(deep_learn.router)
 
 
 def _default_error_code(status_code: int) -> str:

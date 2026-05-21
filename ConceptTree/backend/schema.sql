@@ -74,6 +74,32 @@ CREATE TABLE IF NOT EXISTS learning_sessions (
   FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS deep_learn_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'INITIALIZING',
+  current_concept_index INTEGER NOT NULL DEFAULT 0,
+  difficulty_level INTEGER NOT NULL DEFAULT 3,
+  wrong_count_current INTEGER NOT NULL DEFAULT 0,
+  concepts_status JSONB NOT NULL DEFAULT '{}'::jsonb,
+  weak_points JSONB NOT NULL DEFAULT '[]'::jsonb,
+  recent_turns JSONB NOT NULL DEFAULT '[]'::jsonb,
+  what_list JSONB NOT NULL DEFAULT '[]'::jsonb,
+  conversation_summary TEXT,
+  test_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  test_current_index INTEGER NOT NULL DEFAULT 0,
+  test_results JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status TEXT NOT NULL DEFAULT 'in_progress',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  ended_at TIMESTAMPTZ,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+  FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS notes (
   id TEXT PRIMARY KEY,
   plan_id TEXT NOT NULL,
@@ -110,6 +136,12 @@ ON notes(user_id, plan_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_learning_sessions_user_created
 ON learning_sessions(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_deep_learn_sessions_user_node_status
+ON deep_learn_sessions(user_id, node_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_deep_learn_sessions_user_updated
+ON deep_learn_sessions(user_id, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_user_created
 ON idempotency_keys(user_id, created_at DESC);
@@ -153,6 +185,7 @@ ALTER TABLE plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE edges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deep_learn_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
 
@@ -162,19 +195,23 @@ ALTER TABLE plans FORCE ROW LEVEL SECURITY;
 ALTER TABLE nodes FORCE ROW LEVEL SECURITY;
 ALTER TABLE edges FORCE ROW LEVEL SECURITY;
 ALTER TABLE learning_sessions FORCE ROW LEVEL SECURITY;
+ALTER TABLE deep_learn_sessions FORCE ROW LEVEL SECURITY;
 ALTER TABLE notes FORCE ROW LEVEL SECURITY;
 ALTER TABLE idempotency_keys FORCE ROW LEVEL SECURITY;
 
 REVOKE ALL PRIVILEGES ON TABLE users, user_profiles, plans, nodes, edges, learning_sessions, notes, idempotency_keys FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON TABLE deep_learn_sessions FROM PUBLIC;
 
 DO $$
 BEGIN
   IF to_regrole('anon') IS NOT NULL THEN
     EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE users, user_profiles, plans, nodes, edges, learning_sessions, notes, idempotency_keys FROM anon';
+    EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE deep_learn_sessions FROM anon';
   END IF;
 
   IF to_regrole('authenticated') IS NOT NULL THEN
     EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE users, user_profiles, plans, nodes, edges, learning_sessions, notes, idempotency_keys FROM authenticated';
+    EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE deep_learn_sessions FROM authenticated';
   END IF;
 END
 $$;

@@ -246,6 +246,28 @@ function parseBlocks(markdown) {
       continue;
     }
 
+    if (
+      trimmed.includes("|") &&
+      i + 1 < lines.length &&
+      /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])
+    ) {
+      const splitRow = (row) => row
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map(cell => cell.trim());
+      const headers = splitRow(lines[i]);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && lines[i].trim().includes("|")) {
+        rows.push(splitRow(lines[i]));
+        i += 1;
+      }
+      blocks.push({ type: "table", headers, rows });
+      continue;
+    }
+
     const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
       blocks.push({
@@ -373,6 +395,35 @@ export function renderMarkdown(markdown) {
             <li key={`${key}-${itemIndex}`}>{parseInline(item, `${key}-${itemIndex}`)}</li>
           ))}
         </ListTag>
+      );
+    }
+
+    if (block.type === "table") {
+      return (
+        <div key={key} className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+          <table className="min-w-full border-collapse text-left text-xs">
+            <thead className="bg-zinc-50 text-zinc-600">
+              <tr>
+                {block.headers.map((header, headerIndex) => (
+                  <th key={`${key}-h-${headerIndex}`} className="border-b border-zinc-200 px-3 py-2 font-semibold">
+                    {parseInline(header, `${key}-h-${headerIndex}`)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={`${key}-r-${rowIndex}`} className="border-t border-zinc-100">
+                  {block.headers.map((_, cellIndex) => (
+                    <td key={`${key}-r-${rowIndex}-${cellIndex}`} className="px-3 py-2 align-top text-zinc-700">
+                      {parseInline(row[cellIndex] || "", `${key}-r-${rowIndex}-${cellIndex}`)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
     }
 

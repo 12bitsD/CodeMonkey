@@ -66,4 +66,19 @@ Hessian行列式 \\det(H) = 4 > 0。`}
     expect(container.textContent).not.toContain("\\det");
     expect(screen.getByText(/H =/)).toBeInTheDocument();
   });
+
+  it("renders markdown tables", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={`| 问题 | 调整措施 | 原理 |
+| --- | --- | --- |
+| 初期震荡剧烈 | 增大 β1 | 平滑梯度方向 |
+| 后期收敛缓慢 | 减小 β2 | 提高自适应速度 |`}
+      />,
+    );
+
+    expect(container.querySelector("table")).toBeInTheDocument();
+    expect(screen.getByText("调整措施")).toBeInTheDocument();
+    expect(screen.getByText("减小 β2")).toBeInTheDocument();
+  });
 });

@@ -1,1312 +1,960 @@
-# AI Coding Plan: 深入学习工作台 Phase 1
+# AI Coding Plan — 深入学习工作台 Phase 1
 
-> 供 AI coding agent 直接执行。每个 Task 独立可验证，按依赖顺序实施。
-
----
-
-## 环境约束（必读）
-
-- **数据库**：PostgreSQL via psycopg2，Supabase 管理迁移。**禁止调用 `init_database()`**，新表通过 SQL 迁移文件创建。
-- **占位符**：SQL 用 `?`，`database.py` 内部自动转 `%s`。JSON 字段用 `psycopg2.extras.Json` 包装（`_adapt_params` 已处理）。
-- **DB 访问**：FastAPI DI 用 `get_db`；后台任务用 `get_db_context()`。
-- **认证**：`from utils.auth import get_current_user_id`（FastAPI Depends）。
-- **LLM**：`from services.llm import get_llm_client`，方法 `chat_json()` 和 `chat_stream()`。
-- **SSE 模式**：参考 `routers/ai.py` 的 `StreamingResponse` + async generator。
-- **错误响应格式**：`{"success": false, "error": {"code": "XX", "message": "xx"}}`。
-- **前端技术栈**：React + React Router + Tailwind CSS，已有 `ChatMarkdownMessage`、`MarkdownContent` 组件可复用。
+> 版本：v2.0（基于 PRD v0.3 完全重写）
+> 适用：可被任何 AI coding agent 直接执行
+> 设计原则：契约先行（Contract First）、原子任务、可验证、零隐式依赖
 
 ---
 
-## 依赖关系图
+## Part 0 · Foundation（必读）
+
+### 0.1 环境与代码库约定
+
+| 约定 | 说明 |
+|------|------|
+| 数据库 | PostgreSQL on Supabase。DDL 直接在 Supabase SQL Editor 执行，**禁止**在 Python 代码里写 `CREATE TABLE` 或 migration 逻辑 |
+| 后端 SQL 占位符 | 一律用 `?`，`database.DbSession.execute` 内部自动转 `%s` |
+| JSON 字段写入 | 直接传 Python `dict`/`list`，`database._adapt_params` 会自动用 `psycopg2.extras.Json` 包装 |
+| JSON 字段读出 | psycopg2 + `RealDictCursor` 已自动反序列化为 dict/list，**不要再 `json.loads`** |
+| DB 访问 | FastAPI endpoint 用 `Depends(get_db)`；后台 / SSE 内部用 `with get_db_context() as db:` |
+| LLM 调用 | `get_llm_client()` → `chat_json(system_prompt, user_prompt, temperature, max_tokens, model=None)` 返回 `dict` |
+| LLM 流式 | `chat_stream(messages=[LLMMessage(role, content)], temperature, max_tokens, model)` 返回 `AsyncGenerator[str]` |
+| LLM Config 加载 | 沿用现有 `services/llm/configs/__init__.py` 的 `load_ai_config(config_name, user_input, **kwargs)` 或直接读 JSON 文件 |
+| Auth | `from utils.auth import get_current_user_id`，FastAPI `Depends(get_current_user_id)` 返回 user_id `str`（UUID 形式） |
+| 错误响应 | `raise HTTPException(status_code=N, detail={"code": "X", "message": "Y"})`，全局 handler 会包装成 `{success: false, error: {...}}` |
+| SSE 模式 | 参考 `routers/ai.py` 的 `_stream_chat`：`StreamingResponse(_gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})`，每条消息格式 `f"data: {json.dumps({...}, ensure_ascii=False)}\n\n"` |
+| 前端 API base | `import { buildApiUrl } from '../config/api'`；token 用 `tokenManager.get()` from `services/api.js` |
+| 前端 Markdown 渲染 | 复用 `components/chat/ChatMarkdownMessage.jsx` |
+
+### 0.2 文件树（必须落在这些路径，不要新建目录）
 
 ```
-Task 1 (DB Migration)
-  └── Task 3 (Session Repo)
-        └── Task 4 (Orchestrator)
-              └── Task 7 (Service)
-                    ├── Task 8 (Router)
-                    │     └── Task 9 (main.py 注册)
-                    └── Task 5 (Teaching Agent)  ─┐
-Task 2 (Models) ─────────────────────────────────┤→ Task 7
-                                  Task 6 (Assessment Agent) ─┘
+backend/
+├── models_deep_learn.py                                    [B-02]
+├── services/
+│   ├── deep_learn/
+│   │   ├── __init__.py                                     [B-03]  空模块声明
+│   │   ├── session_repo.py                                 [B-03]
+│   │   ├── state_machine.py                                [B-04]
+│   │   ├── agents/
+│   │   │   ├── __init__.py                                 (空)
+│   │   │   ├── teaching.py                                 [B-05]
+│   │   │   ├── assessment_per_question.py                  [B-06]
+│   │   │   └── assessment_overall.py                       [B-07]
+│   │   └── service.py                                      [B-08]
+│   └── llm/configs/
+│       ├── deep_learn_teaching.json                        [B-05]
+│       ├── deep_learn_assessment_per_question.json         [B-06]
+│       └── deep_learn_assessment_overall.json              [B-07]
+├── routers/
+│   └── deep_learn.py                                       [B-09]
+└── main.py                                                 [B-10] 修改
 
-Task 10 (Frontend API)
-  └── Task 17 (SSE Hook)
-        └── Task 12 (DeepLearnPage)
-              ├── Task 13 (ConceptProgress)
-              ├── Task 14 (DeepLearnChat)
-              │     ├── Task 15 (CommandBar)
-              │     └── Task 16 (MermaidDiagram)
-              └── Task 11 (App.jsx Route) [可并行]
+frontend/src/
+├── services/
+│   └── deepLearnApi.js                                     [F-01]
+├── hooks/
+│   └── useDeepLearnSession.js                              [F-02]
+├── pages/
+│   └── DeepLearnPage.jsx                                   [F-04]
+├── components/
+│   └── deep-learn/
+│       ├── ConceptProgress.jsx                             [F-05]
+│       ├── DeepLearnChat.jsx                               [F-06]
+│       ├── CommandBar.jsx                                  [F-07]
+│       └── MermaidDiagram.jsx                              [F-07]
+└── App.jsx                                                 [F-03] 修改
 ```
 
----
+### 0.3 类型契约（Single Source of Truth）
 
-## Task 1 — 数据库迁移
+> 这是**所有任务**的契约。后续所有任务的字段名、类型、可空性必须与此完全一致。任何不一致都是 bug。
 
-**文件**：`backend/scripts/migration_deep_learn_sessions.sql`
-
-```sql
--- deep_learn_sessions: 学习 session 状态持久化
-CREATE TABLE IF NOT EXISTS deep_learn_sessions (
-    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id               UUID NOT NULL,
-    node_id               TEXT NOT NULL,
-    plan_id               TEXT NOT NULL,
-    state                 TEXT NOT NULL DEFAULT 'INITIALIZING',
-    current_concept_index INTEGER NOT NULL DEFAULT 0,
-    difficulty_level      INTEGER NOT NULL DEFAULT 3,
-    wrong_count_current   INTEGER NOT NULL DEFAULT 0,
-    concepts_status       JSONB NOT NULL DEFAULT '{}',
-    weak_points           JSONB NOT NULL DEFAULT '[]',
-    recent_turns          JSONB NOT NULL DEFAULT '[]',
-    what_list             JSONB NOT NULL DEFAULT '[]',
-    conversation_summary  TEXT,
-    started_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ended_at              TIMESTAMPTZ,
-    status                TEXT NOT NULL DEFAULT 'in_progress',
-    CONSTRAINT dl_sessions_state_check CHECK (state IN (
-        'INITIALIZING','PROBING','TEACHING','QUESTIONING','EVALUATING',
-        'AWAITING_COMMAND','AI_ASSESSING_READINESS','CONFIRMING_TEST',
-        'TESTING','EVALUATING_TEST','CHOOSING_AFTER_FAIL',
-        'GENERATING_NOTE','COMPLETED'
-    )),
-    CONSTRAINT dl_sessions_status_check CHECK (
-        status IN ('in_progress','completed','abandoned')
-    )
-);
-
-CREATE INDEX IF NOT EXISTS idx_dl_sessions_user_node_status
-    ON deep_learn_sessions(user_id, node_id, status);
-
--- learning_session_records: session 结束后写入的 episodic memory
-CREATE TABLE IF NOT EXISTS learning_session_records (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id             UUID NOT NULL,
-    node_id             TEXT NOT NULL,
-    plan_id             TEXT NOT NULL,
-    session_id          UUID NOT NULL REFERENCES deep_learn_sessions(id),
-    summary             TEXT,
-    concepts_covered    JSONB NOT NULL DEFAULT '[]',
-    weak_points         JSONB NOT NULL DEFAULT '[]',
-    strong_points       JSONB NOT NULL DEFAULT '[]',
-    test_score          REAL,
-    passed              BOOLEAN NOT NULL DEFAULT FALSE,
-    conversation_turns  INTEGER NOT NULL DEFAULT 0,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-**执行方式**：在 Supabase SQL Editor 执行此文件。不要在 Python 里调用。
-
-**验收**：两张表存在，`deep_learn_sessions` 能插入一行并查询 `id`。
-
----
-
-## Task 2 — Pydantic Models
-
-**文件**：`backend/models_deep_learn.py`
+#### 0.3.1 枚举
 
 ```python
-from __future__ import annotations
-from enum import Enum
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+# 13 个值在第三章列出，这里全部必须实现
+DeepLearnState = Literal[
+    "INITIALIZING", "TEACHING", "QUESTIONING", "EVALUATING", "AWAITING_COMMAND",
+    "AI_ASSESSING_READINESS", "CONFIRMING_TEST", "TESTING", "EVALUATING_TEST",
+    "CHOOSING_AFTER_FAIL", "COMPLETED",
+]
 
+DeepLearnCommand = Literal[
+    "continue", "expand", "skip", "reteach",
+    "restart", "confirm_test", "not_ready",
+]
 
-class DeepLearnState(str, Enum):
-    INITIALIZING           = "INITIALIZING"
-    PROBING                = "PROBING"
-    TEACHING               = "TEACHING"
-    QUESTIONING            = "QUESTIONING"
-    EVALUATING             = "EVALUATING"
-    AWAITING_COMMAND       = "AWAITING_COMMAND"
-    AI_ASSESSING_READINESS = "AI_ASSESSING_READINESS"
-    CONFIRMING_TEST        = "CONFIRMING_TEST"
-    TESTING                = "TESTING"
-    EVALUATING_TEST        = "EVALUATING_TEST"
-    CHOOSING_AFTER_FAIL    = "CHOOSING_AFTER_FAIL"
-    GENERATING_NOTE        = "GENERATING_NOTE"
-    COMPLETED              = "COMPLETED"
+ConceptStatus = Literal["pending", "current", "done", "skipped"]
 
+SessionStatus = Literal["in_progress", "completed", "abandoned"]
 
-class DeepLearnCommand(str, Enum):
-    CONTINUE     = "continue"       # 继续下一概念
-    EXPAND       = "expand"         # 展开当前概念
-    SKIP         = "skip"           # 跳过当前概念
-    RETEACH      = "reteach"        # 重讲当前概念
-    RESTART      = "restart"        # 重新开始整个 session
-    CONFIRM_TEST = "confirm_test"   # 确认进入综合测试
-    NOT_READY    = "not_ready"      # 还没准备好，继续学
+TeachingMode = Literal["normal", "expand", "reteach", "probe_stuck", "review_weak"]
+```
 
+#### 0.3.2 数据库行 → Python 对象（`SessionState`）
 
-class ConceptStatus(str, Enum):
-    PENDING  = "pending"
-    CURRENT  = "current"
-    DONE     = "done"
-    SKIPPED  = "skipped"
-
-
-class ConceptItem(BaseModel):
-    text: str
-    status: ConceptStatus = ConceptStatus.PENDING
-
-
-class Turn(BaseModel):
-    role: str    # "assistant" | "user"
-    content: str
-
-
+```python
 class SessionState(BaseModel):
-    """完整的 session 状态，对应 deep_learn_sessions 表一行"""
-    id: str
-    user_id: str
+    id: str                              # UUID 字符串
+    user_id: str                         # UUID 字符串
     node_id: str
     plan_id: str
     state: DeepLearnState
-    current_concept_index: int
-    difficulty_level: int                 # 1-5
-    wrong_count_current: int
-    concepts_status: Dict[str, str]       # concept_text -> ConceptStatus value
-    weak_points: List[str]
-    recent_turns: List[Dict[str, str]]    # [{role, content}]
-    what_list: List[str]
-    conversation_summary: Optional[str]
-    status: str
+    current_concept_index: int           # 0-based
+    difficulty_level: int                # 1..5
+    wrong_count_current: int             # 0..N
+    concepts_status: dict[str, str]      # {"0": "done", "1": "current", ...} index 为字符串
+    weak_points: list[str]               # ["概念名"]
+    recent_turns: list[dict]             # [{"role":"user|assistant", "content":"..."}]
+    what_list: list[str]                 # session 创建时的快照
+    test_questions: list[str]            # 3 道测试题，CONFIRMING_TEST → TESTING 时填充
+    test_current_index: int              # 0..2
+    test_results: list[dict]             # 单题评估结果列表，长度 == 已答测试题数
+    status: SessionStatus
+    # 时间戳字段保留 raw 即可，前端不直接用
+```
 
+#### 0.3.3 LLM Agent 输出契约（严格 JSON）
 
-# ── API Request / Response models ──────────────────────────────────────────
+```python
+# Teaching Agent — 任何 mode 都返回同一 schema
+class TeachingOutput(BaseModel):
+    content: str                          # Markdown 文本，必填非空
+    questions: list[str]                  # normal/expand/reteach 模式下 2-3 条；probe_stuck 模式下可为空
+    needs_image: bool = False
+    image_type: Optional[str] = None      # Phase 1 仅 "mermaid" 或 None
+    mermaid_code: Optional[str] = None
 
+# Assessment - 单题评估
+class AssessmentPerQuestionOutput(BaseModel):
+    is_correct: bool
+    quality_score: float                  # 0..1
+    explanation: str                      # 鼓励性反馈，展示给用户
+    feedback: str                         # 具体偏差点
+    update_weak_points: list[str] = []
+    difficulty_delta: int = 0             # -1 | 0 | 1
+    wrong_count: int = 0                  # 当前概念的累计错误次数（agent 算好，service 直接采用）
+
+# Assessment - 综合判定
+class AssessmentOverallOutput(BaseModel):
+    passed: bool
+    confidence: float                     # 0..1
+    ready_for_test: bool                  # readiness 场景必填；测试场景 = passed
+    reason: str
+    strong_areas: list[str] = []
+    weak_areas: list[str] = []
+    suggest_review_concepts: list[str] = []
+```
+
+#### 0.3.4 API 请求/响应
+
+```python
+# POST /api/deep-learn/sessions
 class CreateSessionRequest(BaseModel):
     node_id: str
     plan_id: str
 
-class CreateSessionResponse(BaseModel):
-    success: bool
+class CreateSessionData(BaseModel):
     session_id: str
-    state: str
+    state: DeepLearnState
     is_resumed: bool
-    what_list: List[str]
-    concepts_status: Dict[str, str]
+    node_name: str
+    node_why: str
+    what_list: list[str]
+    concepts_status: dict[str, str]
+    weak_points: list[str]
+    current_concept_index: int
+    recent_turns: list[dict]              # 仅 resume 时非空
 
+# 响应 = {"success": True, "data": CreateSessionData(...)}
+
+# POST /api/deep-learn/sessions/{id}/message
 class MessageRequest(BaseModel):
     content: str
 
+# POST /api/deep-learn/sessions/{id}/command
 class CommandRequest(BaseModel):
     command: DeepLearnCommand
-
-class SessionStateResponse(BaseModel):
-    success: bool
-    data: Dict[str, Any]
-
-# ── Agent output models (internal, for JSON parsing) ────────────────────────
-
-class TeachingAgentOutput(BaseModel):
-    content: str
-    questions: List[str] = Field(default_factory=list)
-    needs_image: bool = False
-    image_type: Optional[str] = None   # "mermaid" | "dalle"
-    mermaid_code: Optional[str] = None
-
-class AssessmentAgentOutput(BaseModel):
-    is_correct: bool
-    quality_score: float = Field(ge=0.0, le=1.0)
-    explanation: str
-    feedback: str
-    update_weak_points: List[str] = Field(default_factory=list)
-    difficulty_delta: int = 0          # -1 | 0 | 1
-    wrong_count: int = 0
-
-class ReadinessAgentOutput(BaseModel):
-    ready_for_test: bool
-    reasoning: str
-    suggest_review_concepts: List[str] = Field(default_factory=list)
 ```
 
-**验收**：`from models_deep_learn import DeepLearnState, SessionState` 不报错。
+### 0.4 SSE 事件目录（Single Source of Truth）
+
+> 所有 SSE endpoint（initialize / message / command）发出的事件**仅限**以下类型。前端 hook 也仅识别这些类型。任何其他事件 = bug。
+
+```jsonc
+// === 流式文本 ===
+{"type": "chunk", "text": "string"}                            // Teaching Agent 讲解内容；按段或整段一次性发，Phase 1 无 token-level streaming
+
+// === 图 ===
+{"type": "image_mermaid", "code": "graph LR\nA-->B"}           // Teaching Agent 输出 mermaid 时立即发
+
+// === 状态变化（前端用于驱动 UI 切换） ===
+{"type": "state_change", "from": "TEACHING", "to": "QUESTIONING"}
+
+// === 概念进度更新 ===
+{"type": "concept_update", "index": 1, "status": "done"}        // index 为字符串化时按整数转字符串
+
+// === 题目（与 chunk 解耦，前端可单独列表展示） ===
+{"type": "questions", "items": ["题目1", "题目2", "题目3"]}
+
+// === 单题评估结果 ===
+{"type": "assessment", "is_correct": true, "explanation": "...", "feedback": "..."}
+
+// === 等待控制命令（前端高亮按钮） ===
+{"type": "show_commands", "commands": ["continue", "expand", "skip", "reteach"]}
+
+// === readiness 确认 ===
+{"type": "test_confirm_prompt", "message": "...", "commands": ["confirm_test", "not_ready"]}
+
+// === 测试未通过的选项 ===
+{"type": "fail_options", "message": "...", "options": [
+  {"command": "restart", "label": "🔄 重新开始"},
+  {"command": "not_ready", "label": "📚 针对弱点复习"}
+]}
+
+// === 节点通过 ===
+{"type": "node_completed", "node_id": "..."}
+
+// === restart 命令的响应：后端已开新 session ===
+{"type": "restart", "new_session_id": "..."}
+
+// === 错误 ===
+{"type": "error", "error": {"code": "...", "message": "..."}}
+
+// === 流结束（每个 SSE response 必须发） ===
+{"type": "done"}
+```
+
+### 0.5 状态机转换表（Single Source of Truth）
+
+> 状态机由 Service 层驱动，**不**调用 LLM。函数 `decide_next(state, event, ctx) → Decision` 实现下表。
+
+| 当前状态 | 事件 | 上下文条件 | 动作 (action) | 下一状态 |
+|---------|------|----------|--------------|---------|
+| INITIALIZING | `init` | — | `teach(mode=normal, index=0)` | TEACHING |
+| TEACHING | `agent_output_done` | output 含 questions | `emit_questions` | QUESTIONING |
+| TEACHING | `agent_output_done` | output 无 questions（probe_stuck） | `wait_user` | QUESTIONING |
+| QUESTIONING | `user_message` | — | `assess_per_question` | EVALUATING |
+| EVALUATING | `assess_done` | is_correct=true | `mark_concept_done + show_commands` | AWAITING_COMMAND |
+| EVALUATING | `assess_done` | is_correct=false, wrong_count<2 | `show_commands` | AWAITING_COMMAND |
+| EVALUATING | `assess_done` | is_correct=false, wrong_count>=2 | `teach(mode=probe_stuck)` | TEACHING |
+| AWAITING_COMMAND | `cmd:continue` | has_next_concept | `advance + teach(mode=normal)` | TEACHING |
+| AWAITING_COMMAND | `cmd:continue` | !has_next_concept | `check_readiness` | AI_ASSESSING_READINESS |
+| AWAITING_COMMAND | `cmd:expand` | — | `teach(mode=expand)` | TEACHING |
+| AWAITING_COMMAND | `cmd:skip` | has_next_concept | `mark_skipped + advance + teach(mode=normal)` | TEACHING |
+| AWAITING_COMMAND | `cmd:skip` | !has_next_concept | `mark_skipped + check_readiness` | AI_ASSESSING_READINESS |
+| AWAITING_COMMAND | `cmd:reteach` | — | `teach(mode=reteach)` | TEACHING |
+| AI_ASSESSING_READINESS | `readiness_done` | ready_for_test=true | `show_test_confirm` | CONFIRMING_TEST |
+| AI_ASSESSING_READINESS | `readiness_done` | ready_for_test=false | `teach(mode=review_weak)` | TEACHING |
+| CONFIRMING_TEST | `cmd:confirm_test` | — | `generate_test_questions + emit_first` | TESTING |
+| CONFIRMING_TEST | `cmd:not_ready` | — | `teach(mode=review_weak)` | TEACHING |
+| TESTING | `user_message` | — | `assess_per_question(test_mode)` | EVALUATING_TEST |
+| EVALUATING_TEST | `assess_done` | test_current_index < 2 | `advance_test + emit_next_test_q` | TESTING |
+| EVALUATING_TEST | `assess_done` | test_current_index == 2 | `final_judge` | (分支 ↓) |
+| (final_judge) | passed=true | — | `mark_node_learned` | COMPLETED |
+| (final_judge) | passed=false | — | `show_fail_options` | CHOOSING_AFTER_FAIL |
+| CHOOSING_AFTER_FAIL | `cmd:restart` | — | `abandon + create_new_session` | INITIALIZING(新) |
+| CHOOSING_AFTER_FAIL | `cmd:not_ready` | — | `teach(mode=review_weak)` | TEACHING |
+| 任意状态 | `cmd:restart` | — | `abandon + create_new_session` | INITIALIZING(新) |
+
+`has_next_concept` = `current_concept_index + 1 < len(what_list)`
 
 ---
 
-## Task 3 — Session Repository
+## Part 1 · Backend Tasks
 
-**文件**：`backend/services/deep_learn/session_repo.py`
+### B-01：建库表
 
-实现以下函数，全部接收 `DbSession`，返回 `Optional[SessionState]` 或 `str`（id）：
+**Goal**：在 Supabase 创建 `deep_learn_sessions` 表。
+
+**操作**：将下方 SQL 复制粘贴到 Supabase 项目的 SQL Editor 执行。
+
+```sql
+CREATE TABLE IF NOT EXISTS deep_learn_sessions (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id               UUID NOT NULL,
+  node_id               TEXT NOT NULL,
+  plan_id               TEXT NOT NULL,
+  state                 TEXT NOT NULL DEFAULT 'INITIALIZING',
+  current_concept_index INTEGER NOT NULL DEFAULT 0,
+  difficulty_level      INTEGER NOT NULL DEFAULT 3,
+  wrong_count_current   INTEGER NOT NULL DEFAULT 0,
+  concepts_status       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  weak_points           JSONB NOT NULL DEFAULT '[]'::jsonb,
+  recent_turns          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  what_list             JSONB NOT NULL DEFAULT '[]'::jsonb,
+  test_questions        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  test_current_index    INTEGER NOT NULL DEFAULT 0,
+  test_results          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  conversation_summary  TEXT,
+  started_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ended_at              TIMESTAMPTZ,
+  status                TEXT NOT NULL DEFAULT 'in_progress',
+  CONSTRAINT dl_sessions_state_check CHECK (state IN (
+    'INITIALIZING','TEACHING','QUESTIONING','EVALUATING','AWAITING_COMMAND',
+    'AI_ASSESSING_READINESS','CONFIRMING_TEST','TESTING','EVALUATING_TEST',
+    'CHOOSING_AFTER_FAIL','COMPLETED'
+  )),
+  CONSTRAINT dl_sessions_status_check CHECK (
+    status IN ('in_progress','completed','abandoned')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_dl_sessions_user_node_status
+  ON deep_learn_sessions(user_id, node_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_dl_sessions_user_updated
+  ON deep_learn_sessions(user_id, updated_at DESC);
+```
+
+**Verify**：在 SQL Editor 跑 `SELECT * FROM deep_learn_sessions LIMIT 1;`，应返回空结果但无错误。
+
+---
+
+### B-02：Pydantic Models
+
+**File**：`backend/models_deep_learn.py`
+
+**Goal**：把 0.3 的所有类型契约转成 Pydantic 模型。
+
+**实现要点**：
+- 用 `Literal` 类型而非 `Enum`，避免后续序列化烦恼
+- `SessionState` 是数据传输对象，**不**做任何业务校验
+- 所有 model 用 `from pydantic import BaseModel, Field`
+- 文件顶端：`from __future__ import annotations`
+
+**必须导出的符号**（其他文件会 import）：
+```
+DeepLearnState, DeepLearnCommand, ConceptStatus, SessionStatus, TeachingMode,
+SessionState,
+TeachingOutput, AssessmentPerQuestionOutput, AssessmentOverallOutput,
+CreateSessionRequest, CreateSessionData,
+MessageRequest, CommandRequest
+```
+
+**Verify**：`python -c "from models_deep_learn import SessionState; print(SessionState.model_fields.keys())"` 能列出 0.3.2 全部 14 个字段。
+
+---
+
+### B-03：Session Repository
+
+**File**：`backend/services/deep_learn/session_repo.py`
+
+**Goal**：封装 `deep_learn_sessions` 表的所有数据库访问。**不包含业务逻辑**。
+
+**导出函数签名（必须完全匹配）**：
 
 ```python
-from __future__ import annotations
-import json
-from typing import Optional
-from database import DbSession
-from models_deep_learn import SessionState, DeepLearnState
-
-
 def get_active_session(db: DbSession, user_id: str, node_id: str) -> Optional[SessionState]:
-    """查找该用户该节点最近一条 in_progress session，用于断点续学"""
-    row = db.execute(
-        """SELECT * FROM deep_learn_sessions
-           WHERE user_id = ? AND node_id = ? AND status = 'in_progress'
-           ORDER BY updated_at DESC LIMIT 1""",
-        (user_id, node_id),
-    ).fetchone()
-    return _row_to_state(row) if row else None
-
-
-def create_session(
-    db: DbSession,
-    user_id: str,
-    node_id: str,
-    plan_id: str,
-    what_list: list[str],
-) -> SessionState:
-    """新建 session，初始状态 INITIALIZING"""
-    concepts_status = {c: "pending" for c in what_list}
-    row = db.execute(
-        """INSERT INTO deep_learn_sessions
-           (user_id, node_id, plan_id, state, what_list, concepts_status)
-           VALUES (?, ?, ?, 'INITIALIZING', ?, ?)
-           RETURNING *""",
-        (user_id, node_id, plan_id, what_list, concepts_status),
-    ).fetchone()
-    db.commit()
-    return _row_to_state(row)
-
-
-def update_session(db: DbSession, session_id: str, **fields) -> None:
-    """
-    更新任意字段。支持的 fields：
-    state, current_concept_index, difficulty_level, wrong_count_current,
-    concepts_status, weak_points, recent_turns, conversation_summary,
-    status, ended_at
-    """
-    allowed = {
-        "state", "current_concept_index", "difficulty_level",
-        "wrong_count_current", "concepts_status", "weak_points",
-        "recent_turns", "conversation_summary", "status", "ended_at",
-    }
-    filtered = {k: v for k, v in fields.items() if k in allowed}
-    if not filtered:
-        return
-    set_clause = ", ".join(f"{k} = ?" for k in filtered)
-    set_clause += ", updated_at = NOW()"
-    db.execute(
-        f"UPDATE deep_learn_sessions SET {set_clause} WHERE id = ?",
-        list(filtered.values()) + [session_id],
-    )
-    db.commit()
-
+    """查 user+node 下唯一 in_progress session。SQL: WHERE user_id=? AND node_id=? AND status='in_progress' ORDER BY updated_at DESC LIMIT 1"""
 
 def get_session_by_id(db: DbSession, session_id: str, user_id: str) -> Optional[SessionState]:
-    row = db.execute(
-        "SELECT * FROM deep_learn_sessions WHERE id = ? AND user_id = ?",
-        (session_id, user_id),
-    ).fetchone()
-    return _row_to_state(row) if row else None
+    """根据 id 取，并验证 user_id 匹配（防越权）"""
 
+def create_session(
+    db: DbSession, *, user_id: str, node_id: str, plan_id: str, what_list: list[str],
+) -> SessionState:
+    """INSERT...RETURNING *。concepts_status 初始化为 {"0":"pending","1":"pending",...}（用 index 字符串做 key）"""
 
-def _row_to_state(row) -> SessionState:
-    def load(v):
-        return json.loads(v) if isinstance(v, str) else (v or {})
+def update_session(db: DbSession, session_id: str, **fields) -> None:
+    """部分更新。允许的字段白名单（其他字段静默忽略）：
+       state, current_concept_index, difficulty_level, wrong_count_current,
+       concepts_status, weak_points, recent_turns, conversation_summary,
+       test_questions, test_current_index, test_results,
+       ended_at, status
+       SQL 动态拼接 SET 子句，updated_at = NOW() 始终自动加。"""
 
-    return SessionState(
-        id=str(row["id"]),
-        user_id=str(row["user_id"]),
-        node_id=row["node_id"],
-        plan_id=row["plan_id"],
-        state=DeepLearnState(row["state"]),
-        current_concept_index=row["current_concept_index"],
-        difficulty_level=row["difficulty_level"],
-        wrong_count_current=row["wrong_count_current"],
-        concepts_status=load(row["concepts_status"]),
-        weak_points=load(row["weak_points"]) if isinstance(row["weak_points"], (str, list)) else [],
-        recent_turns=load(row["recent_turns"]) if isinstance(row["recent_turns"], (str, list)) else [],
-        what_list=load(row["what_list"]) if isinstance(row["what_list"], (str, list)) else [],
-        conversation_summary=row.get("conversation_summary"),
-        status=row["status"],
-    )
+def abandon_session(db: DbSession, session_id: str) -> None:
+    """快捷封装：update_session(db, id, status='abandoned', ended_at=NOW())"""
 ```
 
-**验收**：`create_session` 成功插入并返回 `SessionState`；`get_active_session` 能查到刚插入的记录。
+**实现要点**：
+- 使用 `RealDictCursor`（已是默认）；行字段直接 `row["concepts_status"]` 即是 dict，**不要**再 `json.loads`
+- `_row_to_state(row)` 内部辅助函数：把数据库行转成 `SessionState`
+- `created_at`/`updated_at`/`ended_at`/`started_at` 不放进 `SessionState`（前端用不到，避免序列化麻烦）
+- 每个写入函数调用 `db.commit()`（FastAPI Depends 的 session 由 endpoint 调用方负责，但本仓储为了让 SSE 中途 commit 方便，自己 commit；这不会破坏事务因为我们不在显式 transaction 里）
+
+**Verify**：写一个临时脚本，依次调用 create_session → get_active_session → update_session(state='TEACHING') → get_session_by_id，每步结果与预期一致。
 
 ---
 
-## Task 4 — 状态机 Orchestrator
+### B-04：状态机（核心 · 纯函数）
 
-**文件**：`backend/services/deep_learn/orchestrator.py`
+**File**：`backend/services/deep_learn/state_machine.py`
 
-状态机是**纯代码逻辑**，不调用 LLM。它接收当前 state + 事件，返回下一个 state 和副作用指令。
+**Goal**：把 0.5 节的转换表实现为纯函数。**不调用 LLM**，**不访问数据库**，只做逻辑判断。
+
+**导出的核心 API**：
 
 ```python
-from __future__ import annotations
-from dataclasses import dataclass
-from typing import Optional
-from models_deep_learn import DeepLearnState, DeepLearnCommand, ConceptStatus
-
-
 @dataclass
-class TransitionResult:
+class Decision:
     next_state: DeepLearnState
-    action: str           # 告诉 Service 层该做什么
-    # action 枚举值：
-    # "run_teaching"        → 调用 Teaching Agent 讲当前概念
-    # "run_assessment"      → 调用 Assessment Agent 评估用户回答
-    # "run_readiness_check" → 调用 Assessment Agent 判断是否准备好
-    # "run_test_question"   → 调用 Teaching Agent 生成综合测试题
-    # "run_test_evaluation" → 调用 Assessment Agent 综合判定测试
-    # "show_command_prompt" → 前端显示控制按钮，等待指令
-    # "show_test_confirm"   → 询问用户是否准备好测试
-    # "show_fail_options"   → 展示失败选项（重来/复习弱点）
-    # "noop"                → 无操作（等待用户输入）
-    meta: Optional[dict] = None
+    action: Literal[
+        "teach", "wait_user", "emit_questions",
+        "assess_per_question", "show_commands",
+        "check_readiness", "show_test_confirm",
+        "generate_test_questions", "emit_next_test_q",
+        "final_judge", "mark_node_learned", "show_fail_options",
+        "abandon_and_restart",
+    ]
+    # action 的参数：
+    teach_mode: Optional[TeachingMode] = None      # action == "teach" 时填
+    advance_concept: bool = False                   # 是否在动作前递增 current_concept_index
+    mark_skipped: bool = False                      # 是否把当前概念标 skipped
+    # final_judge 的输入由 service 层根据 test_results 自行 aggregate
 
+def decide_on_init() -> Decision: ...
 
-class SessionOrchestrator:
+def decide_on_user_message(
+    state: DeepLearnState,
+    wrong_count: int,
+    is_test_phase: bool,    # state == TESTING 时为 True
+) -> Decision: ...
 
-    def on_session_created(self) -> TransitionResult:
-        """新 session 创建后，初始动作"""
-        return TransitionResult(
-            next_state=DeepLearnState.PROBING,
-            action="run_teaching",   # 用第一个概念探测难度
-        )
+def decide_on_assessment_done(
+    state: DeepLearnState,             # EVALUATING 或 EVALUATING_TEST
+    is_correct: bool,
+    new_wrong_count: int,
+    test_current_index: int,           # 仅在 test 阶段有意义
+    test_total: int = 3,
+    all_concepts_done: bool = False,
+) -> Decision: ...
 
-    def on_user_message(
-        self,
-        current_state: DeepLearnState,
-        wrong_count: int,
-        all_concepts_done: bool,
-    ) -> TransitionResult:
-        """用户发送了一条普通消息（非命令）"""
+def decide_on_readiness_done(ready_for_test: bool) -> Decision: ...
 
-        if current_state == DeepLearnState.PROBING:
-            # 探测题收到回答 → 评估，校准难度
-            return TransitionResult(
-                next_state=DeepLearnState.EVALUATING,
-                action="run_assessment",
-            )
+def decide_on_command(
+    state: DeepLearnState,
+    command: DeepLearnCommand,
+    current_concept_index: int,
+    what_list_len: int,
+    all_concepts_done: bool,
+) -> Decision: ...
 
-        if current_state == DeepLearnState.QUESTIONING:
-            # 用户回答了题目 → 评估
-            return TransitionResult(
-                next_state=DeepLearnState.EVALUATING,
-                action="run_assessment",
-            )
-
-        if current_state == DeepLearnState.TESTING:
-            return TransitionResult(
-                next_state=DeepLearnState.EVALUATING_TEST,
-                action="run_test_evaluation",
-            )
-
-        if current_state in (DeepLearnState.AWAITING_COMMAND, DeepLearnState.CONFIRMING_TEST):
-            # 用户没用按钮，直接输入文字 → 当作普通消息，run_teaching 处理
-            if all_concepts_done:
-                return TransitionResult(
-                    next_state=DeepLearnState.AI_ASSESSING_READINESS,
-                    action="run_readiness_check",
-                )
-            return TransitionResult(
-                next_state=DeepLearnState.TEACHING,
-                action="run_teaching",
-            )
-
-        return TransitionResult(next_state=current_state, action="noop")
-
-    def on_assessment_done(
-        self,
-        current_state: DeepLearnState,
-        is_correct: bool,
-        wrong_count: int,
-        all_concepts_done: bool,
-    ) -> TransitionResult:
-        """Assessment Agent 评估完毕后"""
-
-        if wrong_count >= 2:
-            # 连续两次答错：不再给答案，用 TEACHING 状态但 action 是追问
-            return TransitionResult(
-                next_state=DeepLearnState.QUESTIONING,
-                action="run_teaching",
-                meta={"mode": "probe_stuck"},
-            )
-
-        if current_state == DeepLearnState.EVALUATING_TEST:
-            if is_correct:
-                return TransitionResult(
-                    next_state=DeepLearnState.COMPLETED,
-                    action="run_teaching",   # 输出通过提示
-                    meta={"mode": "test_passed"},
-                )
-            else:
-                return TransitionResult(
-                    next_state=DeepLearnState.CHOOSING_AFTER_FAIL,
-                    action="show_fail_options",
-                )
-
-        # 普通概念评估后 → 进入 AWAITING_COMMAND
-        return TransitionResult(
-            next_state=DeepLearnState.AWAITING_COMMAND,
-            action="show_command_prompt",
-        )
-
-    def on_command(
-        self,
-        command: DeepLearnCommand,
-        current_concept_index: int,
-        what_list_len: int,
-    ) -> TransitionResult:
-        """用户发送了控制命令"""
-
-        next_idx = current_concept_index + 1
-        has_more = next_idx < what_list_len
-
-        if command == DeepLearnCommand.CONTINUE:
-            if has_more:
-                return TransitionResult(
-                    next_state=DeepLearnState.TEACHING,
-                    action="run_teaching",
-                    meta={"advance_index": True},
-                )
-            else:
-                return TransitionResult(
-                    next_state=DeepLearnState.AI_ASSESSING_READINESS,
-                    action="run_readiness_check",
-                )
-
-        if command == DeepLearnCommand.EXPAND:
-            return TransitionResult(
-                next_state=DeepLearnState.TEACHING,
-                action="run_teaching",
-                meta={"mode": "expand"},
-            )
-
-        if command == DeepLearnCommand.SKIP:
-            meta = {"mark_skipped": True}
-            if has_more:
-                meta["advance_index"] = True
-                return TransitionResult(
-                    next_state=DeepLearnState.TEACHING,
-                    action="run_teaching",
-                    meta=meta,
-                )
-            else:
-                return TransitionResult(
-                    next_state=DeepLearnState.AI_ASSESSING_READINESS,
-                    action="run_readiness_check",
-                    meta=meta,
-                )
-
-        if command == DeepLearnCommand.RETEACH:
-            return TransitionResult(
-                next_state=DeepLearnState.TEACHING,
-                action="run_teaching",
-                meta={"mode": "reteach"},
-            )
-
-        if command == DeepLearnCommand.RESTART:
-            return TransitionResult(
-                next_state=DeepLearnState.INITIALIZING,
-                action="restart_session",
-            )
-
-        if command == DeepLearnCommand.CONFIRM_TEST:
-            return TransitionResult(
-                next_state=DeepLearnState.TESTING,
-                action="run_test_question",
-            )
-
-        if command == DeepLearnCommand.NOT_READY:
-            return TransitionResult(
-                next_state=DeepLearnState.TEACHING,
-                action="run_teaching",
-                meta={"mode": "review_weak"},
-            )
-
-        return TransitionResult(next_state=DeepLearnState.AWAITING_COMMAND, action="noop")
-
-    def on_readiness_checked(self, ready: bool) -> TransitionResult:
-        if ready:
-            return TransitionResult(
-                next_state=DeepLearnState.CONFIRMING_TEST,
-                action="show_test_confirm",
-            )
-        else:
-            return TransitionResult(
-                next_state=DeepLearnState.TEACHING,
-                action="run_teaching",
-                meta={"mode": "review_weak"},
-            )
+def decide_on_final_judge(passed: bool) -> Decision: ...
 ```
 
-**验收**：给定任意 state + 事件输入，函数返回正确的 `next_state` 和 `action`（对照 PRD 状态转换表逐一测试）。
+**实现要点**：
+- 严格按 0.5 表对应；不要"聪明"添加表外转换
+- 不合法的 (state, event) 组合：返回 `Decision(next_state=state, action="wait_user")` 并让 service 层记 warning log。**不要 raise**（SSE 中 raise 难处理）
+- `cmd:restart` 在任何状态都返回 `Decision(next_state="INITIALIZING", action="abandon_and_restart")`
+
+**Verify（必跑）**：写一个 `backend/tests/unit/test_deep_learn_state_machine.py`，逐行验证 0.5 表里的每个分支至少一个用例。这个测试**必须能离线运行**（不需要 DB、不需要 LLM），是整个 Phase 1 唯一强制单元测试。
 
 ---
 
-## Task 5 — Teaching Agent + Config
+### B-05：Teaching Agent
 
-**文件 A**：`backend/services/llm/configs/deep_learn_teaching.json`
+**File A**：`backend/services/llm/configs/deep_learn_teaching.json`
 
 ```json
 {
-  "model_params": {
-    "temperature": 0.6,
-    "max_tokens": 2048
-  },
-  "system_prompt": "你是一位专业的 1v1 AI 家教，严格遵守以下教学原则。\n\n[原则一：工作记忆保护]\n每次只讲一个概念。若该概念包含超过 3 个子概念，先给 2-3 句 overview，再逐个展开，每组不超过 3 个。每多写一句前问自己：「去掉它，理解会受损吗？」不会则删。\n\n[原则二：认知锚定（先激活，再挂载）]\n讲任何概念前，先一句话说清楚「它在做什么 / 为什么需要它」，再给 formal 定义。每个新概念出现时，先说它和前面讲过的是什么关系（依赖/对比/推广/特例）。非基础术语第一次出现时一句话定义，之后直接用。\n\n[原则三：逻辑连续性（无断链）]\n每段第一句是结论，后面跟推导或论据。每句话写完，下一句必须回答上一句引发的问号。段落内句子之间必须有因果/推演关系，禁止突然引入新内容。\n\n[原则四：不主动延伸]\n讲完一个知识点就停，不主动引入未讲过的新内容。可以往回指已学内容（retrieval cue），禁止往前扩未学内容。\n\n[输出格式]\n必须返回合法 JSON，不含任何 markdown 代码块包装：\n{\n  \"content\": \"讲解内容（Markdown 格式，中文）\",\n  \"questions\": [\"概念理解题\", \"应用/计算题\", \"误区陷阱题\"],\n  \"needs_image\": false,\n  \"image_type\": null,\n  \"mermaid_code\": null\n}"
+  "model_params": { "temperature": 0.6, "max_tokens": 2048 },
+  "system_prompt": "你是一位专业的 1v1 AI 家教，严格遵守以下教学原则。\n\n【原则一·工作记忆保护】每次只讲一个概念。若该概念包含超过 3 个子概念，先给 2-3 句 overview，再逐个展开，每组不超过 3 个。每多写一句先问：「去掉它，理解会受损吗？」不会则删。\n\n【原则二·认知锚定】讲任何概念前，先一句话说清楚「它在做什么 / 为什么需要它」，再给 formal 定义。每个新概念出现时，先说它和前面讲过的是什么关系（依赖/对比/推广/特例）。\n\n【原则三·逻辑连续性】每段第一句是结论，后面跟推导或论据。每句话写完，下一句必须回答上一句引发的问号。段落内句子之间必须有因果/推演关系，禁止突然引入新内容。\n\n【原则四·不主动延伸】讲完一个知识点就停，不主动引入未讲过的新内容。可以回指已学内容，禁止前指未学内容。\n\n【输出格式】仅返回合法 JSON，不要 markdown 代码块包装：\n{\n  \"content\": \"讲解文本（中文 Markdown）\",\n  \"questions\": [\"题1\", \"题2\", \"题3\"],\n  \"needs_image\": false,\n  \"image_type\": null,\n  \"mermaid_code\": null\n}\n\n【题目要求】normal/expand/reteach 模式：3 道题（概念理解 + 应用 + 误区陷阱）。probe_stuck 模式：questions 必须是空数组，content 只问一个澄清问题（如「你在哪一步开始觉得不对劲？」），不给答案。"
 }
 ```
 
-**文件 B**：`backend/services/deep_learn/teaching_agent.py`
+**File B**：`backend/services/deep_learn/agents/teaching.py`
 
 ```python
-from __future__ import annotations
-import json
-from typing import Optional
-from services.llm import get_llm_client
-from services.llm.providers import LLMMessage
-from models_deep_learn import TeachingAgentOutput, SessionState
-
-
 class TeachingAgent:
-    def __init__(self):
-        self.client = get_llm_client()
-        self._load_config()
+    def __init__(self) -> None: ...
 
-    def _load_config(self):
-        import pathlib
-        config_path = pathlib.Path(__file__).parent.parent / "llm/configs/deep_learn_teaching.json"
-        with open(config_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self._params = cfg.get("model_params", {})
-        self._system_prompt = cfg.get("system_prompt", "")
-
-    async def teach(
-        self,
-        session: SessionState,
+    async def run(
+        self, *,
         node_name: str,
         node_why: str,
-        memory_context: str,
-        mode: str = "normal",   # "normal" | "expand" | "reteach" | "probe_stuck" | "review_weak"
-    ) -> TeachingAgentOutput:
-        concept = session.what_list[session.current_concept_index]
-        idx = session.current_concept_index
-        total = len(session.what_list)
-        difficulty = session.difficulty_level
-        weak = ", ".join(session.weak_points) if session.weak_points else "无"
-
-        mode_instructions = {
-            "normal":      "按标准节奏讲解当前概念，然后出题。",
-            "expand":      "对当前概念进行更深入展开，补充细节和边界情况，然后出更深的题。",
-            "reteach":     "换一个全新的角度或类比重新讲解当前概念，不要重复之前的表述。",
-            "probe_stuck": "用户连续答错，不要继续给答案。先问「你对哪一步感到困惑？」，等待回答后再针对性讲解。",
-            "review_weak": f"用户感觉还没准备好，重点复习以下弱点：{weak}。",
-        }
-
-        user_prompt = (
-            f"[节点] {node_name}\n"
-            f"[学习目的] {node_why}\n"
-            f"[当前概念] {concept}（第 {idx + 1} 个，共 {total} 个）\n"
-            f"[当前难度级别] {difficulty}/5\n"
-            f"[已识别弱点] {weak}\n"
-            f"[记忆上下文]\n{memory_context}\n\n"
-            f"[指令] {mode_instructions.get(mode, mode_instructions['normal'])}"
-        )
-
-        result = await self.client.chat_json(
-            system_prompt=self._system_prompt,
-            user_prompt=user_prompt,
-            temperature=self._params.get("temperature", 0.6),
-            max_tokens=self._params.get("max_tokens", 2048),
-        )
-        return TeachingAgentOutput(**result)
+        current_concept: str,
+        concept_index: int,
+        total_concepts: int,
+        difficulty_level: int,
+        weak_points: list[str],
+        recent_turns: list[dict],          # 最近 6-8 条 {role, content}
+        mode: TeachingMode,
+    ) -> TeachingOutput: ...
 ```
 
-**验收**：调用 `teach()` 返回 `TeachingAgentOutput`，`content` 非空，`questions` 有 2-3 条。
+**实现要点**：
+- 把 `system_prompt` 从 JSON 读出（直接 `json.load`，**不**用 `load_ai_config`，因为后者会加多余的 "Output Format" 段）
+- `user_prompt` 由以下信息拼接（必须严格按此顺序）：
+  ```
+  [节点] {node_name}
+  [学习目的] {node_why}
+  [当前概念] {current_concept}（第 {concept_index+1} 个，共 {total_concepts} 个）
+  [当前难度] {difficulty_level}/5
+  [已识别弱点] {", ".join(weak_points) or "无"}
+  [最近对话]
+  {format_recent_turns(recent_turns)}
+
+  [本次模式] {mode_instruction(mode)}
+  ```
+- `mode_instruction` 映射：
+  | mode | 指令文本 |
+  |------|---------|
+  | normal | "按标准节奏讲解当前概念，然后出 3 道题。" |
+  | expand | "对当前概念进行更深入展开，补充细节和边界情况，然后出 3 道更深的题。" |
+  | reteach | "换一个全新的角度或类比重新讲解当前概念，不要重复之前的表述。" |
+  | probe_stuck | "用户连续答错。不要继续给答案。只问一个澄清问题（你在哪一步卡住？），questions 字段返回空数组。" |
+  | review_weak | "用户还没准备好测试。重点复习以下弱点：{weak_points}。出题侧重弱点。" |
+- 调 `get_llm_client().chat_json(system_prompt, user_prompt, temperature=0.6, max_tokens=2048)` → `dict` → `TeachingOutput(**dict)`
+- 如果 LLM 输出无法解析为合法 `TeachingOutput`，**重试一次**，仍失败则返回 `TeachingOutput(content="抱歉，AI 生成内容时遇到问题，请稍后重试。", questions=[])`，并写 error log
+
+**Verify**：mock LLM 返回固定 JSON，断言函数返回正确 `TeachingOutput`。
 
 ---
 
-## Task 6 — Assessment Agent + Config
+### B-06：Assessment Agent · 单题评估
 
-**文件 A**：`backend/services/llm/configs/deep_learn_assessment.json`
+**File A**：`backend/services/llm/configs/deep_learn_assessment_per_question.json`
 
 ```json
 {
-  "model_params": {
-    "temperature": 0.3,
-    "max_tokens": 1024
-  },
-  "system_prompt": "你是学习评估专家。根据用户对问题的回答，给出准确的质量评估。\n\n[评估标准]\n通过信号：\n- 能用自己的话正确解释核心概念（不是机械复述）\n- 能识别常见误区并说明为什么错\n- 对应用场景的判断基本正确\n\n不通过信号：\n- 机械复述原话，无法用例子说明\n- 对核心概念存在明显混淆且经提示后仍未纠正\n- 关键步骤答错且无法从 feedback 中修正\n\n边界情况：\n- 有小错误但整体心智模型正确 → is_correct=true，quality_score 给 0.7\n- quality_score < 0.6 时 → 追问，不要强行判定\n\n[输出格式]\n必须返回合法 JSON，不含任何 markdown 代码块包装：\n{\n  \"is_correct\": true,\n  \"quality_score\": 0.85,\n  \"explanation\": \"给用户看的一句话评价（中文，鼓励性）\",\n  \"feedback\": \"具体指出哪里对哪里有偏差（中文）\",\n  \"update_weak_points\": [],\n  \"difficulty_delta\": 0,\n  \"wrong_count\": 0\n}"
+  "model_params": { "temperature": 0.3, "max_tokens": 800 },
+  "system_prompt": "你是学习评估专家。根据用户对一道题的回答，做出准确、严格但鼓励性的单题评估。\n\n【评估标准】\n通过：能用自己的话正确解释，能识别常见误区，能正确判断应用场景。\n不通过：机械复述、对核心概念明显混淆且未自我纠正、关键步骤答错且无法从反馈中修正。\n边界：有小错但整体心智模型正确 → is_correct=true，quality_score 给 0.7。\n\n【输出 JSON，不要 markdown 代码块】\n{\n  \"is_correct\": true,\n  \"quality_score\": 0.85,\n  \"explanation\": \"一句话评价，给用户看（鼓励性）\",\n  \"feedback\": \"具体指出哪里对哪里有偏差\",\n  \"update_weak_points\": [],\n  \"difficulty_delta\": 0,\n  \"wrong_count\": 0\n}\n\n【字段语义】\nwrong_count: 如果 is_correct=false，返回 (传入的 prev_wrong_count + 1)；否则返回 0。\ndifficulty_delta: -1（题答得吃力）/ 0（正常）/ 1（答得过于轻松）。\nupdate_weak_points: 用户暴露的新弱点（具体子概念名），若无返回 []。"
 }
 ```
 
-**文件 B**：`backend/services/deep_learn/assessment_agent.py`
+**File B**：`backend/services/deep_learn/agents/assessment_per_question.py`
 
 ```python
-from __future__ import annotations
-import json
-import pathlib
-from services.llm import get_llm_client
-from models_deep_learn import AssessmentAgentOutput, ReadinessAgentOutput, SessionState
-
-
-class AssessmentAgent:
-    def __init__(self):
-        self.client = get_llm_client()
-        self._load_config()
-
-    def _load_config(self):
-        config_path = pathlib.Path(__file__).parent.parent / "llm/configs/deep_learn_assessment.json"
-        with open(config_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self._params = cfg.get("model_params", {})
-        self._system_prompt = cfg.get("system_prompt", "")
-
-    async def evaluate_answer(
-        self,
-        session: SessionState,
+class AssessmentPerQuestionAgent:
+    async def run(
+        self, *,
+        concept: str,
         question: str,
         user_answer: str,
-        concept: str,
-    ) -> AssessmentAgentOutput:
-        user_prompt = (
-            f"[概念] {concept}\n"
-            f"[题目] {question}\n"
-            f"[用户回答] {user_answer}\n"
-            f"[当前弱点] {session.weak_points}\n"
-            f"[连续错误次数] {session.wrong_count_current}"
-        )
-        result = await self.client.chat_json(
-            system_prompt=self._system_prompt,
-            user_prompt=user_prompt,
-            temperature=self._params.get("temperature", 0.3),
-            max_tokens=self._params.get("max_tokens", 1024),
-        )
-        return AssessmentAgentOutput(**result)
-
-    async def check_readiness(self, session: SessionState, node_name: str) -> ReadinessAgentOutput:
-        covered = [c for c, s in session.concepts_status.items() if s == "done"]
-        skipped = [c for c, s in session.concepts_status.items() if s == "skipped"]
-        system = (
-            "你是一位严格的学习评估专家。根据学生的学习情况，判断他是否准备好进行综合测试。\n"
-            "综合考虑：已覆盖概念数量、弱点列表、是否有大量跳过。\n"
-            "如果弱点较多或有超过 30% 概念被跳过，建议先复习。\n"
-            "输出合法 JSON：{\"ready_for_test\": bool, \"reasoning\": \"一句话理由\", \"suggest_review_concepts\": []}"
-        )
-        user_prompt = (
-            f"[节点] {node_name}\n"
-            f"[已学概念] {covered}\n"
-            f"[跳过概念] {skipped}\n"
-            f"[当前弱点] {session.weak_points}"
-        )
-        result = await self.client.chat_json(
-            system_prompt=system,
-            user_prompt=user_prompt,
-            temperature=0.3,
-            max_tokens=512,
-        )
-        return ReadinessAgentOutput(**result)
+        prev_wrong_count: int,
+        weak_points: list[str],
+    ) -> AssessmentPerQuestionOutput: ...
 ```
 
-**验收**：`evaluate_answer()` 返回 `AssessmentAgentOutput`，`is_correct` 和 `quality_score` 字段存在。
+**实现要点**：
+- `user_prompt` 拼接：
+  ```
+  [概念] {concept}
+  [题目] {question}
+  [用户回答] {user_answer}
+  [当前累计错误次数] {prev_wrong_count}
+  [已记录弱点] {weak_points}
+  ```
+- 校验：`quality_score` 必须 ∈ [0,1]，越界用 `max(0.0, min(1.0, x))` clamp
+- 校验：`difficulty_delta` 必须 ∈ {-1, 0, 1}，否则置 0
+- LLM 失败的兜底：`AssessmentPerQuestionOutput(is_correct=False, quality_score=0.0, explanation="评估暂不可用", feedback="", wrong_count=prev_wrong_count + 1)`
+
+**Verify**：mock LLM 输出，测试三种情况：正确答案、错误答案（递增 wrong_count）、LLM 故障兜底。
 
 ---
 
-## Task 7 — Deep Learn Service
+### B-07：Assessment Agent · 综合判定
 
-**文件**：`backend/services/deep_learn/service.py`
+**File A**：`backend/services/llm/configs/deep_learn_assessment_overall.json`
 
-这是核心协调层，把 Orchestrator + Agents + DB 串起来，**对外暴露两个主方法**：
+```json
+{
+  "model_params": { "temperature": 0.3, "max_tokens": 1024 },
+  "system_prompt": "你是严格的学习评估专家。在两种场景下用同一 schema 输出综合判定：\n\n场景 A（readiness）：用户已学完该节点所有/大部分概念，判断是否准备好做综合测试。\n场景 B（test）：用户已答完 3 道综合测试题，判断是否真正掌握该节点。\n\n【共同判定标准】\n通过：自己的话正确解释核心 + 识别常见误区 + 应用场景判断正确。\n不通过：机械复述 / 核心概念明显混淆且未纠正 / 关键步骤错且无法修正。\n边界：小错但整体心智模型正确 → passed=true，confidence 0.7-0.8。\nconfidence < 0.6：场景 A → ready_for_test=false；场景 B → passed=false。\n\n【输出 JSON，不要 markdown 代码块】\n{\n  \"passed\": true,\n  \"confidence\": 0.85,\n  \"ready_for_test\": true,\n  \"reason\": \"一句话\",\n  \"strong_areas\": [\"\"],\n  \"weak_areas\": [\"\"],\n  \"suggest_review_concepts\": []\n}\n\nready_for_test：场景 A 必填真值；场景 B 直接等于 passed。"
+}
+```
+
+**File B**：`backend/services/deep_learn/agents/assessment_overall.py`
 
 ```python
-from __future__ import annotations
-import asyncio
-import json
-from typing import AsyncGenerator, Optional
-from database import get_db_context
-from models_deep_learn import (
-    DeepLearnCommand, DeepLearnState, SessionState, TeachingAgentOutput
-)
-from services.deep_learn.orchestrator import SessionOrchestrator
-from services.deep_learn.session_repo import (
-    create_session, get_active_session, get_session_by_id, update_session
-)
-from services.deep_learn.teaching_agent import TeachingAgent
-from services.deep_learn.assessment_agent import AssessmentAgent
+class AssessmentOverallAgent:
+    async def run_readiness(
+        self, *,
+        node_name: str,
+        concepts_done: list[str],
+        concepts_skipped: list[str],
+        weak_points: list[str],
+    ) -> AssessmentOverallOutput: ...
 
-_CHECKPOINT_EVERY = 3   # 每 3 轮写一次 recent_turns
+    async def run_final_judge(
+        self, *,
+        node_name: str,
+        test_qa_pairs: list[dict],         # [{"question": "...", "answer": "...", "is_correct": bool, "feedback": "..."}, ...]
+        weak_points: list[str],
+    ) -> AssessmentOverallOutput: ...
+```
 
+**实现要点**：
+- 两个方法共享 JSON config 的 system_prompt
+- `user_prompt` 用 `[场景标识]` 区分场景 A/B（让 LLM 知道用 ready_for_test 还是 passed 作为主信号）
+- 兜底：`AssessmentOverallOutput(passed=False, confidence=0.0, ready_for_test=False, reason="评估服务暂不可用")`
 
-def _build_memory_context(session: SessionState) -> str:
-    """构建注入 LLM 的记忆摘要（Phase 1 只用 short-term）"""
-    lines = []
-    if session.weak_points:
-        lines.append(f"本次已识别弱点：{', '.join(session.weak_points)}")
-    if session.conversation_summary:
-        lines.append(f"对话摘要：{session.conversation_summary}")
-    return "\n".join(lines) if lines else "暂无历史记忆。"
+**Verify**：mock 两种场景的 LLM 输出。
 
+---
 
-def _get_current_concept(session: SessionState) -> str:
-    idx = session.current_concept_index
-    if idx < len(session.what_list):
-        return session.what_list[idx]
-    return ""
+### B-08：Deep Learn Service（最大文件 · 协调层）
 
+**File**：`backend/services/deep_learn/service.py`
 
-def _all_concepts_done(session: SessionState) -> bool:
-    return all(
-        v in ("done", "skipped")
-        for v in session.concepts_status.values()
-    )
+**Goal**：协调 state machine、agents、repo，提供给 router 的三个高层 API。
 
+**导出 API**：
 
+```python
 class DeepLearnService:
-    def __init__(self):
-        self.orchestrator = SessionOrchestrator()
-        self.teaching_agent = TeachingAgent()
-        self.assessment_agent = AssessmentAgent()
+    def __init__(self): ...
 
     async def get_or_create_session(
-        self,
-        user_id: str,
-        node_id: str,
-        plan_id: str,
-    ) -> tuple[SessionState, bool]:
-        """返回 (session, is_resumed)"""
-        with get_db_context() as db:
-            existing = get_active_session(db, user_id, node_id)
-            if existing:
-                return existing, True
+        self, *, db: DbSession, user_id: str, node_id: str, plan_id: str,
+    ) -> tuple[SessionState, dict]:
+        """返回 (session, node_meta)
+           node_meta = {"node_name": str, "node_why": str}
+           - 查 active in_progress session：有则返回 (is_resumed=True)
+           - 否则查 nodes 表拿到 what/why/name，what_list 取 nodes.what 字段（数据库已是 JSONB list），创建新 session
+           - what_list 空时仍创建（前端会提示），不抛错
+           注意：is_resumed 信息不在返回元组里，调用方根据 session 时间戳判断；本函数 idempotent
+        """
 
-            # 从 nodes 表读取 what_list
-            row = db.execute(
-                "SELECT what FROM nodes WHERE id = ?", (node_id,)
-            ).fetchone()
-            what_list = []
-            if row and row["what"]:
-                raw = row["what"]
-                what_list = json.loads(raw) if isinstance(raw, str) else raw
-
-            session = create_session(db, user_id, node_id, plan_id, what_list)
-            return session, False
-
-    async def stream_initial(
-        self, session: SessionState, node_name: str, node_why: str
+    async def stream_initialize(
+        self, session: SessionState, node_meta: dict,
     ) -> AsyncGenerator[str, None]:
-        """新 session 的初始化流：探测难度，讲第一个概念"""
-        result = self.orchestrator.on_session_created()
-        yield _sse("state_change", {"from": session.state, "to": result.next_state})
-
-        output = await self.teaching_agent.teach(
-            session=session,
-            node_name=node_name,
-            node_why=node_why,
-            memory_context=_build_memory_context(session),
-            mode="normal",
-        )
-        async for event in self._stream_teaching_output(session, output, result.next_state):
-            yield event
+        """新建 session 后调一次，触发讲第一个概念。
+           只在 state == INITIALIZING 时合法；否则发 error 事件并 return
+        """
 
     async def stream_message(
-        self,
-        session: SessionState,
-        user_message: str,
-        node_name: str,
-        node_why: str,
+        self, session: SessionState, node_meta: dict, content: str,
     ) -> AsyncGenerator[str, None]:
-        """处理用户普通消息"""
-        # 更新 recent_turns
-        turns = list(session.recent_turns)
-        turns.append({"role": "user", "content": user_message})
-        session.recent_turns = turns[-8:]  # 保留最近 8 轮
-
-        result = self.orchestrator.on_user_message(
-            current_state=session.state,
-            wrong_count=session.wrong_count_current,
-            all_concepts_done=_all_concepts_done(session),
-        )
-        yield _sse("state_change", {"from": session.state, "to": result.next_state})
-
-        if result.action == "run_assessment":
-            async for event in self._handle_assessment(session, user_message, node_name, node_why):
-                yield event
-        elif result.action == "run_teaching":
-            mode = (result.meta or {}).get("mode", "normal")
-            output = await self.teaching_agent.teach(session, node_name, node_why, _build_memory_context(session), mode)
-            async for event in self._stream_teaching_output(session, output, result.next_state):
-                yield event
-        elif result.action == "run_readiness_check":
-            async for event in self._handle_readiness(session, node_name):
-                yield event
-        elif result.action == "run_test_evaluation":
-            async for event in self._handle_test_evaluation(session, user_message, node_name):
-                yield event
-
-        await self._maybe_checkpoint(session)
-        yield _sse("done", {})
+        """处理用户文本消息，按状态机路由"""
 
     async def stream_command(
-        self,
-        session: SessionState,
-        command: DeepLearnCommand,
-        node_name: str,
-        node_why: str,
+        self, session: SessionState, node_meta: dict, command: DeepLearnCommand,
     ) -> AsyncGenerator[str, None]:
-        """处理控制命令"""
-        result = self.orchestrator.on_command(
-            command=command,
-            current_concept_index=session.current_concept_index,
-            what_list_len=len(session.what_list),
-        )
-        yield _sse("state_change", {"from": session.state, "to": result.next_state})
-        meta = result.meta or {}
-
-        # 处理副作用
-        if meta.get("mark_skipped"):
-            concept = _get_current_concept(session)
-            session.concepts_status[concept] = "skipped"
-
-        if meta.get("advance_index"):
-            session.current_concept_index += 1
-
-        if result.action == "restart_session":
-            with get_db_context() as db:
-                update_session(db, session.id, status="abandoned")
-            yield _sse("restart", {})
-            yield _sse("done", {})
-            return
-
-        if result.action in ("run_teaching",):
-            mode = meta.get("mode", "normal")
-            output = await self.teaching_agent.teach(session, node_name, node_why, _build_memory_context(session), mode)
-            async for event in self._stream_teaching_output(session, output, result.next_state):
-                yield event
-
-        elif result.action == "run_readiness_check":
-            async for event in self._handle_readiness(session, node_name):
-                yield event
-
-        elif result.action == "show_test_confirm":
-            yield _sse("test_confirm_prompt", {"message": "好的，综合测试开始！我会出几道题考察你对本节点的整体掌握情况。准备好了告诉我。"})
-
-        elif result.action == "run_test_question":
-            output = await self.teaching_agent.teach(session, node_name, node_why, _build_memory_context(session), "normal")
-            yield _sse("chunk", {"text": f"**综合测试题**\n\n{output.questions[0] if output.questions else '请综合回顾本节点所有内容，阐述你的理解。'}"})
-
-        elif result.action == "show_fail_options":
-            yield _sse("fail_options", {
-                "message": "这次测试还没完全通过，你有两个选择：",
-                "options": [
-                    {"command": "restart", "label": "🔄 从头开始"},
-                    {"command": "not_ready", "label": "📚 针对弱点复习"},
-                ]
-            })
-
-        # 持久化 session 状态变化
-        with get_db_context() as db:
-            update_session(
-                db, session.id,
-                state=result.next_state,
-                current_concept_index=session.current_concept_index,
-                concepts_status=session.concepts_status,
-            )
-
-        await self._maybe_checkpoint(session)
-        yield _sse("done", {})
-
-    # ── 内部方法 ────────────────────────────────────────────────────────────
-
-    async def _stream_teaching_output(
-        self, session: SessionState, output: TeachingAgentOutput, next_state: DeepLearnState
-    ) -> AsyncGenerator[str, None]:
-        yield _sse("chunk", {"text": output.content})
-        await asyncio.sleep(0)
-
-        if output.needs_image and output.image_type == "mermaid" and output.mermaid_code:
-            yield _sse("image_mermaid", {"code": output.mermaid_code})
-
-        if output.questions:
-            questions_text = "\n\n".join(f"**题 {i+1}**：{q}" for i, q in enumerate(output.questions))
-            yield _sse("chunk", {"text": f"\n\n---\n\n{questions_text}"})
-            yield _sse("questions", {"items": output.questions})
-            next_state_after = DeepLearnState.QUESTIONING
-        else:
-            next_state_after = DeepLearnState.AWAITING_COMMAND
-
-        # 更新概念状态
-        concept = _get_current_concept(session)
-        if concept:
-            session.concepts_status[concept] = "current"
-
-        with get_db_context() as db:
-            update_session(
-                db, session.id,
-                state=next_state_after,
-                concepts_status=session.concepts_status,
-                difficulty_level=session.difficulty_level,
-            )
-
-        if next_state_after == DeepLearnState.AWAITING_COMMAND:
-            yield _sse("show_commands", {"commands": ["continue", "expand", "skip", "reteach"]})
-
-    async def _handle_assessment(
-        self, session: SessionState, user_answer: str, node_name: str, node_why: str
-    ) -> AsyncGenerator[str, None]:
-        concept = _get_current_concept(session)
-        assessment = await self.assessment_agent.evaluate_answer(
-            session=session,
-            question="（根据当前概念讲解内容）",
-            user_answer=user_answer,
-            concept=concept,
-        )
-        yield _sse("assessment", {
-            "is_correct": assessment.is_correct,
-            "explanation": assessment.explanation,
-            "feedback": assessment.feedback,
-        })
-
-        # 更新 session 状态
-        new_wrong_count = assessment.wrong_count if not assessment.is_correct else 0
-        new_weak_points = list(set(session.weak_points + assessment.update_weak_points))
-        new_difficulty = max(1, min(5, session.difficulty_level + assessment.difficulty_delta))
-
-        if assessment.is_correct:
-            session.concepts_status[concept] = "done"
-
-        result = self.orchestrator.on_assessment_done(
-            current_state=DeepLearnState.EVALUATING,
-            is_correct=assessment.is_correct,
-            wrong_count=new_wrong_count,
-            all_concepts_done=_all_concepts_done(session),
-        )
-        yield _sse("state_change", {"from": "EVALUATING", "to": result.next_state})
-
-        with get_db_context() as db:
-            update_session(
-                db, session.id,
-                state=result.next_state,
-                wrong_count_current=new_wrong_count,
-                weak_points=new_weak_points,
-                difficulty_level=new_difficulty,
-                concepts_status=session.concepts_status,
-            )
-
-        if result.action == "show_command_prompt":
-            yield _sse("show_commands", {"commands": ["continue", "expand", "skip", "reteach"]})
-        elif result.action == "run_teaching":
-            mode = (result.meta or {}).get("mode", "probe_stuck")
-            output = await self.teaching_agent.teach(session, node_name, node_why, _build_memory_context(session), mode)
-            async for event in self._stream_teaching_output(session, output, result.next_state):
-                yield event
-
-    async def _handle_readiness(self, session: SessionState, node_name: str) -> AsyncGenerator[str, None]:
-        readiness = await self.assessment_agent.check_readiness(session, node_name)
-        result = self.orchestrator.on_readiness_checked(readiness.ready_for_test)
-        yield _sse("state_change", {"from": "AI_ASSESSING_READINESS", "to": result.next_state})
-
-        if readiness.ready_for_test:
-            yield _sse("test_confirm_prompt", {
-                "message": f"{readiness.reasoning}\n\n你准备好开始综合测试了吗？",
-                "commands": ["confirm_test", "not_ready"],
-            })
-        else:
-            review_hint = f"建议复习：{', '.join(readiness.suggest_review_concepts)}" if readiness.suggest_review_concepts else ""
-            yield _sse("chunk", {"text": f"{readiness.reasoning}\n\n{review_hint}"})
-
-        with get_db_context() as db:
-            update_session(db, session.id, state=result.next_state)
-
-    async def _handle_test_evaluation(
-        self, session: SessionState, user_answer: str, node_name: str
-    ) -> AsyncGenerator[str, None]:
-        assessment = await self.assessment_agent.evaluate_answer(
-            session=session,
-            question="综合测试",
-            user_answer=user_answer,
-            concept=node_name,
-        )
-        result = self.orchestrator.on_assessment_done(
-            current_state=DeepLearnState.EVALUATING_TEST,
-            is_correct=assessment.is_correct,
-            wrong_count=0,
-            all_concepts_done=True,
-        )
-        yield _sse("assessment", {"is_correct": assessment.is_correct, "explanation": assessment.explanation, "feedback": assessment.feedback})
-        yield _sse("state_change", {"from": "EVALUATING_TEST", "to": result.next_state})
-
-        if result.next_state == DeepLearnState.COMPLETED:
-            yield _sse("chunk", {"text": "🎉 恭喜你通过了本节点的综合测试！"})
-            with get_db_context() as db:
-                update_session(db, session.id, state=DeepLearnState.COMPLETED, status="completed")
-                # 更新节点状态为 learned
-                db.execute(
-                    "UPDATE nodes SET status = 'learned' WHERE id = ?",
-                    (session.node_id,)
-                )
-                db.commit()
-        elif result.action == "show_fail_options":
-            yield _sse("fail_options", {
-                "message": "这次还没通过，选择下一步：",
-                "options": [
-                    {"command": "restart", "label": "🔄 从头开始"},
-                    {"command": "not_ready", "label": "📚 针对弱点复习"},
-                ]
-            })
-            with get_db_context() as db:
-                update_session(db, session.id, state=result.next_state)
-
-    async def _maybe_checkpoint(self, session: SessionState):
-        turn_count = len(session.recent_turns)
-        if turn_count > 0 and turn_count % _CHECKPOINT_EVERY == 0:
-            with get_db_context() as db:
-                update_session(db, session.id, recent_turns=session.recent_turns)
-
-
-def _sse(event_type: str, data: dict) -> str:
-    import json as _json
-    return f"data: {_json.dumps({'type': event_type, **data}, ensure_ascii=False)}\n\n"
-
-
-_service: Optional[DeepLearnService] = None
-
-def get_deep_learn_service() -> DeepLearnService:
-    global _service
-    if _service is None:
-        _service = DeepLearnService()
-    return _service
+        """处理控制命令，按状态机路由"""
 ```
 
-**验收**：`get_or_create_session()` 正常返回；`stream_message()` 对一条用户消息产生至少一个 SSE 事件。
+**实现要点**：
+
+1. **SSE 序列化辅助函数**：
+   ```python
+   def _sse(event_type: str, **data) -> str:
+       return f"data: {json.dumps({'type': event_type, **data}, ensure_ascii=False)}\n\n"
+   ```
+
+2. **每次状态变化都发 `state_change` 事件**；service 在 update_session 之后立刻 yield。
+
+3. **每个 SSE generator 末尾必须 yield `_sse("done")`**（即使中途出错也要 done）。
+
+4. **错误处理**：所有 agent 调用包在 try/except，捕获后 yield `_sse("error", error={"code":"AI_ERROR","message":str(e)})` 然后 yield done。
+
+5. **关键的"运行 action"逻辑**（用 if/elif 分发，不要 dict-dispatch，便于调试）：
+   ```python
+   if decision.action == "teach":
+       output = await self.teaching_agent.run(... mode=decision.teach_mode ...)
+       yield _sse("chunk", text=output.content)
+       if output.mermaid_code:
+           yield _sse("image_mermaid", code=output.mermaid_code)
+       if output.questions:
+           yield _sse("questions", items=output.questions)
+       # 持久化：把 assistant 的 turn 加到 recent_turns（截断到最近 8 条）
+       session.recent_turns = (session.recent_turns + [{"role":"assistant","content":output.content}])[-8:]
+       new_state = "QUESTIONING" if output.questions else "QUESTIONING"  # probe_stuck 也是等用户回话
+       update_session(db, session.id, state=new_state, recent_turns=session.recent_turns, ...)
+       yield _sse("state_change", from_=session.state, to=new_state)
+       session.state = new_state
+   ```
+
+6. **测试题生成（CONFIRMING_TEST → TESTING）**：
+   - 由 `TeachingAgent` 在一个特殊 mode 中生成 3 题（new mode："generate_test"）—— 或者更简单：直接调 `chat_json` 一次性返回 `{"questions":[...]}`，存到 `session.test_questions`，然后 emit 第一题
+   - 推荐做法：在 service.py 里直接写一个内联函数 `_generate_test_questions(node_name, what_list, weak_points) -> list[str]`，3 道题，prompt 直接内联在函数里（不必走 config 文件），返回 list
+
+7. **mark_node_learned**：
+   ```python
+   db.execute("UPDATE nodes SET status='learned' WHERE id=?", (session.node_id,))
+   db.commit()
+   update_session(db, session.id, state="COMPLETED", status="completed", ended_at=NOW())
+   yield _sse("node_completed", node_id=session.node_id)
+   ```
+
+8. **restart 命令**：
+   ```python
+   abandon_session(db, session.id)
+   new_session = create_session(db, user_id=..., node_id=..., plan_id=..., what_list=session.what_list)
+   yield _sse("restart", new_session_id=new_session.id)
+   # 不在此响应里继续讲；前端收到 restart 后会用新 session_id 重新调 /initialize
+   ```
+
+9. **概念状态更新**：当 service 把某个 index 标 done/skipped，必须 yield 一条 `concept_update` 事件让前端更新左侧进度。
+
+10. **每完成一次 SSE generator 末尾，把 session 的最新状态再写一次 DB（防止中途漏写）**。
+
+**Verify**：写一个本地脚本走通"新建 session → /initialize → 用户答题 → /message → /command continue"的完整链路，打印所有 SSE 事件，对照 0.4 节验证。
 
 ---
 
-## Task 8 — API Router
+### B-09：Router
 
-**文件**：`backend/routers/deep_learn.py`
+**File**：`backend/routers/deep_learn.py`
+
+**Goal**：把 service 的 4 个 API 暴露成 HTTP endpoint。
+
+**Endpoints**（与 PRD §7 完全一致）：
 
 ```python
-from __future__ import annotations
-import json
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
-from database import get_db, get_db_context
-from services.deep_learn.service import get_deep_learn_service
-from services.deep_learn.session_repo import get_session_by_id, update_session
-from models_deep_learn import CreateSessionRequest, CreateSessionResponse, MessageRequest, CommandRequest
-from utils.auth import get_current_user_id
-
 router = APIRouter(prefix="/api/deep-learn", tags=["DeepLearn"])
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
-
-def _get_node_info(db, node_id: str, user_id: str) -> tuple[str, str, str]:
-    """返回 (node_name, node_why, plan_id)，验证归属权"""
-    row = db.execute(
-        "SELECT n.name, n.why, n.plan_id FROM nodes n "
-        "JOIN plans p ON p.id = n.plan_id "
-        "WHERE n.id = ? AND p.user_id = ?",
-        (node_id, user_id),
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail={"code": "NODE_NOT_FOUND", "message": "节点不存在"})
-    return row["name"], row["why"] or "", row["plan_id"]
-
-
-@router.post("/sessions", response_model=CreateSessionResponse)
-async def create_or_resume_session(
+@router.post("/sessions")
+async def create_session(
     req: CreateSessionRequest,
-    current_user_id: str = Depends(get_current_user_id),
-    db=Depends(get_db),
-):
-    _get_node_info(db, req.node_id, current_user_id)  # 权限检查
-    svc = get_deep_learn_service()
-    session, is_resumed = await svc.get_or_create_session(current_user_id, req.node_id, req.plan_id)
-    return CreateSessionResponse(
-        success=True,
-        session_id=session.id,
-        state=session.state,
-        is_resumed=is_resumed,
-        what_list=session.what_list,
-        concepts_status=session.concepts_status,
-    )
-
+    user_id: str = Depends(get_current_user_id),
+    db: DbSession = Depends(get_db),
+) -> dict:
+    # 1. 验证 plan 归属 user（防越权）
+    # 2. 调 service.get_or_create_session
+    # 3. 返回 {"success": True, "data": CreateSessionData(...).model_dump()}
+    # is_resumed = (返回的 session.state != "INITIALIZING")
+    ...
 
 @router.get("/sessions/{session_id}")
 async def get_session(
     session_id: str,
-    current_user_id: str = Depends(get_current_user_id),
-    db=Depends(get_db),
-):
-    session = get_session_by_id(db, session_id, current_user_id)
-    if not session:
-        raise HTTPException(status_code=404, detail={"code": "SESSION_NOT_FOUND", "message": "Session 不存在"})
-    return {"success": True, "data": session.model_dump()}
-
+    user_id: str = Depends(get_current_user_id),
+    db: DbSession = Depends(get_db),
+) -> dict:
+    # 返回 {"success": True, "data": session.model_dump() + node_meta}
+    ...
 
 @router.post("/sessions/{session_id}/initialize")
-async def initialize_session(
+async def initialize(
     session_id: str,
     http_request: Request,
-    current_user_id: str = Depends(get_current_user_id),
-    db=Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """新 session 的第一条流：Teaching Agent 讲第一个概念"""
-    session = get_session_by_id(db, session_id, current_user_id)
-    if not session:
-        raise HTTPException(status_code=404, detail={"code": "SESSION_NOT_FOUND", "message": "Session 不存在"})
-    node_name, node_why, _ = _get_node_info(db, session.node_id, current_user_id)
-
-    svc = get_deep_learn_service()
-
-    async def _gen():
-        async for chunk in svc.stream_initial(session, node_name, node_why):
-            if await http_request.is_disconnected():
-                return
-            yield chunk
-
-    return StreamingResponse(_gen(), media_type="text/event-stream", headers=SSE_HEADERS)
-
+    # SSE response; service 内部用 get_db_context 拿连接
+    ...
 
 @router.post("/sessions/{session_id}/message")
 async def send_message(
     session_id: str,
     req: MessageRequest,
     http_request: Request,
-    current_user_id: str = Depends(get_current_user_id),
-    db=Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    session = get_session_by_id(db, session_id, current_user_id)
-    if not session:
-        raise HTTPException(status_code=404, detail={"code": "SESSION_NOT_FOUND", "message": "Session 不存在"})
-    node_name, node_why, _ = _get_node_info(db, session.node_id, current_user_id)
-
-    svc = get_deep_learn_service()
-
-    async def _gen():
-        async for chunk in svc.stream_message(session, req.content, node_name, node_why):
-            if await http_request.is_disconnected():
-                return
-            yield chunk
-
-    return StreamingResponse(_gen(), media_type="text/event-stream", headers=SSE_HEADERS)
-
+    ...
 
 @router.post("/sessions/{session_id}/command")
 async def send_command(
     session_id: str,
     req: CommandRequest,
     http_request: Request,
-    current_user_id: str = Depends(get_current_user_id),
-    db=Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    session = get_session_by_id(db, session_id, current_user_id)
-    if not session:
-        raise HTTPException(status_code=404, detail={"code": "SESSION_NOT_FOUND", "message": "Session 不存在"})
-    node_name, node_why, _ = _get_node_info(db, session.node_id, current_user_id)
-
-    svc = get_deep_learn_service()
-
-    async def _gen():
-        async for chunk in svc.stream_command(session, req.command, node_name, node_why):
-            if await http_request.is_disconnected():
-                return
-            yield chunk
-
-    return StreamingResponse(_gen(), media_type="text/event-stream", headers=SSE_HEADERS)
+    ...
 ```
 
-**验收**：`POST /api/deep-learn/sessions` 返回 `session_id`；`POST /api/deep-learn/sessions/{id}/message` 返回 SSE 流。
+**实现要点**：
+- 三个 SSE endpoint **不要**用 `Depends(get_db)`（DI 的 db 会在 generator 返回前被关闭）。改用 `get_db_context()` 在 service 内部按需打开短连接
+- 在 SSE generator 里循环检查 `await http_request.is_disconnected()`，断线立即 return
+- session 权限检查：所有 endpoint 拿到 session 后**必须**验证 `session.user_id == user_id`，否则 raise 403
+
+**Verify**：用 curl 跑：
+```bash
+curl -X POST .../api/deep-learn/sessions -H "Authorization: Bearer ..." -d '{"node_id":"...","plan_id":"..."}'
+# 应返回 {"success": true, "data": {...session_id, ...}}
+```
 
 ---
 
-## Task 9 — 注册 Router
+### B-10：注册 Router
 
-**修改文件**：`backend/main.py`
+**File**：`backend/main.py`
 
-在 `from routers import ...` 那行加入 `deep_learn`，在 `app.include_router` 部分加一行：
+**修改 2 处**：
 
 ```python
-# 在 from routers import ... 行末尾加入
-from routers import deep_learn   # 新增
+# 第 19 行附近，新增 deep_learn import
+from routers import ai, auth, deep_learn, graph, notes, plans, stats, user
 
-# 在 app.include_router(ai.router) 下面加
-app.include_router(deep_learn.router)  # 新增
+# 第 113 行附近，include_router
+app.include_router(ai.router)
+app.include_router(deep_learn.router)   # ← 新增这一行
 ```
 
-**验收**：`GET /docs` 能看到 `/api/deep-learn/sessions` 路径。
+**Verify**：启动后端，访问 `/docs`（DEBUG 模式）应看到 `/api/deep-learn/...` 路径。
 
 ---
 
-## Task 10 — 前端 API Service
+## Part 2 · Frontend Tasks
 
-**文件**：`frontend/src/services/deepLearnApi.js`
+### F-01：API Client
+
+**File**：`frontend/src/services/deepLearnApi.js`
+
+**Goal**：封装所有 5 个后端 endpoint 调用；SSE 返回原始 `Response` 对象供 hook 消费。
 
 ```javascript
-import { getAuthHeaders, API_BASE } from './api';  // 复用现有 auth header 工具
+import { tokenManager } from './api';
+import { buildApiUrl } from '../config/api';
 
-const BASE = `${API_BASE}/api/deep-learn`;
+const authHeaders = () => {
+  const token = tokenManager.get();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 export const deepLearnApi = {
-  /** 创建或恢复 session */
   createSession: async ({ nodeId, planId }) => {
-    const res = await fetch(`${BASE}/sessions`, {
+    const res = await fetch(buildApiUrl('/api/deep-learn/sessions'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ node_id: nodeId, plan_id: planId }),
     });
-    if (!res.ok) throw new Error('Failed to create session');
-    return res.json();
+    if (!res.ok) throw new Error(`createSession failed: ${res.status}`);
+    return res.json();   // { success, data: {...} }
   },
 
-  /** 获取 session 状态 */
   getSession: async (sessionId) => {
-    const res = await fetch(`${BASE}/sessions/${sessionId}`, {
-      headers: getAuthHeaders(),
+    const res = await fetch(buildApiUrl(`/api/deep-learn/sessions/${sessionId}`), {
+      headers: authHeaders(),
     });
-    if (!res.ok) throw new Error('Failed to get session');
+    if (!res.ok) throw new Error(`getSession failed: ${res.status}`);
     return res.json();
   },
 
-  /**
-   * 初始化新 session（返回 SSE ReadableStream）
-   * 调用方负责消费流
-   */
-  initializeSession: (sessionId) =>
-    fetch(`${BASE}/sessions/${sessionId}/initialize`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    }),
+  // 三个 SSE endpoint 返回 Response，由 hook 消费 body 流
+  initialize: (sessionId) => fetch(
+    buildApiUrl(`/api/deep-learn/sessions/${sessionId}/initialize`),
+    { method: 'POST', headers: authHeaders() },
+  ),
 
-  /** 发送消息（返回 fetch Response，调用方消费 SSE） */
-  sendMessage: (sessionId, content) =>
-    fetch(`${BASE}/sessions/${sessionId}/message`, {
+  sendMessage: (sessionId, content) => fetch(
+    buildApiUrl(`/api/deep-learn/sessions/${sessionId}/message`),
+    {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ content }),
-    }),
+    },
+  ),
 
-  /** 发送控制命令 */
-  sendCommand: (sessionId, command) =>
-    fetch(`${BASE}/sessions/${sessionId}/command`, {
+  sendCommand: (sessionId, command) => fetch(
+    buildApiUrl(`/api/deep-learn/sessions/${sessionId}/command`),
+    {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ command }),
-    }),
+    },
+  ),
 };
 ```
 
-> 注意：如果现有 `api.js` 没有导出 `getAuthHeaders` 和 `API_BASE`，在此文件里直接读 localStorage token 即可，参考现有 api.js 的写法。
+**Verify**：浏览器 console 直接调 `await deepLearnApi.createSession({...})` 应返回数据。
 
 ---
 
-## Task 11 — App.jsx 新增路由
+### F-02：useDeepLearnSession Hook（核心 · SSE 消费）
 
-**修改文件**：`frontend/src/App.jsx`
+**File**：`frontend/src/hooks/useDeepLearnSession.js`
+
+**Goal**：管理整个 page 的状态：session、messages、UI flags；消费 SSE 流；提供 `sendMessage`/`sendCommand` 接口。
+
+**导出 hook 签名**：
+
+```javascript
+export function useDeepLearnSession({ planId, nodeId }) {
+  return {
+    session,              // { sessionId, state, nodeName, nodeWhy, whatList, ... }
+    messages,             // [{ role: 'user'|'assistant', kind: 'text'|'mermaid'|'assessment', content }]
+    conceptsStatus,       // { "0": "done", "1": "current", ... }
+    weakPoints,           // string[]
+    isStreaming,          // bool
+    uiFlags: {
+      showCommands: bool,           // 显示 [continue/expand/skip/reteach]
+      showTestConfirm: object|null, // { message, commands: [...] }
+      showFailOptions: object|null, // { message, options: [...] }
+    },
+    sendMessage,          // (text) => Promise<void>
+    sendCommand,          // (cmd) => Promise<void>
+    error,                // string|null
+  };
+}
+```
+
+**SSE 消费器实现**：
+
+```javascript
+async function consumeSSE(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 2);
+      if (block.startsWith('data:')) {
+        try { onEvent(JSON.parse(block.slice(5).trim())); } catch (_) { /* skip */ }
+      }
+    }
+  }
+}
+```
+
+**事件 → state 映射**（与 0.4 节一一对应）：
+
+| 事件类型 | hook 处理 |
+|---------|----------|
+| `chunk` | 追加到当前 assistant message 的 content；如无则新建一个 |
+| `image_mermaid` | 新增一条 message `{role:'assistant', kind:'mermaid', content: event.code}` |
+| `state_change` | 更新 `session.state`，重置 uiFlags（仅在新增其他 flag 时） |
+| `concept_update` | `conceptsStatus[event.index] = event.status` |
+| `questions` | 新增一条 message `{role:'assistant', kind:'questions', content: event.items}` |
+| `assessment` | 新增一条 message `{role:'assistant', kind:'assessment', content: event}` |
+| `show_commands` | `uiFlags.showCommands = true; showTestConfirm = showFailOptions = null` |
+| `test_confirm_prompt` | `uiFlags.showTestConfirm = event` |
+| `fail_options` | `uiFlags.showFailOptions = event` |
+| `node_completed` | 弹一个 toast「节点已掌握 🎉」，跳转回 `/graph/:planId` 或停在此页 |
+| `restart` | 用 `event.new_session_id` 替换 sessionId，messages 清空，再调一次 `initialize` |
+| `error` | `setError(event.error.message)` |
+| `done` | `isStreaming = false`；finalize 当前 assistant message |
+
+**初始化逻辑**：
+
+```javascript
+useEffect(() => {
+  let cancelled = false;
+  (async () => {
+    const res = await deepLearnApi.createSession({ nodeId, planId });
+    if (cancelled) return;
+    const data = res.data;
+    setSession({ sessionId: data.session_id, state: data.state, nodeName: data.node_name, nodeWhy: data.node_why, whatList: data.what_list });
+    setConceptsStatus(data.concepts_status);
+    setWeakPoints(data.weak_points);
+
+    if (data.state === 'INITIALIZING') {
+      // 新 session，立即触发初始讲解
+      await streamFrom(deepLearnApi.initialize(data.session_id));
+    } else {
+      // resume：回填 recent_turns 为 messages，根据 state 决定 uiFlags
+      setMessages(data.recent_turns.map(t => ({ role: t.role, kind: 'text', content: t.content })));
+      // 简单恢复策略：state 是 AWAITING_COMMAND 时 showCommands；CONFIRMING_TEST 时 showTestConfirm；CHOOSING_AFTER_FAIL 时 showFailOptions
+      // Phase 1 可以更简单：恢复时只提示「已恢复进度，可继续输入或点击命令」，showCommands=true（让用户点 continue 触发下一步）
+    }
+  })();
+  return () => { cancelled = true; };
+}, [planId, nodeId]);
+```
+
+**Verify**：在 DeepLearnPage 里挂载 hook，console 打印每个事件，跑一遍流程无遗漏。
+
+---
+
+### F-03：App.jsx 路由
+
+**修改**：`frontend/src/App.jsx`
 
 ```jsx
-// 在 import 区域加入
+// import 区域新增
 import DeepLearnPage from './pages/DeepLearnPage';
 
-// 在 <Routes> 内加入（放在 /graph/:planId 路由之后）
+// <Routes> 内，在 /graph/:planId 路由之后新增
 <Route
   path="/deep-learn/:planId/:nodeId"
   element={
@@ -1319,82 +967,44 @@ import DeepLearnPage from './pages/DeepLearnPage';
 
 ---
 
-## Task 12 — DeepLearnPage（骨架）
+### F-04：DeepLearnPage（Shell）
 
-**文件**：`frontend/src/pages/DeepLearnPage.jsx`
+**File**：`frontend/src/pages/DeepLearnPage.jsx`
+
+**Goal**：左右分栏 layout；header；挂载 hook；分发到子组件。
 
 ```jsx
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, RotateCcw } from 'lucide-react';
-import ConceptProgress from '../components/deep-learn/ConceptProgress';
-import DeepLearnChat from '../components/deep-learn/DeepLearnChat';
-import { useDeepLearnSession } from '../hooks/useDeepLearnSession';
-
 export default function DeepLearnPage() {
   const { planId, nodeId } = useParams();
   const navigate = useNavigate();
   const {
-    session,
-    messages,
-    isStreaming,
-    conceptsStatus,
-    weakPoints,
-    sendMessage,
-    sendCommand,
-    showCommands,
-    showTestConfirm,
-    showFailOptions,
+    session, messages, conceptsStatus, weakPoints, isStreaming,
+    uiFlags, sendMessage, sendCommand, error,
   } = useDeepLearnSession({ planId, nodeId });
 
-  if (!session) {
-    return (
-      <div className="flex items-center justify-center h-screen text-zinc-400">
-        正在初始化学习环境...
-      </div>
-    );
-  }
+  if (!session) return <FullScreenLoader text="正在准备学习环境..." />;
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFAFA] overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white shrink-0">
-        <button
-          onClick={() => navigate(`/graph/${planId}`)}
-          className="flex items-center gap-1 text-zinc-500 hover:text-zinc-800 text-sm"
-        >
-          <ArrowLeft size={16} /> 返回
-        </button>
-        <span className="font-medium text-zinc-800 flex-1 truncate">
-          深入学习：{session.nodeName || ''}
-        </span>
-        <button
-          onClick={() => sendCommand('restart')}
-          className="flex items-center gap-1 text-zinc-400 hover:text-zinc-700 text-sm"
-        >
-          <RotateCcw size={14} /> 重新开始
-        </button>
-      </header>
-
-      {/* Main: left + right */}
+      <Header
+        nodeName={session.nodeName}
+        onBack={() => navigate(`/graph/${planId}`)}
+        onRestart={() => sendCommand('restart')}
+      />
       <div className="flex flex-1 overflow-hidden">
-        {/* 左侧：概念进度 */}
-        <aside className="w-64 shrink-0 border-r border-zinc-200 bg-white overflow-y-auto">
+        <aside className="w-72 shrink-0 border-r border-zinc-200 bg-white overflow-y-auto">
           <ConceptProgress
             whatList={session.whatList}
             conceptsStatus={conceptsStatus}
             weakPoints={weakPoints}
           />
         </aside>
-
-        {/* 右侧：对话区 */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden flex flex-col">
+          {error && <ErrorBanner message={error} />}
           <DeepLearnChat
             messages={messages}
             isStreaming={isStreaming}
-            showCommands={showCommands}
-            showTestConfirm={showTestConfirm}
-            showFailOptions={showFailOptions}
+            uiFlags={uiFlags}
             onSendMessage={sendMessage}
             onSendCommand={sendCommand}
           />
@@ -1405,246 +1015,80 @@ export default function DeepLearnPage() {
 }
 ```
 
----
-
-## Task 13 — ConceptProgress 组件
-
-**文件**：`frontend/src/components/deep-learn/ConceptProgress.jsx`
-
-```jsx
-import React from 'react';
-import { CheckCircle2, Circle, ChevronRight, SkipForward, AlertTriangle } from 'lucide-react';
-
-const STATUS_CONFIG = {
-  done:    { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-  current: { icon: ChevronRight,  color: 'text-blue-500',   bg: 'bg-blue-50'    },
-  skipped: { icon: SkipForward,   color: 'text-zinc-400',   bg: 'bg-zinc-50'    },
-  pending: { icon: Circle,        color: 'text-zinc-300',   bg: ''              },
-};
-
-export default function ConceptProgress({ whatList = [], conceptsStatus = {}, weakPoints = [] }) {
-  const done   = Object.values(conceptsStatus).filter(s => s === 'done').length;
-  const total  = whatList.length;
-  const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
-
-  return (
-    <div className="p-4 space-y-5">
-      {/* 进度条 */}
-      <div>
-        <div className="flex justify-between text-xs text-zinc-400 mb-1">
-          <span>学习进度</span>
-          <span>{done}/{total}</span>
-        </div>
-        <div className="h-1.5 bg-zinc-100 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-emerald-400 rounded-full transition-all duration-500"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      </div>
-
-      {/* 概念列表 */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">概念列表</p>
-        {whatList.map((concept, i) => {
-          const status = conceptsStatus[concept] || 'pending';
-          const { icon: Icon, color, bg } = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-          return (
-            <div
-              key={i}
-              className={`flex items-start gap-2 p-2 rounded-lg text-sm ${bg}`}
-            >
-              <Icon size={14} className={`mt-0.5 shrink-0 ${color}`} />
-              <span className={status === 'pending' ? 'text-zinc-400' : 'text-zinc-700'}>
-                {concept}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 弱点追踪 */}
-      {weakPoints.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-2">弱点追踪</p>
-          <div className="space-y-1">
-            {weakPoints.map((wp, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 rounded-lg p-2">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                <span>{wp}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-```
+**实现要点**：
+- `Header`/`FullScreenLoader`/`ErrorBanner` 都内联实现，不要新建文件
+- Header 用现有 `lucide-react` 图标（ArrowLeft、RotateCcw）
 
 ---
 
-## Task 14 — DeepLearnChat 组件
+### F-05：ConceptProgress
 
-**文件**：`frontend/src/components/deep-learn/DeepLearnChat.jsx`
+**File**：`frontend/src/components/deep-learn/ConceptProgress.jsx`
 
-```jsx
-import React, { useRef, useEffect, useState } from 'react';
-import { Send } from 'lucide-react';
-import ChatMarkdownMessage from '../chat/ChatMarkdownMessage';  // 复用现有组件
-import CommandBar from './CommandBar';
-import MermaidDiagram from './MermaidDiagram';
+**Props**：`{ whatList: string[], conceptsStatus: Record<string,string>, weakPoints: string[] }`
 
-export default function DeepLearnChat({
-  messages = [],
-  isStreaming = false,
-  showCommands = false,
-  showTestConfirm = null,
-  showFailOptions = null,
-  onSendMessage,
-  onSendCommand,
-}) {
-  const [input, setInput] = useState('');
-  const bottomRef = useRef(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text || isStreaming) return;
-    onSendMessage(text);
-    setInput('');
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'user' ? (
-              <div className="max-w-[70%] bg-zinc-800 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm">
-                {msg.content}
-              </div>
-            ) : msg.type === 'mermaid' ? (
-              <div className="max-w-[85%]">
-                <MermaidDiagram code={msg.content} />
-              </div>
-            ) : (
-              <div className="max-w-[85%]">
-                <ChatMarkdownMessage content={msg.content} />
-              </div>
-            )}
-          </div>
-        ))}
-        {isStreaming && (
-          <div className="flex justify-start">
-            <div className="flex gap-1 px-4 py-3">
-              {[0,1,2].map(i => (
-                <span key={i} className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce"
-                  style={{ animationDelay: `${i * 0.15}s` }} />
-              ))}
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* 控制按钮区 */}
-      {showTestConfirm && (
-        <div className="px-6 pb-2">
-          <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800 space-y-3">
-            <p>{showTestConfirm.message}</p>
-            <CommandBar
-              commands={['confirm_test', 'not_ready']}
-              onCommand={onSendCommand}
-            />
-          </div>
-        </div>
-      )}
-      {showFailOptions && (
-        <div className="px-6 pb-2">
-          <div className="bg-amber-50 rounded-xl p-4 text-sm text-amber-800 space-y-3">
-            <p>{showFailOptions.message}</p>
-            <CommandBar
-              commands={showFailOptions.options.map(o => o.command)}
-              labels={Object.fromEntries(showFailOptions.options.map(o => [o.command, o.label]))}
-              onCommand={onSendCommand}
-            />
-          </div>
-        </div>
-      )}
-      {showCommands && !showTestConfirm && !showFailOptions && (
-        <div className="px-6 pb-2">
-          <CommandBar commands={['continue', 'expand', 'skip', 'reteach']} onCommand={onSendCommand} />
-        </div>
-      )}
-
-      {/* 输入框 */}
-      <div className="px-6 pb-6 pt-2 border-t border-zinc-100">
-        <div className="flex gap-2">
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={2}
-            placeholder="输入你的回答，或直接输入「继续」「展开」等指令…"
-            className="flex-1 resize-none rounded-xl border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300 bg-white"
-            disabled={isStreaming}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isStreaming}
-            className="self-end p-2.5 rounded-xl bg-zinc-800 text-white disabled:opacity-40 hover:bg-zinc-700 transition-colors"
-          >
-            <Send size={16} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-```
+**实现要点**：
+- 顶部：进度条（done / total）
+- 中部：概念列表，每行：状态图标 + 文字
+- 状态 → 图标映射：
+  - `done` → `CheckCircle2`，绿色
+  - `current` → `ChevronRight`，蓝色 + 浅蓝背景
+  - `skipped` → `SkipForward`，灰色
+  - `pending` → `Circle`，浅灰
+- 底部：弱点列表（黄色 `AlertTriangle` 图标），仅 weakPoints.length > 0 时显示
 
 ---
 
-## Task 15 — CommandBar 组件
+### F-06：DeepLearnChat
 
-**文件**：`frontend/src/components/deep-learn/CommandBar.jsx`
+**File**：`frontend/src/components/deep-learn/DeepLearnChat.jsx`
+
+**Props**：`{ messages, isStreaming, uiFlags, onSendMessage, onSendCommand }`
+
+**结构**：
+1. **滚动消息区**（flex-1，overflow-y-auto）
+   - 遍历 messages：根据 `kind` 分发：
+     - `text` → 用户消息（右对齐黑底）/ AI 消息（左对齐 `ChatMarkdownMessage`）
+     - `mermaid` → `<MermaidDiagram code={content} />`
+     - `questions` → 一个圆角卡片，列出 3 道题
+     - `assessment` → 圆角卡片，✅/❌ + explanation + feedback
+   - 末尾 `<div ref={bottomRef} />` 用 `useEffect` 自动滚到底
+2. **UI flag 区**（在消息区下方、输入框上方）
+   - `uiFlags.showTestConfirm` → 蓝色卡片 + `<CommandBar commands={['confirm_test','not_ready']} />`
+   - `uiFlags.showFailOptions` → 黄色卡片 + `<CommandBar commands={...} labels={...} />`
+   - `uiFlags.showCommands && !其他 flag` → `<CommandBar commands={['continue','expand','skip','reteach']} />`
+3. **输入框**
+   - textarea + Send 按钮
+   - 流式中 disabled
+   - Enter 提交、Shift+Enter 换行
+
+---
+
+### F-07：CommandBar + MermaidDiagram
+
+**File A**：`frontend/src/components/deep-learn/CommandBar.jsx`
 
 ```jsx
-import React from 'react';
-
-const COMMAND_LABELS = {
-  continue:     '继续 →',
-  expand:       '展开',
-  skip:         '跳过',
-  reteach:      '重讲',
+const LABELS = {
+  continue: '继续 →',
+  expand: '展开',
+  skip: '跳过',
+  reteach: '重讲',
   confirm_test: '✅ 开始测试',
-  not_ready:    '再复习一下',
-  restart:      '🔄 重新开始',
+  not_ready: '再复习一下',
+  restart: '🔄 重新开始',
 };
 
-export default function CommandBar({ commands = [], labels = {}, onCommand }) {
+export default function CommandBar({ commands, labels = {}, onCommand }) {
   return (
     <div className="flex flex-wrap gap-2">
       {commands.map(cmd => (
         <button
           key={cmd}
           onClick={() => onCommand(cmd)}
-          className="px-3 py-1.5 rounded-lg text-sm border border-zinc-200 bg-white hover:bg-zinc-50
-                     text-zinc-700 hover:text-zinc-900 transition-colors"
+          className="px-3 py-1.5 rounded-lg text-sm border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors"
         >
-          {labels[cmd] || COMMAND_LABELS[cmd] || cmd}
+          {labels[cmd] || LABELS[cmd] || cmd}
         </button>
       ))}
     </div>
@@ -1652,262 +1096,112 @@ export default function CommandBar({ commands = [], labels = {}, onCommand }) {
 }
 ```
 
----
+**File B**：`frontend/src/components/deep-learn/MermaidDiagram.jsx`
 
-## Task 16 — MermaidDiagram 组件
-
-**文件**：`frontend/src/components/deep-learn/MermaidDiagram.jsx`
-
-先安装依赖：`npm install mermaid`
+先安装：`npm install mermaid` （在 `frontend/` 目录）
 
 ```jsx
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import mermaid from 'mermaid';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
-
-let _id = 0;
-const nextId = () => `mermaid-${++_id}`;
+let _uid = 0;
 
 export default function MermaidDiagram({ code }) {
   const ref = useRef(null);
-  const idRef = useRef(nextId());
-
   useEffect(() => {
     if (!ref.current || !code) return;
-    const id = idRef.current;
+    const id = `mermaid-${++_uid}`;
     mermaid.render(id, code).then(({ svg }) => {
       if (ref.current) ref.current.innerHTML = svg;
     }).catch(() => {
       if (ref.current) ref.current.textContent = '[图表渲染失败]';
     });
   }, [code]);
-
-  return (
-    <div
-      ref={ref}
-      className="my-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200 overflow-x-auto"
-    />
-  );
+  return <div ref={ref} className="my-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200 overflow-x-auto" />;
 }
 ```
 
 ---
 
-## Task 17 — useDeepLearnSession Hook
+## Part 3 · Smoke Tests（手动验证）
 
-**文件**：`frontend/src/hooks/useDeepLearnSession.js`
+每个场景必须能完整跑通，无 console error。
 
-```javascript
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { deepLearnApi } from '../services/deepLearnApi';
+### T-01：新 session 完整 happy path
 
-function parseSSELine(line) {
-  if (!line.startsWith('data: ')) return null;
-  try { return JSON.parse(line.slice(6)); } catch { return null; }
-}
+1. 在 GraphPage 选一个 `what` 列表非空的节点 → 跳转 `/deep-learn/:planId/:nodeId`
+2. 期望：左侧显示概念列表（第一个是 current，其余 pending）
+3. 右侧 AI 讲第一个概念 + 3 道题
+4. 答对一题 → 看到 ✅ assessment + `[continue/expand/skip/reteach]` 按钮
+5. 点 continue → 讲第二个概念
+6. 重复直到所有概念 done
+7. 自动进入 readiness check → AI 询问"准备好测试？"
+8. 点 confirm_test → 测试题 1/3
+9. 依次答完 3 题 → 通过 → toast 提示，节点 status 变 learned
 
-async function consumeSSE(response, onEvent) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const line of lines) {
-      const event = parseSSELine(line.trim());
-      if (event) onEvent(event);
-    }
-  }
-}
+### T-02：Resume
 
-export function useDeepLearnSession({ planId, nodeId }) {
-  const [session, setSession]           = useState(null);
-  const [messages, setMessages]         = useState([]);
-  const [isStreaming, setIsStreaming]   = useState(false);
-  const [conceptsStatus, setConceptsStatus] = useState({});
-  const [weakPoints, setWeakPoints]     = useState([]);
-  const [showCommands, setShowCommands] = useState(false);
-  const [showTestConfirm, setShowTestConfirm] = useState(null);
-  const [showFailOptions, setShowFailOptions] = useState(null);
+1. T-01 进行到第 5 步时关闭浏览器标签
+2. 重新打开同一节点的深入学习页面
+3. 期望：左侧概念进度保留，右侧消息显示"已恢复进度..."（或最近对话）
+4. 点 continue 能继续
 
-  const sessionIdRef = useRef(null);
-  const streamingTextRef = useRef('');
+### T-03：Skip 概念
 
-  const appendChunk = useCallback((text) => {
-    streamingTextRef.current += text;
-    setMessages(prev => {
-      const last = prev[prev.length - 1];
-      if (last?.role === 'assistant' && last?.streaming) {
-        return [...prev.slice(0, -1), { ...last, content: streamingTextRef.current }];
-      }
-      return [...prev, { role: 'assistant', content: text, streaming: true }];
-    });
-  }, []);
+1. 在 AWAITING_COMMAND 状态点 skip
+2. 期望：左侧该概念变 `skipped`（灰色 SkipForward 图标），跳到下一概念
 
-  const finalizeStream = useCallback(() => {
-    streamingTextRef.current = '';
-    setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m));
-    setIsStreaming(false);
-  }, []);
+### T-04：连续两次答错触发 probe_stuck
 
-  const handleEvent = useCallback((event) => {
-    switch (event.type) {
-      case 'chunk':
-        appendChunk(event.text);
-        break;
-      case 'image_mermaid':
-        setMessages(prev => [...prev, { role: 'assistant', type: 'mermaid', content: event.code }]);
-        break;
-      case 'questions':
-        // questions 已经在 chunk 里渲染，这里更新 state 用于 UI
-        break;
-      case 'assessment':
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `**${event.is_correct ? '✅' : '❌'} ${event.explanation}**\n\n${event.feedback}`,
-        }]);
-        break;
-      case 'show_commands':
-        setShowCommands(true);
-        setShowTestConfirm(null);
-        setShowFailOptions(null);
-        break;
-      case 'test_confirm_prompt':
-        setShowTestConfirm(event);
-        setShowCommands(false);
-        break;
-      case 'fail_options':
-        setShowFailOptions(event);
-        setShowCommands(false);
-        break;
-      case 'concept_update':
-        setConceptsStatus(prev => ({ ...prev, [event.concept]: event.status }));
-        break;
-      case 'state_change':
-        setSession(prev => prev ? { ...prev, state: event.to } : prev);
-        break;
-      case 'done':
-        finalizeStream();
-        break;
-      case 'restart':
-        window.location.reload();
-        break;
-    }
-  }, [appendChunk, finalizeStream]);
+1. 故意对同一概念的题答错 2 次
+2. 期望：第 2 次评估后 AI 不再给答案，只问澄清问题（没有 questions 卡片，没有 `show_commands`）
 
-  const runSSE = useCallback(async (responsePromise) => {
-    setIsStreaming(true);
-    setShowCommands(false);
-    try {
-      const response = await responsePromise;
-      if (!response.ok) throw new Error('SSE request failed');
-      await consumeSSE(response, handleEvent);
-    } catch (err) {
-      console.error('SSE error', err);
-      finalizeStream();
-    }
-  }, [handleEvent, finalizeStream]);
+### T-05：测试未通过
 
-  // 初始化 session
-  useEffect(() => {
-    if (!planId || !nodeId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await deepLearnApi.createSession({ nodeId, planId });
-        if (cancelled) return;
-        sessionIdRef.current = res.session_id;
-        setSession({ ...res, nodeName: '', whatList: res.what_list });
-        setConceptsStatus(res.concepts_status || {});
-
-        if (!res.is_resumed) {
-          // 新 session：触发第一次讲解
-          await runSSE(deepLearnApi.initializeSession(res.session_id));
-        }
-        // 恢复 session：展示恢复提示，等待用户输入
-        if (res.is_resumed) {
-          setMessages([{ role: 'assistant', content: '**已恢复上次学习进度。** 你可以继续提问，或点击"继续"进入下一个概念。' }]);
-          setShowCommands(true);
-        }
-      } catch (err) {
-        console.error('Failed to init session', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [planId, nodeId]);
-
-  const sendMessage = useCallback(async (content) => {
-    if (!sessionIdRef.current || isStreaming) return;
-    setMessages(prev => [...prev, { role: 'user', content }]);
-    setShowCommands(false);
-    await runSSE(deepLearnApi.sendMessage(sessionIdRef.current, content));
-  }, [isStreaming, runSSE]);
-
-  const sendCommand = useCallback(async (command) => {
-    if (!sessionIdRef.current || isStreaming) return;
-    setShowCommands(false);
-    setShowTestConfirm(null);
-    setShowFailOptions(null);
-    await runSSE(deepLearnApi.sendCommand(sessionIdRef.current, command));
-  }, [isStreaming, runSSE]);
-
-  return {
-    session,
-    messages,
-    isStreaming,
-    conceptsStatus,
-    weakPoints,
-    showCommands,
-    showTestConfirm,
-    showFailOptions,
-    sendMessage,
-    sendCommand,
-  };
-}
-```
+1. 测试题全部胡乱回答
+2. 综合判定 passed=false
+3. 期望：黄色卡片显示 [🔄 重新开始 / 📚 针对弱点复习] 两个按钮
+4. 点 restart → 旧 session 标 abandoned，新 session 创建并自动开始
+5. 点 not_ready → AI 进入 review_weak 模式补讲
 
 ---
 
-## 新增文件清单（Phase 1）
+## Part 4 · Anti-patterns（禁止）
 
-```
-backend/
-  scripts/migration_deep_learn_sessions.sql   ← Task 1（在 Supabase 执行）
-  models_deep_learn.py                        ← Task 2
-  services/deep_learn/__init__.py             ← 空文件
-  services/deep_learn/session_repo.py         ← Task 3
-  services/deep_learn/orchestrator.py         ← Task 4
-  services/deep_learn/teaching_agent.py       ← Task 5B
-  services/deep_learn/assessment_agent.py     ← Task 6B
-  services/deep_learn/service.py              ← Task 7
-  routers/deep_learn.py                       ← Task 8
-  services/llm/configs/deep_learn_teaching.json   ← Task 5A
-  services/llm/configs/deep_learn_assessment.json ← Task 6A
+| 反模式 | 正确做法 |
+|--------|---------|
+| 在 Python 里写 `CREATE TABLE` 或调用 migration 工具 | DDL 一律在 Supabase SQL Editor 手动执行 |
+| 读 JSONB 字段后再 `json.loads` | psycopg2 RealDictCursor 已自动反序列化 |
+| 在 SSE generator 内部用 FastAPI `Depends(get_db)` | 用 `with get_db_context() as db:` 显式短连接 |
+| 在 state machine 文件里 import 任何 DB/LLM 模块 | state machine 是纯函数 |
+| 在 LLM 输出里允许 Markdown 代码块包装 JSON | prompt 中明确要求纯 JSON；解析失败兜底返回 fallback object |
+| 在前端用 EventSource | EventSource 不支持自定义 Header（无法带 JWT）。必须用 `fetch` + 手动解析 SSE 流 |
+| 在 hook 里把 messages 用 ref 存 + setState 双轨 | 只用一份 state；用函数式 `setMessages(prev => ...)` 避免闭包陈旧 |
+| 用 `process.env` 访问环境变量（Vite 项目） | 用 `import.meta.env.VITE_*` |
+| concepts_status 用概念字符串做 key | 必须用 index 字符串（"0"/"1"/...）|
+| 把所有事件类型在 hook 用 dict-dispatch | 用 switch/if-elif，便于断点调试 |
+| 在节点详情页直接 import DeepLearnPage 实现"内嵌"工作台 | 工作台是独立 route，跳页打开 |
 
-frontend/
-  src/services/deepLearnApi.js                ← Task 10
-  src/hooks/useDeepLearnSession.js            ← Task 17
-  src/pages/DeepLearnPage.jsx                 ← Task 12
-  src/components/deep-learn/ConceptProgress.jsx ← Task 13
-  src/components/deep-learn/DeepLearnChat.jsx   ← Task 14
-  src/components/deep-learn/CommandBar.jsx      ← Task 15
-  src/components/deep-learn/MermaidDiagram.jsx  ← Task 16
+---
 
-修改文件：
-  backend/main.py        ← Task 9（加 include_router）
-  frontend/src/App.jsx   ← Task 11（加路由）
-```
+## 执行顺序建议
 
-## 完成标志（Phase 1 done）
+**第 1 天**：B-01（5 分钟）→ B-02 → B-03 → B-04 + 单元测试
+**第 2 天**：B-05 → B-06 → B-07
+**第 3 天**：B-08 → B-09 → B-10，curl 跑通 T-01 后端流
+**第 4 天**：F-01 → F-02 → F-03 → F-04
+**第 5 天**：F-05 → F-06 → F-07
+**第 6 天**：T-01 ~ T-05 端到端验证 + fix bug
 
-- [ ] 用户能从节点详情页进入深入学习工作台
-- [ ] Teaching Agent 讲完第一个概念后出题
-- [ ] 用户回答后 Assessment Agent 给出评估
-- [ ] 四个控制按钮（继续/展开/跳过/重讲）功能正常
-- [ ] 概念进度列表左侧实时更新
-- [ ] 关闭页面后重新进入，session 自动恢复
-- [ ] 综合测试通过后节点状态变为 `learned`
+每完成一个 Task 必须用对应 `Verify` 步骤验证后再进入下一个。
+
+---
+
+## 完成定义（Phase 1 Done）
+
+- [ ] B-04 单元测试全部通过
+- [ ] T-01 ~ T-05 五个 smoke test 全部手动验证通过
+- [ ] 浏览器 console 在完整 happy path 中无 error 或 warning
+- [ ] `nodes.status` 在测试通过后正确变更为 `learned`
+- [ ] 节点详情页加上"深入学习"按钮（GraphPage 集成，1 行代码）

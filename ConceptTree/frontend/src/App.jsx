@@ -5,6 +5,8 @@ import { AppProvider } from './contexts/AppContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { HomePage, GraphPage, MyLearningPage } from './pages';
 import AuthPage from './pages/AuthPage';
+import DeepLearnPage from './pages/DeepLearnPage';
+import CompletionNotePage from './pages/CompletionNotePage';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AppErrorBoundary from './components/common/AppErrorBoundary';
 import DataSyncStatusBanner from './components/common/DataSyncStatusBanner';
@@ -29,13 +31,29 @@ export default function App() {
                       </ProtectedRoute>
                     } 
                   />
-                  <Route 
-                    path="/my-learning" 
+                  <Route
+                    path="/my-learning"
                     element={
                       <ProtectedRoute>
                         <MyLearningPage />
                       </ProtectedRoute>
-                    } 
+                    }
+                  />
+                  <Route
+                    path="/deep-learn/:planId/:nodeId"
+                    element={
+                      <ProtectedRoute>
+                        <DeepLearnPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/deep-learn/:planId/:nodeId/note/:noteId"
+                    element={
+                      <ProtectedRoute>
+                        <CompletionNotePage />
+                      </ProtectedRoute>
+                    }
                   />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
