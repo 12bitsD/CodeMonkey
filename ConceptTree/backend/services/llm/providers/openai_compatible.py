@@ -115,7 +115,15 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         size: str = "1024x1024",
         quality: str = "standard",
     ) -> bytes:
-        """Call OpenRouter image generation API, return PNG bytes."""
+        """Generate an image and return the raw image bytes."""
+        if self.base_url and "openrouter.ai" in self.base_url:
+            return await self._generate_openrouter_image(
+                prompt=prompt,
+                model=model,
+                size=size,
+                quality=quality,
+            )
+
         try:
             response = await self.client.images.generate(
                 model=model,
@@ -143,6 +151,103 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             raise LLMProviderError(f"Image API error: {e.message}", status_code=e.status_code)
         except Exception as e:
             raise LLMProviderError(f"Unexpected error during image generation: {str(e)}")
+
+    async def _generate_openrouter_image(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        size: str,
+        quality: str,
+    ) -> bytes:
+        """Call OpenRouter's chat-completions image API."""
+        base_url = (self.base_url or "https://openrouter.ai/api/v1").rstrip("/")
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "modalities": ["image", "text"],
+            "stream": False,
+        }
+        image_config: Dict[str, Any] = {}
+        image_size = self._openrouter_image_size(size)
+        if image_size:
+            image_config["image_size"] = image_size
+        if quality and quality != "standard":
+            image_config["quality"] = quality
+        if image_config:
+            payload["image_config"] = image_config
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        last_error: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+                    response = await client.post(
+                        f"{base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+
+                message = (data.get("choices") or [{}])[0].get("message") or {}
+                images = message.get("images") or []
+                if not images:
+                    content = str(message.get("content") or "").strip()
+                    detail = f": {content[:200]}" if content else ""
+                    raise LLMProviderError(
+                        f"OpenRouter image response contained no images{detail}"
+                    )
+
+                image_url = (images[0].get("image_url") or {}).get("url")
+                if not image_url:
+                    raise LLMProviderError("OpenRouter image response missing image_url.url")
+                return await self._image_url_to_bytes(image_url)
+            except httpx.HTTPStatusError as e:
+                body = e.response.text[:500] if e.response is not None else ""
+                raise LLMProviderError(
+                    f"OpenRouter image API error: {body}",
+                    status_code=e.response.status_code if e.response is not None else None,
+                )
+            except httpx.TimeoutException as e:
+                last_error = e
+                if attempt == 1:
+                    raise LLMProviderError(
+                        f"OpenRouter image generation timed out after {self.timeout}s"
+                    )
+            except httpx.RequestError as e:
+                last_error = e
+                if attempt == 1:
+                    raise LLMProviderError(
+                        f"Connection error during OpenRouter image generation: {str(e)}"
+                    )
+
+        raise LLMProviderError(f"OpenRouter image generation failed: {last_error}")
+
+    async def _image_url_to_bytes(self, image_url: str) -> bytes:
+        if image_url.startswith("data:"):
+            _, encoded = image_url.split(",", 1)
+            return base64.b64decode(encoded)
+
+        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+            downloaded = await client.get(image_url)
+            downloaded.raise_for_status()
+            return downloaded.content
+
+    def _openrouter_image_size(self, size: str) -> Optional[str]:
+        """Map OpenAI image sizes to OpenRouter's image_size values."""
+        if not size:
+            return None
+        if size in {"0.5K", "1K", "2K", "4K"}:
+            return size
+        if size in {"512x512", "768x768", "1024x1024"}:
+            return "1K"
+        if size in {"1536x1536", "2048x2048"}:
+            return "2K"
+        return None
 
     async def chat_stream(
         self,

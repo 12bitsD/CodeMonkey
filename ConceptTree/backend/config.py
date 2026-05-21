@@ -66,8 +66,8 @@ class Settings:
     IMAGE_PROVIDER: str = _get_env("IMAGE_PROVIDER", "openrouter")
     IMAGE_API_KEY: str = _get_env("IMAGE_API_KEY", _get_env("OPENROUTER_API_KEY", ""))
     IMAGE_BASE_URL: str = _get_env("IMAGE_BASE_URL", "https://openrouter.ai/api/v1")
-    IMAGE_MODEL: str = _get_env("IMAGE_MODEL", "openai/gpt-image-2")
-    IMAGE_TIMEOUT: int = int(_get_env("IMAGE_TIMEOUT", str(LLM_TIMEOUT)))
+    IMAGE_MODEL: str = _get_env("IMAGE_MODEL", "openai/gpt-5.4-image-2")
+    IMAGE_TIMEOUT: int = int(_get_env("IMAGE_TIMEOUT", "300"))
 
     # Fallback configuration
     LLM_FALLBACK_ENABLED: bool = _get_bool_env("LLM_FALLBACK_ENABLED", False)
