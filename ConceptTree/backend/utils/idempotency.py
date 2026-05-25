@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
+from psycopg2.errors import UndefinedTable
+
 
 def build_idempotency_id(user_id: str, endpoint: str, key: str) -> str:
     return f"{user_id}:{endpoint}:{key}"[:500]
@@ -22,10 +24,14 @@ def get_idempotent_response(db, user_id: str, endpoint: str, key: Optional[str])
     if not normalized:
         return None
 
-    row = db.execute(
-        "SELECT response FROM idempotency_keys WHERE id = ? AND user_id = ? AND endpoint = ?",
-        (build_idempotency_id(user_id, endpoint, normalized), user_id, endpoint),
-    ).fetchone()
+    try:
+        row = db.execute(
+            "SELECT response FROM idempotency_keys WHERE id = ? AND user_id = ? AND endpoint = ?",
+            (build_idempotency_id(user_id, endpoint, normalized), user_id, endpoint),
+        ).fetchone()
+    except UndefinedTable:
+        db.rollback()
+        return None
     if not row:
         return None
 
@@ -46,12 +52,18 @@ def store_idempotent_response(
     if not normalized:
         return
 
-    db.execute(
-        """
-        INSERT INTO idempotency_keys (id, user_id, endpoint, response)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT (id) DO NOTHING
-        """,
-        (build_idempotency_id(user_id, endpoint, normalized), user_id, endpoint, response),
-    )
-
+    savepoint = "idempotency_store"
+    db.execute(f"SAVEPOINT {savepoint}")
+    try:
+        db.execute(
+            """
+            INSERT INTO idempotency_keys (id, user_id, endpoint, response)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            (build_idempotency_id(user_id, endpoint, normalized), user_id, endpoint, response),
+        )
+    except UndefinedTable:
+        db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+    finally:
+        db.execute(f"RELEASE SAVEPOINT {savepoint}")

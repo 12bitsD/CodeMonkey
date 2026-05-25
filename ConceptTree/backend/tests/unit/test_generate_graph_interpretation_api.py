@@ -1,3 +1,5 @@
+import json
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -10,7 +12,7 @@ def test_generate_graph_route_uses_interpretation_field(monkeypatch):
 
     class FakeAIService:
         async def generate_graph(
-            self, interpretation, original_input, user_background=None
+            self, interpretation, original_input, user_background=None, learning_purpose=None
         ):
             captured["interpretation"] = interpretation
             captured["original_input"] = original_input
@@ -56,4 +58,11 @@ def test_generate_graph_route_uses_interpretation_field(monkeypatch):
         "original_input": "我想理解深度学习中的反向传播，我有Python基础但数学不好",
         "user_background": None,
     }
-    assert response.json()["data"]["interpretation"] == "理解深度学习中的反向传播"
+    # Route now streams SSE; find the meta event and verify interpretation
+    sse_events = [
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    meta = next(e for e in sse_events if e.get("type") == "meta")
+    assert meta["interpretation"] == "理解深度学习中的反向传播"

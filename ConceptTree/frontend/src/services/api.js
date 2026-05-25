@@ -55,8 +55,8 @@ const fetchApi = async (endpoint, options = {}) => {
     }
 
     const res = await fetch(buildApiUrl(endpoint), {
-      headers,
       ...options,
+      headers,
     });
     const raw = await res.text();
     let json = null;

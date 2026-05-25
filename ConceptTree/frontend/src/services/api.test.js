@@ -66,6 +66,15 @@ describe('aiApi.parseGoal', () => {
           shouldSplit: false,
         },
       }),
+      text: async () => JSON.stringify({
+        success: true,
+        data: {
+          interpretation: 'Understand backpropagation',
+          backgroundSummary: [],
+          suggestedNodeCount: 5,
+          shouldSplit: false,
+        },
+      }),
     }));
   });
 
