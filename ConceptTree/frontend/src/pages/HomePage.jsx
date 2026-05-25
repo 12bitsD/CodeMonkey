@@ -18,11 +18,10 @@ import {
 import { Button, Modal } from "../components/ui";
 import GoalAnalysisLoader from "../components/loaders/GoalAnalysisLoader";
 import GraphGenerationLoader from "../components/loaders/GraphGenerationLoader";
-import { LOADING_TEXTS } from "../constants";
 import { useAuth } from "../contexts/AuthContext";
 import { usePlanContext } from "../contexts/PlanContext";
 import { useToast } from "../contexts/ToastContext";
-import { aiApi, plansApi } from "../services/api";
+import { aiApi, graphApi, plansApi } from "../services/api";
 import { calculateLayout } from "../utils/layoutEngine";
 import { getPlanReminder, getTopPlanReminder } from "../utils/planReminders";
 
@@ -133,14 +132,7 @@ const HomePage = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
   const [streamProgress, setStreamProgress] = useState(null);
-  const [generationPhase, setGenerationPhase] = useState(1);
-  const [skeletonNodeCount, setSkeletonNodeCount] = useState(0);
-  const [readyNodeCount, setReadyNodeCount] = useState(0);
-  const [totalNodeCount, setTotalNodeCount] = useState(0);
-  const [currentlyProcessing, setCurrentlyProcessing] = useState("");
-  const [pendingNodeIds, setPendingNodeIds] = useState(new Set());
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [parsedGoal, setParsedGoal] = useState(null);
   const [learningPurpose, setLearningPurpose] = useState("apply");
@@ -295,132 +287,49 @@ const HomePage = () => {
     const confirmedInterpretation = parsedGoal?.interpretation?.trim() || inputText;
     setShowConfirmModal(false);
     setIsGenerating(true);
-    setLoadingStep(0);
     setStreamProgress(null);
-    setGenerationPhase(1);
-    setSkeletonNodeCount(0);
-    setReadyNodeCount(0);
-    setTotalNodeCount(0);
-    setCurrentlyProcessing("");
-    setPendingNodeIds(new Set());
-
-    let step = 0;
-    const interval = setInterval(() => {
-      step += 1;
-      setLoadingStep(step);
-      if (step >= LOADING_TEXTS.length) {
-        clearInterval(interval);
-      }
-    }, 800);
 
     try {
-      const skeletonRef = { nodes: [], edges: [], targetNodeId: "", positions: {} };
-      const nodeContentsRef = {};
-      let integrationRevisions = [];
-
-      await aiApi.generateV2(
+      const result = await graphApi.generate(
         inputText,
         confirmedInterpretation,
-        learningPurpose,
         userProfile,
-        {
-          onSkeleton: (data) => {
-            skeletonRef.nodes = data.nodes || [];
-            skeletonRef.edges = data.edges || [];
-            skeletonRef.targetNodeId = data.targetNodeId || "";
-            skeletonRef.positions = calculateLayout(
-              skeletonRef.nodes,
-              skeletonRef.edges,
-              skeletonRef.targetNodeId,
-            );
-
-            const pendingIds = skeletonRef.nodes.map((node) => node.id);
-            setPendingNodeIds(new Set(pendingIds));
-            setSkeletonNodeCount(skeletonRef.nodes.length);
-            setTotalNodeCount(data.total_nodes || skeletonRef.nodes.length);
-            setReadyNodeCount(0);
-            setGenerationPhase(2);
-            setCurrentlyProcessing(skeletonRef.nodes[0]?.name || "");
-            setStreamProgress({
-              received: 0,
-              total: data.total_nodes || skeletonRef.nodes.length,
-            });
-          },
-          onNodeReady: (content) => {
-            nodeContentsRef[content.node_id] = content;
-            setPendingNodeIds((prev) => {
-              const next = new Set(prev);
-              next.delete(content.node_id);
-              const nextPendingId = [...next][0];
-              const nextNode = skeletonRef.nodes.find((node) => node.id === nextPendingId);
-              setCurrentlyProcessing(nextNode?.name || "");
-              return next;
-            });
-            setReadyNodeCount((prev) => {
-              const next = prev + 1;
-              setStreamProgress({
-                received: next,
-                total: skeletonRef.nodes.length,
-              });
-              return next;
-            });
-          },
-          onIntegrationDone: (data) => {
-            setGenerationPhase(3);
-            integrationRevisions = data?.revised_nodes || [];
-          },
-          onError: (err) => {
-            console.error("[generateV2] fatal error:", err);
-          },
+        learningPurpose,
+        (evt) => {
+          if (evt.type === "node") {
+            setStreamProgress({ received: evt.received, total: evt.total || 0 });
+          }
         },
       );
 
-      const revisionsByNodeId = new Map(
-        integrationRevisions.map((revision) => [revision.node_id, revision.what]),
+      const positions = calculateLayout(
+        result.nodes || [],
+        result.edges || [],
+        result.targetNodeId,
       );
       const graphResult = {
         interpretation: confirmedInterpretation,
-        targetNodeId: skeletonRef.targetNodeId,
-        edges: skeletonRef.edges,
-        nodes: skeletonRef.nodes.map((node) => {
-          const content = nodeContentsRef[node.id] || {};
-          const revisedWhat = revisionsByNodeId.get(node.id);
-          const position = skeletonRef.positions[node.id] || { x: 0, y: 0 };
-          return {
-            id: node.id,
-            name: node.name,
-            domain: node.domain || null,
-            status: "unlearned",
-            x: position.x,
-            y: position.y,
-            isTarget: node.id === skeletonRef.targetNodeId,
-            why: content.why || "",
-            what: revisedWhat || content.what || [],
-            mastery: content.mastery || [],
-            prompt: content.prompt || "",
-            resources: content.resources || [],
-          };
-        }),
+        targetNodeId: result.targetNodeId,
+        edges: result.edges || [],
+        nodes: (result.nodes || []).map((node) => ({
+          ...node,
+          status: "unlearned",
+          x: positions[node.id]?.x ?? node.x ?? 0,
+          y: positions[node.id]?.y ?? node.y ?? 0,
+          isTarget: node.id === result.targetNodeId,
+        })),
       };
 
       const newPlan = await actions.createPlan(inputText, graphResult, learningPurpose);
 
-      clearInterval(interval);
-      setTimeout(() => {
-        setIsGenerating(false);
-        setStreamProgress(null);
-        setPendingNodeIds(new Set());
-        setCurrentlyProcessing("");
-        navigate(`/graph/${newPlan.id}`);
-        setInputText("");
-      }, 500);
-    } catch (error) {
-      toast.error("生成图谱失败，请稍后重试");
-      clearInterval(interval);
       setIsGenerating(false);
       setStreamProgress(null);
-      setPendingNodeIds(new Set());
-      setCurrentlyProcessing("");
+      navigate(`/graph/${newPlan.id}`);
+      setInputText("");
+    } catch (error) {
+      toast.error("生成图谱失败，请稍后重试");
+      setIsGenerating(false);
+      setStreamProgress(null);
     }
   };
 
@@ -517,15 +426,8 @@ const HomePage = () => {
             {isAnalyzing ? <GoalAnalysisLoader step={analysisStep} /> : null}
             {isGenerating ? (
               <GraphGenerationLoader
-                phase={generationPhase}
-                skeletonNodeCount={skeletonNodeCount}
-                readyCount={readyNodeCount}
-                totalCount={totalNodeCount}
-                currentlyProcessing={
-                  currentlyProcessing || (pendingNodeIds.size > 0 ? "排队中的节点" : "")
-                }
-                loadingStep={loadingStep}
-                streamProgress={streamProgress}
+                readyCount={streamProgress?.received || 0}
+                totalCount={streamProgress?.total || 0}
               />
             ) : null}
           </div>

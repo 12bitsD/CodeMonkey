@@ -1863,6 +1863,15 @@ const GraphPage = () => {
                   )}
                 </Button>
               </div>
+              {selectedNode.what?.length > 0 && (
+                <Button
+                  variant="secondary"
+                  className="w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  onClick={() => navigate(`/deep-learn/${planId}/${selectedNode.id}`)}
+                >
+                  <Sparkles size={16} className="mr-2" /> 深入学习
+                </Button>
+              )}
 
               <div className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
                 <label className="flex items-center justify-between gap-4">

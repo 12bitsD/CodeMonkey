@@ -11,6 +11,7 @@ const { ApiError, buildIdempotencyKey, graphApi, notesApi, plansApi } = await im
 describe("API recoverable error contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.getItem.mockReturnValue(null);
   });
 
   it("throws ApiError with backend code and recoverable flag", async () => {
@@ -108,6 +109,30 @@ describe("API recoverable error contract", () => {
     });
 
     const [, options] = fetch.mock.calls[0];
+    expect(options.headers["Idempotency-Key"]).toBe("status-key");
+  });
+
+  it("preserves auth headers when a request adds custom headers", async () => {
+    localStorage.getItem.mockReturnValue("token-1");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            data: { nodeId: "node-1", status: "learned", plan: { progress: 1, total: 2 } },
+          }),
+      }),
+    );
+
+    await graphApi.updateNodeStatus("plan-1", "node-1", "learned", {
+      idempotencyKey: "status-key",
+    });
+
+    const [, options] = fetch.mock.calls[0];
+    expect(options.headers["Authorization"]).toBe("Bearer token-1");
+    expect(options.headers["Content-Type"]).toBe("application/json");
     expect(options.headers["Idempotency-Key"]).toBe("status-key");
   });
 

@@ -63,8 +63,8 @@ const fetchApi = async (endpoint, options = {}) => {
     }
 
     const res = await fetch(buildApiUrl(endpoint), {
-      headers,
       ...options,
+      headers,
     });
     if (res.status === 401) {
       notifyAuthExpired();

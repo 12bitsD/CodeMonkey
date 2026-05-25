@@ -25,16 +25,34 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres}
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-1}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-10}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-15000}
+      DB_LOCK_TIMEOUT_MS: ${DB_LOCK_TIMEOUT_MS:-3000}
+      DB_IDLE_IN_TX_TIMEOUT_MS: ${DB_IDLE_IN_TX_TIMEOUT_MS:-10000}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_EXPIRE_DAYS: ${JWT_EXPIRE_DAYS:-7}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-true}
       LLM_PROVIDER: ${LLM_PROVIDER:-mimo_token_plan_cn}
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://token-plan-cn.xiaomimimo.com/v1}
       LLM_MODEL: ${LLM_MODEL:-mimo-v2.5-pro}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.7}
       LLM_FALLBACK_ENABLED: ${LLM_FALLBACK_ENABLED:-false}
+      LLM_FALLBACK_PROVIDER: ${LLM_FALLBACK_PROVIDER:-openai}
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      LLM_FALLBACK_BASE_URL: ${LLM_FALLBACK_BASE_URL:-}
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-gpt-4o-mini}
+      IMAGE_PROVIDER: ${IMAGE_PROVIDER:-openrouter}
+      IMAGE_API_KEY: ${IMAGE_API_KEY:-}
+      IMAGE_BASE_URL: ${IMAGE_BASE_URL:-https://openrouter.ai/api/v1}
+      IMAGE_MODEL: ${IMAGE_MODEL:-openai/gpt-5.4-image-2}
+      IMAGE_TIMEOUT: ${IMAGE_TIMEOUT:-300}
       SEARCH_ENABLED: ${SEARCH_ENABLED:-false}
       SEARCH_PROVIDER: ${SEARCH_PROVIDER:-tavily}
       SEARCH_API_KEY: ${SEARCH_API_KEY:-}
@@ -42,6 +60,9 @@ services:
       SEARCH_MAX_RESULTS: ${SEARCH_MAX_RESULTS:-5}
       SEARCH_ALLOWED_DOMAINS: ${SEARCH_ALLOWED_DOMAINS:-}
       SEARCH_CACHE_TTL_SECONDS: ${SEARCH_CACHE_TTL_SECONDS:-1800}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      BACKEND_PUBLIC_BASE_URL: ${BACKEND_PUBLIC_BASE_URL:-http://127.0.0.1:8000}
       DEBUG: ${DEBUG:-false}
     ports:
       - "127.0.0.1:8000:8000"
@@ -55,7 +76,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: /api
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     container_name: concepttree-frontend
     ports:
       - "127.0.0.1:18080:80"

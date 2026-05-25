@@ -247,6 +247,7 @@ describe("plansApi.create — F1 learning_purpose", () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, data: { id: "p_test", title: "t" } }),
+      text: async () => JSON.stringify({ success: true, data: { id: "p_test", title: "t" } }),
     });
   });
 

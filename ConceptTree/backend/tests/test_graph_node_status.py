@@ -3,6 +3,16 @@ import json
 import pytest
 
 
+def _get_created_node_id(client, plan_id, original_node_id, headers):
+    graph = client.get(f"/api/plans/{plan_id}/graph", headers=headers)
+    assert graph.status_code == 200
+    nodes = graph.json()["data"]["nodes"]
+    for node in nodes:
+        if node["id"].endswith(original_node_id):
+            return node["id"]
+    raise AssertionError(f"created node for {original_node_id} not found")
+
+
 def test_update_node_status_requires_auth(client):
     resp = client.put(
         "/api/plans/p_any/nodes/n_any/status",
@@ -36,16 +46,17 @@ def test_update_node_status_to_learned(client, auth_headers_a):
     }
     create = client.post("/api/plans", json=plan_data, headers=auth_headers_a)
     plan_id = create.json()["data"]["id"]
+    node_id = _get_created_node_id(client, plan_id, "status_n1", auth_headers_a)
 
     resp = client.put(
-        f"/api/plans/{plan_id}/nodes/status_n1/status",
+        f"/api/plans/{plan_id}/nodes/{node_id}/status",
         json={"status": "learned"},
         headers=auth_headers_a,
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert body["data"]["nodeId"] == "status_n1"
+    assert body["data"]["nodeId"] == node_id
     assert body["data"]["status"] == "learned"
     assert "plan" in body["data"]
     assert body["data"]["plan"]["progress"] == 1
@@ -76,9 +87,10 @@ def test_update_node_status_to_skipped(client, auth_headers_a):
     }
     create = client.post("/api/plans", json=plan_data, headers=auth_headers_a)
     plan_id = create.json()["data"]["id"]
+    node_id = _get_created_node_id(client, plan_id, "skip_n1", auth_headers_a)
 
     resp = client.put(
-        f"/api/plans/{plan_id}/nodes/skip_n1/status",
+        f"/api/plans/{plan_id}/nodes/{node_id}/status",
         json={"status": "skipped"},
         headers=auth_headers_a,
     )
@@ -223,9 +235,10 @@ def test_update_node_status_creates_learning_session(client, auth_headers_a):
     }
     create = client.post("/api/plans", json=plan_data, headers=auth_headers_a)
     plan_id = create.json()["data"]["id"]
+    node_id = _get_created_node_id(client, plan_id, "session_n1", auth_headers_a)
 
     resp = client.put(
-        f"/api/plans/{plan_id}/nodes/session_n1/status",
+        f"/api/plans/{plan_id}/nodes/{node_id}/status",
         json={"status": "learned"},
         headers=auth_headers_a,
     )
@@ -257,9 +270,10 @@ def test_update_node_status_learned_updates_mastered_knowledge(client, auth_head
     }
     create = client.post("/api/plans", json=plan_data, headers=auth_headers_a)
     plan_id = create.json()["data"]["id"]
+    node_id = _get_created_node_id(client, plan_id, "mastery_n1", auth_headers_a)
 
     resp = client.put(
-        f"/api/plans/{plan_id}/nodes/mastery_n1/status",
+        f"/api/plans/{plan_id}/nodes/{node_id}/status",
         json={"status": "learned"},
         headers=auth_headers_a,
     )
@@ -319,9 +333,10 @@ def test_update_node_status_progress_calculation(client, auth_headers_a):
     }
     create = client.post("/api/plans", json=plan_data, headers=auth_headers_a)
     plan_id = create.json()["data"]["id"]
+    node_id = _get_created_node_id(client, plan_id, "prog_n2", auth_headers_a)
 
     resp = client.put(
-        f"/api/plans/{plan_id}/nodes/prog_n2/status",
+        f"/api/plans/{plan_id}/nodes/{node_id}/status",
         json={"status": "learned"},
         headers=auth_headers_a,
     )
