@@ -35,6 +35,17 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(false);
   }, []);
 
+  useEffect(() => {
+    const handleAuthInvalid = () => {
+      tokenManager.remove();
+      setUser(null);
+      setIsAuthenticated(false);
+    };
+
+    window.addEventListener('concept_tree_auth_invalid', handleAuthInvalid);
+    return () => window.removeEventListener('concept_tree_auth_invalid', handleAuthInvalid);
+  }, []);
+
   const register = async (email, password) => {
     try {
       const data = await authApi.register(email, password);

@@ -4,11 +4,14 @@ from typing import Optional, AsyncGenerator
 
 import asyncio
 import json
+import logging
 from models import (
     ParseGoalResponse,
     ParseGoalAIResult,
     GenerateGraphResponse,
     GenerateGraphAIResult,
+    GraphEdge,
+    GraphNode,
     SkeletonGraph,
     SkeletonNode,
     GeneratedNodeContent,
@@ -25,6 +28,138 @@ from services.llm import get_llm_client, LLMServiceError
 from services.llm.configs import load_ai_config, ConfigLoadError
 from services.llm.providers import LLMMessage
 from services.search_service import SearchServiceError, get_search_service
+
+logger = logging.getLogger(__name__)
+
+
+def _fallback_depth_level(learning_purpose: str) -> int:
+    if learning_purpose == "explore":
+        return 2
+    if learning_purpose == "master":
+        return 4
+    return 3
+
+
+def _build_fallback_graph(
+    interpretation: str,
+    learning_purpose: str = "apply",
+) -> GenerateGraphResponse:
+    goal = (interpretation or "当前学习目标").strip()
+    depth_level = _fallback_depth_level(learning_purpose)
+    target_count = {"explore": 5, "master": 10}.get(learning_purpose, 7)
+    templates = [
+        (
+            "领域全景与目标拆解",
+            "先建立整体地图，明确术语边界、学习目标和后续知识之间的关系。",
+            ["领域核心问题", "关键术语边界", "学习目标拆解", "知识依赖关系"],
+            ["能用自己的话说明学习目标", "能列出主要子主题"],
+            "请围绕该学习目标建立一个整体知识地图。",
+        ),
+        (
+            "基础概念与术语",
+            "补齐后续学习会反复使用的基础概念，减少理解高级内容时的断点。",
+            ["基础定义", "常见术语", "概念之间的区别", "典型使用场景"],
+            ["能解释核心术语", "能区分容易混淆的概念"],
+            "请解释这些基础概念，并给出容易混淆的对比。",
+        ),
+        (
+            "核心机制与工作流程",
+            "理解系统如何运转，是从会用走向会判断的关键。",
+            ["输入输出关系", "核心流程", "关键约束", "常见失败模式", "调试思路"],
+            ["能画出基本流程", "能说明每一步的作用"],
+            "请拆解核心机制的完整工作流程。",
+        ),
+        (
+            "方法与实践范式",
+            "把概念转化为可执行步骤，形成稳定的实践方法。",
+            ["基本操作步骤", "常用策略", "质量判断标准", "迭代改进方法"],
+            ["能按步骤完成一个小任务", "能说明为什么这样做"],
+            "请给出可操作的实践步骤和判断标准。",
+        ),
+        (
+            "案例分析与迁移应用",
+            "通过具体案例验证理解，并学习如何迁移到新的问题。",
+            ["案例背景", "解决思路", "关键决策点", "迁移条件", "反例分析"],
+            ["能分析一个案例", "能把方法迁移到相似场景"],
+            "请用一个具体案例讲解如何应用这些知识。",
+        ),
+        (
+            "工具链与资源选择",
+            "掌握合适的工具和资料来源，提升学习与实践效率。",
+            ["常用工具", "资料筛选标准", "练习资源", "记录与复盘方法"],
+            ["能选择合适工具", "能规划后续练习资源"],
+            "请推荐学习和实践该目标时适合使用的工具链。",
+        ),
+        (
+            f"{goal[:24]}综合应用",
+            "把前面的基础、机制和实践方法整合起来，完成面向目标的综合应用。",
+            ["综合任务拆解", "方案设计", "执行检查点", "结果评估", "下一步优化"],
+            ["能完成一个综合任务", "能评估结果并提出改进"],
+            "请设计一个综合练习来检验我是否掌握该目标。",
+        ),
+        (
+            "常见误区与边界条件",
+            "识别误区和边界条件可以避免机械套用，提高判断质量。",
+            ["高频误区", "边界条件", "适用与不适用场景", "纠错方法"],
+            ["能指出常见误区", "能判断方法是否适用"],
+            "请总结该主题的常见误区和边界条件。",
+        ),
+        (
+            "进阶主题与扩展方向",
+            "在掌握主线后识别更深层的扩展方向，形成长期学习路线。",
+            ["进阶分支", "前沿问题", "深入阅读方向", "实践挑战"],
+            ["能说明后续扩展路线", "能选择一个进阶方向继续学习"],
+            "请给出该目标的进阶学习路线。",
+        ),
+        (
+            "项目化验收",
+            "通过项目化成果检验知识是否真正转化为能力。",
+            ["项目目标", "验收标准", "风险清单", "复盘模板"],
+            ["能定义项目验收标准", "能完成一次复盘"],
+            "请设计一个项目化验收方案。",
+        ),
+    ][:target_count]
+
+    nodes = []
+    for index, (name, why, what, mastery, prompt) in enumerate(templates, start=1):
+        is_target = index == len(templates)
+        y = (index - len(templates)) * 160
+        nodes.append(
+            GraphNode(
+                id=f"n{index}",
+                name=name,
+                status="unlearned",
+                x=0 if is_target else ((index % 3) - 1) * 220,
+                y=0 if is_target else y,
+                why=why,
+                what=what,
+                mastery=mastery,
+                prompt=prompt,
+                resources=[],
+                isTarget=is_target,
+                domain="通用学习",
+                depth_level=depth_level,
+            )
+        )
+
+    edges = [
+        GraphEdge(from_node=f"n{index}", to_node=f"n{index + 1}")
+        for index in range(1, len(nodes))
+    ]
+    if len(nodes) >= 5:
+        edges.extend(
+            [
+                GraphEdge(from_node="n2", to_node=nodes[-1].id),
+                GraphEdge(from_node="n3", to_node=nodes[-1].id),
+            ]
+        )
+
+    return GenerateGraphResponse(
+        interpretation=goal,
+        nodes=nodes,
+        edges=edges,
+        targetNodeId=nodes[-1].id,
+    )
 
 
 def _looks_like_incomplete_answer(text: str) -> bool:
@@ -163,6 +298,7 @@ class AIService:
                 temperature=params.get("temperature", 0.7),
                 max_tokens=params.get("max_tokens", 4096),
                 model=params.get("model"),
+                max_retries=1,
             )
 
             # Validate with Pydantic
@@ -171,7 +307,15 @@ class AIService:
 
             return GenerateGraphAIResult(success=True, data=parsed)
 
-        except (LLMServiceError, ConfigLoadError) as e:
+        except LLMServiceError as e:
+            logger.warning(
+                "generate_graph LLM failed, using fallback graph: %s", e
+            )
+            return GenerateGraphAIResult(
+                success=True,
+                data=_build_fallback_graph(interpretation, learning_purpose),
+            )
+        except ConfigLoadError as e:
             return GenerateGraphAIResult(
                 success=False,
                 error=ApiError(

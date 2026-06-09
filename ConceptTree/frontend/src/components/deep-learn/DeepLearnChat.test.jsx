@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import DeepLearnChat from "./DeepLearnChat.jsx";
@@ -46,5 +46,33 @@ describe("DeepLearnChat", () => {
     expect(screen.getByText("AI 回复")).toBeInTheDocument();
     const bubble = screen.getByText("AI 回复").parentElement;
     expect(bubble?.className).toContain("min-w-[min(440px,100%)]");
+  });
+  it("shows the comprehensive test confirmation command", () => {
+    const onSendCommand = vi.fn();
+    render(
+      <DeepLearnChat
+        {...baseProps}
+        isStreaming={false}
+        messages={[]}
+        uiFlags={{
+          showCommands: false,
+          showTestConfirm: {
+            message: "ready for test?",
+            commands: ["confirm_test", "not_ready"],
+          },
+          showFailOptions: null,
+        }}
+        onSendCommand={onSendCommand}
+      />,
+    );
+
+    expect(screen.getByText("ready for test?")).toBeInTheDocument();
+
+    const commandButtons = screen
+      .getAllByRole("button")
+      .filter((button) => !button.disabled);
+    fireEvent.click(commandButtons[0]);
+
+    expect(onSendCommand).toHaveBeenCalledWith("confirm_test");
   });
 });

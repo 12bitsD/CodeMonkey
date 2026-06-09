@@ -59,8 +59,6 @@ export default function DeepLearnChat({
   onSendMessage,
   onSendCommand,
   onPinImage,
-  noteHref = null,
-  onBack = null,
 }) {
   const [input, setInput] = useState('');
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -103,7 +101,7 @@ export default function DeepLearnChat({
     }
   };
 
-  const { showCommands, showTestConfirm, showFailOptions, showCompletion } = uiFlags;
+  const { showCommands, showTestConfirm, showFailOptions } = uiFlags;
   const hasPendingAssistant = isStreaming && messages.some(
     (msg) => msg.role === 'assistant' && msg.kind === 'text' && !msg.content,
   );
@@ -221,32 +219,6 @@ export default function DeepLearnChat({
       </div>
 
       <div className="border-t border-zinc-100 px-6 py-3 space-y-3 bg-white">
-        {showCompletion && (
-          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-            <p className="font-medium">本节点学习已完成。</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {noteHref && (
-                <a
-                  href={noteHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg bg-green-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-800"
-                >
-                  查看完成笔记
-                </a>
-              )}
-              {onBack && (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="rounded-lg border border-green-200 bg-white px-3 py-1.5 text-xs font-semibold text-green-800 hover:bg-green-100"
-                >
-                  返回图谱
-                </button>
-              )}
-            </div>
-          </div>
-        )}
         {showTestConfirm && (
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
             <p className="text-blue-800 mb-2">{showTestConfirm.message}</p>

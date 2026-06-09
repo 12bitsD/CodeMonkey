@@ -77,6 +77,12 @@ export const PlanProvider = ({ children }) => {
           setLoadError(null);
         }
       } catch (error) {
+        if (error?.status === 401) {
+          setUserProfile(createEmptyUserProfile());
+          setPlans(commitPlans([]));
+          setLoadError(null);
+          return;
+        }
         const cachedPlans = readPlansCache();
         setLoadError(error);
         if (cachedPlans) {

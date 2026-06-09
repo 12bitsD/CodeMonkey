@@ -62,46 +62,6 @@ import {
   generateMasteryQuiz,
 } from "../utils/masteryQuiz";
 
-const PHASE_ALIASES = {
-  基础: "基础",
-  鍦板熀: "基础",
-  核心: "核心",
-  鏍稿績: "核心",
-  应用: "应用",
-  搴旂敤: "应用",
-  进阶: "进阶",
-  杩涢樁: "进阶",
-};
-
-const PHASE_STYLE = {
-  基础: {
-    bg: "rgba(245,243,255,0.7)",
-    border: "rgba(167,139,250,0.3)",
-    label: "基础",
-    labelColor: "#7c3aed",
-  },
-  核心: {
-    bg: "rgba(240,253,250,0.7)",
-    border: "rgba(45,212,191,0.3)",
-    label: "核心",
-    labelColor: "#0d9488",
-  },
-  应用: {
-    bg: "rgba(240,249,255,0.7)",
-    border: "rgba(96,165,250,0.3)",
-    label: "应用",
-    labelColor: "#2563eb",
-  },
-  进阶: {
-    bg: "rgba(255,247,237,0.7)",
-    border: "rgba(251,146,60,0.3)",
-    label: "进阶",
-    labelColor: "#ea580c",
-  },
-};
-
-const normalizePhase = (phase) => PHASE_ALIASES[phase] || phase;
-
 const PLAN_FREQUENCY_OPTIONS = [
   { value: "flexible", label: "灵活安排" },
   { value: "daily", label: "每天学习" },
@@ -588,35 +548,6 @@ const GraphPage = () => {
     () => new Map(nodes.map((node) => [node.id, node])),
     [nodes],
   );
-
-  const phaseRegions = useMemo(() => {
-    const phaseMap = {};
-    for (const node of nodes) {
-      if (!node.phase) continue;
-      const phase = normalizePhase(node.phase);
-      if (!phaseMap[phase]) phaseMap[phase] = [];
-      phaseMap[phase].push(node);
-    }
-
-    const PAD = 60;
-    return Object.entries(phaseMap).flatMap(([phase, phaseNodes]) => {
-      const style = PHASE_STYLE[phase];
-      if (!style || phaseNodes.length === 0) return [];
-
-      const xs = phaseNodes.map((node) => node.x);
-      const ys = phaseNodes.map((node) => node.y);
-      return [
-        {
-          key: phase,
-          style,
-          x: Math.min(...xs) - PAD,
-          y: Math.min(...ys) - PAD,
-          width: Math.max(...xs) - Math.min(...xs) + PAD * 2,
-          height: Math.max(...ys) - Math.min(...ys) + PAD * 2,
-        },
-      ];
-    });
-  }, [nodes]);
 
   const edgeGeometries = useMemo(
     () =>
@@ -1545,30 +1476,6 @@ const GraphPage = () => {
             transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
           }}
         >
-          {/* F3: Phase background regions */}
-          {phaseRegions.map((region) => (
-            <div
-              key={region.key}
-              className="absolute pointer-events-none"
-              style={{
-                left: region.x,
-                top: region.y,
-                width: region.width,
-                height: region.height,
-                background: region.style.bg,
-                border: `1.5px solid ${region.style.border}`,
-                borderRadius: 20,
-              }}
-            >
-              <span
-                className="absolute top-3 left-4 text-xs font-bold tracking-widest uppercase"
-                style={{ color: region.style.labelColor }}
-              >
-                {region.style.label}
-              </span>
-            </div>
-          ))}
-
           {/* Edges */}
           <svg className="absolute top-0 left-0 overflow-visible w-full h-full pointer-events-none">
             {edgeGeometries.map((edge) => (

@@ -31,6 +31,20 @@ class _TimeoutProvider:
         raise LLMProviderError("temporary outage", status_code=500)
 
 
+class _SlowProvider:
+    def __init__(self, timeout=0.01):
+        self.calls = 0
+        self.timeout = timeout
+
+    def is_available(self):
+        return True
+
+    async def chat(self, *args, **kwargs):
+        self.calls += 1
+        await __import__("asyncio").sleep(10)
+        return None
+
+
 @pytest.mark.asyncio
 async def test_auth_error_does_not_retry_or_sleep(monkeypatch):
     provider = _AuthFailProvider()
@@ -69,3 +83,17 @@ async def test_retryable_provider_error_still_retries(monkeypatch):
 
     assert provider.calls == 2
     assert sleeps == [1]
+
+
+@pytest.mark.asyncio
+async def test_provider_call_is_hard_capped_by_provider_timeout(monkeypatch):
+    provider = _SlowProvider(timeout=0.01)
+    client = UnifiedLLMClient.__new__(UnifiedLLMClient)
+    client.primary = provider
+    client.fallback = None
+    client.max_retries = 1
+
+    with pytest.raises(LLMServiceError, match="timed out"):
+        await client.chat([LLMMessage(role="user", content="hi")])
+
+    assert provider.calls == 1

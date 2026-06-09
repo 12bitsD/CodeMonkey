@@ -175,3 +175,9 @@ def test_final_judge_failed():
     d = decide_on_final_judge(False)
     assert d.next_state == "CHOOSING_AFTER_FAIL"
     assert d.action == "show_fail_options"
+
+
+def test_all_concepts_done_continue_enters_readiness():
+    d = decide_on_command("AWAITING_COMMAND", "continue", 2, 3, True)
+    assert d.next_state == "AI_ASSESSING_READINESS"
+    assert d.action == "check_readiness"

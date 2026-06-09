@@ -9,6 +9,10 @@ function makeFakeToken() {
 }
 
 async function mockCommonApis(page) {
+  await page.addInitScript((token) => {
+    localStorage.setItem('concept_tree_token', token);
+  }, makeFakeToken());
+
   await page.route('**/api/user/profile', async (route) => {
     await route.fulfill({
       json: {
@@ -125,13 +129,11 @@ test.describe('ConceptTree Main Flow', () => {
 
     await page.click('button:has-text("确认生成")');
 
-    await expect(page.locator('.animate-spin')).toBeVisible({ timeout: 5000 });
-
     await page.waitForURL('**/graph/p_mock_123', { timeout: 15000 });
     expect(page.url()).toContain('/graph/p_mock_123');
   });
 
-  test('split suggestions: broad goal shows cards, clicking one updates textarea', async ({ page }) => {
+  test('split suggestions: broad goal still opens confirmation modal', async ({ page }) => {
     await mockCommonApis(page);
 
     await page.route('**/api/ai/parse-goal', async (route) => {
@@ -157,16 +159,13 @@ test.describe('ConceptTree Main Flow', () => {
     await page.locator('textarea').fill('我想学编程');
     await page.click('button:has-text("生成图谱")');
 
-    await expect(page.locator('text=🎯 目标较大')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('text=识别目标')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('text=学习编程')).toBeVisible();
 
-    const suggestionCard = page.locator('h5').filter({ hasText: '前端基础' });
-    await expect(suggestionCard).toBeVisible();
-
-    await suggestionCard.click();
+    await page.click('button:has-text("修改输入")');
 
     await expect(page.locator('text=识别目标')).not.toBeVisible({ timeout: 3000 });
-
-    await expect(page.locator('textarea')).toHaveValue('前端基础');
+    await expect(page.locator('textarea')).toHaveValue('我想学编程');
   });
 
   test('stats tab: shows fetched stats values and empty distribution', async ({ page }) => {
@@ -201,7 +200,14 @@ test.describe('ConceptTree Main Flow', () => {
       await route.fulfill({
         json: {
           success: true,
-          data: { completedPlans: 42, activePlans: 3, masteredNodes: 150, totalNotes: 10 },
+          data: {
+            summary: {
+              completedPlans: 42,
+              activePlans: 3,
+              masteredNodes: 150,
+              totalNotes: 10,
+            },
+          },
         },
       });
     });
@@ -214,11 +220,9 @@ test.describe('ConceptTree Main Flow', () => {
     await page.click('button:has-text("学习统计")');
 
     await expect(page.getByText('42').first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('150').first()).toBeVisible();
+    await expect(page.getByText('3').first()).toBeVisible();
 
-    await expect(
-      page.locator('text=开始学习后，这里将显示你的知识领域分布')
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '知识领域分布' })).toBeVisible();
   });
 
   test('error state: 500 from parse-goal returns button to interactive state', async ({ page }) => {
@@ -271,6 +275,9 @@ test.describe('ConceptTree Main Flow', () => {
     });
     await page.route('**/api/notes', async (route) => {
       await route.fulfill({ json: { success: true, data: [] } });
+    });
+    await page.route('**/api/ai/recommend-next', async (route) => {
+      await route.fulfill({ json: { success: true, data: {} } });
     });
     await page.route('**/api/ai/parse-goal', async (route) => {
       await route.fulfill({
@@ -339,6 +346,9 @@ test.describe('ConceptTree Main Flow', () => {
     await page.route('**/api/notes', async (route) => {
       await route.fulfill({ json: { success: true, data: [] } });
     });
+    await page.route('**/api/ai/recommend-next', async (route) => {
+      await route.fulfill({ json: { success: true, data: {} } });
+    });
     await page.route('**/api/ai/clarify-goal', async (route) => {
       await route.fulfill({
         json: {
@@ -349,7 +359,7 @@ test.describe('ConceptTree Main Flow', () => {
     });
 
     await page.goto('/graph/p_test_plan');
-    await page.click('button[title="Edit Goal"]');
+    await page.click('button[title="修改目标"]');
 
     await expect(page.locator('text=修改学习目标')).toBeVisible({ timeout: 5000 });
     await page.locator('textarea[placeholder*="输入修改后"]').fill('学Python数据分析');

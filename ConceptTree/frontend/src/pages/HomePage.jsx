@@ -256,8 +256,20 @@ const HomePage = () => {
     }
   };
 
+  const redirectToLogin = async (message) => {
+    if (message) toast.error(message);
+    if (isAuthenticated) {
+      await logout();
+    }
+    navigate(`/auth?redirect=${encodeURIComponent("/")}`);
+  };
+
   const handleStartAnalysis = async () => {
     if (!inputText.trim()) return;
+    if (!isAuthenticated) {
+      await redirectToLogin("请先登录后再生成学习图谱");
+      return;
+    }
     setIsAnalyzing(true);
     setAnalysisStep(0);
     let step = 0;
@@ -271,7 +283,11 @@ const HomePage = () => {
       setParsedGoal(result);
       setShowConfirmModal(true);
     } catch (error) {
-      toast.error("解析目标失败，请稍后重试");
+      if (error?.status === 401) {
+        await redirectToLogin("登录已过期，请重新登录");
+      } else {
+        toast.error("解析目标失败，请稍后重试");
+      }
     } finally {
       clearInterval(interval);
       setIsAnalyzing(false);
@@ -322,7 +338,11 @@ const HomePage = () => {
       navigate(`/graph/${newPlan.id}`);
       setInputText("");
     } catch (error) {
-      toast.error("生成图谱失败，请稍后重试");
+      if (error?.status === 401) {
+        await redirectToLogin("登录已过期，请重新登录");
+      } else {
+        toast.error("生成图谱失败，请稍后重试");
+      }
       setIsGenerating(false);
       setStreamProgress(null);
     }

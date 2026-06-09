@@ -42,6 +42,13 @@ export const tokenManager = {
   remove: () => localStorage.removeItem(TOKEN_KEY),
 };
 
+const notifyAuthInvalid = () => {
+  tokenManager.remove();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("concept_tree_auth_invalid"));
+  }
+};
+
 const fetchApi = async (endpoint, options = {}) => {
   try {
     const headers = {
@@ -84,6 +91,9 @@ const fetchApi = async (endpoint, options = {}) => {
     }
 
     if (!json.success) {
+      if (res.status === 401) {
+        notifyAuthInvalid();
+      }
       throw new ApiError({
         message: json.error?.message || "API Error",
         code: json.error?.code || "API_ERROR",
@@ -274,6 +284,8 @@ const mapUserProfileToBackground = (profile) => {
   };
 };
 
+const GRAPH_GENERATION_TIMEOUT_MS = 120000;
+
 export const graphApi = {
   generate: async (
     input,
@@ -308,11 +320,25 @@ export const graphApi = {
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(buildApiUrl("/ai/generate-graph"), {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), GRAPH_GENERATION_TIMEOUT_MS);
+
+    let res;
+    try {
+      res = await fetch(buildApiUrl("/ai/generate-graph"), {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error("生成图谱超时，请稍后重试或换一个更具体的学习目标");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
 
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: Failed to generate graph`);
@@ -325,39 +351,54 @@ export const graphApi = {
     const nodes = [];
     let edges = [];
 
-    outer: for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split("\n");
-      buf = lines.pop(); // keep last incomplete line
+    const streamTimeoutId = window.setTimeout(() => controller.abort(), GRAPH_GENERATION_TIMEOUT_MS);
+    try {
+      outer: for (;;) {
+        let readResult;
+        try {
+          readResult = await reader.read();
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            throw new Error("生成图谱超时，请稍后重试或换一个更具体的学习目标");
+          }
+          throw error;
+        }
 
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const jsonStr = line.slice(6).trim();
-        if (!jsonStr) continue;
-        const event = JSON.parse(jsonStr);
+        const { done, value } = readResult;
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop(); // keep last incomplete line
 
-        if (event.type === "error") {
-          throw new Error(event.error?.message || "Generation failed");
-        } else if (event.type === "meta") {
-          meta = event;
-          if (onProgress) onProgress({ type: "meta", ...event });
-        } else if (event.type === "node") {
-          nodes.push(event.node);
-          if (onProgress)
-            onProgress({
-              type: "node",
-              node: event.node,
-              received: nodes.length,
-              total: meta?.totalNodes,
-            });
-        } else if (event.type === "edges") {
-          edges = event.edges;
-        } else if (event.type === "done") {
-          break outer;
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+          const event = JSON.parse(jsonStr);
+
+          if (event.type === "error") {
+            throw new Error(event.error?.message || "Generation failed");
+          } else if (event.type === "meta") {
+            meta = event;
+            if (onProgress) onProgress({ type: "meta", ...event });
+          } else if (event.type === "node") {
+            nodes.push(event.node);
+            if (onProgress)
+              onProgress({
+                type: "node",
+                node: event.node,
+                received: nodes.length,
+                total: meta?.totalNodes,
+              });
+          } else if (event.type === "edges") {
+            edges = event.edges;
+          } else if (event.type === "done") {
+            break outer;
+          }
         }
       }
+    } finally {
+      window.clearTimeout(streamTimeoutId);
     }
 
     return {

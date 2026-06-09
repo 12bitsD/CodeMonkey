@@ -40,6 +40,7 @@ function Harness() {
     isStreaming,
     isInitializing,
     messages,
+    conceptsStatus,
     canSendMessage,
     sendMessage,
     sendCommand,
@@ -56,6 +57,9 @@ function Harness() {
       <span data-testid="commands">{uiFlags.showCommands ? "shown" : "hidden"}</span>
       <span data-testid="message">{messages.map((m) => m.content).join("")}</span>
       <span data-testid="kinds">{messages.map((m) => m.kind).join(",")}</span>
+      <span data-testid="completed">
+        {Object.values(conceptsStatus).filter((status) => ["done", "failed", "skipped"].includes(status)).length}
+      </span>
       <button type="button" onClick={() => sendMessage("free text")}>send</button>
       <button type="button" onClick={() => sendCommand("restart")}>restart</button>
     </div>
@@ -226,7 +230,7 @@ describe("useDeepLearnSession", () => {
         node_name: "node",
         node_why: "",
         what_list: ["concept"],
-        concepts_status: { 0: "current" },
+        concepts_status: { 0: "done", 1: "done", 2: "done" },
         weak_points: [],
         recent_turns: [
           { role: "assistant", kind: "text", content: "旧讲解" },
@@ -242,12 +246,15 @@ describe("useDeepLearnSession", () => {
       expect(screen.getByTestId("message")).toHaveTextContent("旧讲解");
     });
 
+    expect(screen.getByTestId("completed")).toHaveTextContent("3");
+
     const restartButton = screen.getByRole("button", { name: "restart" });
     fireEvent.click(restartButton);
     fireEvent.click(restartButton);
 
     expect(screen.getByTestId("initializing")).toHaveTextContent("initializing");
     expect(screen.getByTestId("message")).toHaveTextContent("");
+    expect(screen.getByTestId("completed")).toHaveTextContent("0");
 
     await waitFor(() => {
       expect(sendCommandMock).toHaveBeenCalledTimes(1);

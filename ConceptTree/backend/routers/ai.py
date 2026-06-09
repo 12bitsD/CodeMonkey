@@ -5,6 +5,7 @@ from typing import Optional, AsyncGenerator
 import asyncio
 import json
 
+from config import settings
 from database import ensure_schema_columns, get_db, get_db_context
 from services.ai_service import get_ai_service
 from services.learning_history import get_learning_history
@@ -19,6 +20,10 @@ from utils.auth import get_current_user_id
 
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
+GRAPH_GENERATION_TIMEOUT_SECONDS = max(
+    150,
+    settings.LLM_TIMEOUT * settings.LLM_MAX_RETRIES + 30,
+)
 
 
 class ParseGoalRequest(BaseModel):
@@ -85,12 +90,19 @@ async def _stream_graph_nodes(
     ai_service = get_ai_service()
     user_bg = request.userBackground.model_dump() if request.userBackground else None
 
-    result = await ai_service.generate_graph(
-        interpretation=request.interpretation,
-        original_input=request.input,
-        user_background=user_bg,
-        learning_purpose=request.learning_purpose,
-    )
+    try:
+        result = await asyncio.wait_for(
+            ai_service.generate_graph(
+                interpretation=request.interpretation,
+                original_input=request.input,
+                user_background=user_bg,
+                learning_purpose=request.learning_purpose,
+            ),
+            timeout=GRAPH_GENERATION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        yield f"data: {json.dumps({'type': 'error', 'error': {'code': 'AI_TIMEOUT', 'message': '生成图谱超时，请稍后重试或换一个更具体的学习目标'}}, ensure_ascii=False)}\n\n"
+        return
 
     if not result.success:
         err = result.error.model_dump() if result.error else {"code": "UNKNOWN", "message": "Unknown error"}

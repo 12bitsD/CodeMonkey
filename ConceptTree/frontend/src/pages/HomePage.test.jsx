@@ -47,7 +47,7 @@ vi.mock("../contexts/PlanContext", () => ({
 
 vi.mock("../contexts/AuthContext", () => ({
   useAuth: () => ({
-    isAuthenticated: false,
+    isAuthenticated: true,
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),

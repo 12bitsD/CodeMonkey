@@ -33,7 +33,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
     def is_available(self) -> bool:
         """Check if API key is configured"""
-        return bool(self.api_key and self.api_key.strip())
+        key = (self.api_key or "").strip()
+        return bool(key and not (key.startswith("<<") and key.endswith(">>")))
 
     async def chat(
         self,
@@ -65,9 +66,11 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
             try:
                 response = await self.client.chat.completions.create(**request_kwargs)
+            except APITimeoutError:
+                raise
             except APIError as e:
                 # Some compatible models only accept temperature=1.
-                if e.status_code == 400 and "temperature" in str(e).lower():
+                if getattr(e, "status_code", None) == 400 and "temperature" in str(e).lower():
                     request_kwargs["temperature"] = 1
                     response = await self.client.chat.completions.create(**request_kwargs)
                 else:
@@ -102,7 +105,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         except APIConnectionError as e:
             raise LLMProviderError(f"Connection error: {str(e)}")
         except APIError as e:
-            raise LLMProviderError(f"API error: {e.message}", status_code=e.status_code)
+            raise LLMProviderError(
+                f"API error: {getattr(e, 'message', str(e))}",
+                status_code=getattr(e, "status_code", None),
+            )
         except Exception as e:
             raise LLMProviderError(f"Unexpected error: {str(e)}")
 
@@ -278,7 +284,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         except APIConnectionError as e:
             raise LLMProviderError(f"Connection error during stream: {str(e)}")
         except APIError as e:
-            raise LLMProviderError(f"API error during stream: {e.message}", status_code=e.status_code)
+            raise LLMProviderError(
+                f"API error during stream: {getattr(e, 'message', str(e))}",
+                status_code=getattr(e, "status_code", None),
+            )
         except Exception as e:
             raise LLMProviderError(f"Unexpected error during stream: {str(e)}")
 

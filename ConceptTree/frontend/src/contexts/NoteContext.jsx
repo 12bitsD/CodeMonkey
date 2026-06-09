@@ -64,6 +64,12 @@ export const NoteProvider = ({ children }) => {
           setLoadError(null);
         }
       } catch (error) {
+        if (error?.status === 401) {
+          setAllNotes([]);
+          writeNotesCache([]);
+          setLoadError(null);
+          return;
+        }
         const cachedNotes = readNotesCache();
         setAllNotes(cachedNotes);
         setLoadError(error);
