@@ -49,7 +49,7 @@ function buildAttachedMarkdownPrompt(text, files, t) {
 }
 
 export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -104,9 +104,12 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
       await aiApi.chatStream(
         [...messages, userMsg],
         { nodeName, why: nodeWhy },
-        (chunk) => {
-          streamRef.current.content += chunk;
-          flushAssistant();
+        {
+          language,
+          onChunk: (chunk) => {
+            streamRef.current.content += chunk;
+            flushAssistant();
+          },
         },
       );
       if (!streamRef.current.content) {

@@ -7,6 +7,7 @@ from typing import AsyncGenerator, Optional
 
 from models_deep_learn import TeachingMode, TeachingOutput
 from services.llm.client import get_llm_client
+from services.llm.language import apply_response_language
 from services.llm.providers import LLMMessage
 
 logger = logging.getLogger(__name__)
@@ -131,8 +132,13 @@ class TeachingAgent:
         recent_turns: list[dict],
         mode: TeachingMode,
         memory_context: str = "",
+        language: str = "zh-CN",
     ) -> tuple[str, str]:
-        system_prompt = self._get_system_prompt()
+        system_prompt = apply_response_language(
+            self._get_system_prompt(),
+            language,
+            json_mode=True,
+        )
 
         mode_instr = _MODE_INSTRUCTIONS.get(mode, _MODE_INSTRUCTIONS["normal"])
         if mode == "review_weak":
@@ -164,6 +170,7 @@ class TeachingAgent:
         recent_turns: list[dict],
         mode: TeachingMode,
         memory_context: str = "",
+        language: str = "zh-CN",
     ) -> TeachingOutput:
         system_prompt, user_prompt = self._build_prompts(
             node_name=node_name,
@@ -176,6 +183,7 @@ class TeachingAgent:
             recent_turns=recent_turns,
             mode=mode,
             memory_context=memory_context,
+            language=language,
         )
 
         for attempt in range(2):
@@ -194,7 +202,11 @@ class TeachingAgent:
                     logger.error("TeachingAgent failed after 2 attempts: %s", e)
 
         return TeachingOutput(
-            content="抱歉，AI 生成内容时遇到问题，请稍后重试。",
+            content=(
+                "抱歉，AI 生成内容时遇到问题，请稍后重试。"
+                if language == "zh-CN"
+                else "The AI could not create this lesson. Please try again in a moment."
+            ),
             questions=[],
         )
 

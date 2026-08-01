@@ -288,6 +288,9 @@ const mapUserProfileToBackground = (profile) => {
   };
 };
 
+const normalizeApiLanguage = (language) =>
+  language === "zh-CN" ? "zh-CN" : "en-US";
+
 const GRAPH_GENERATION_TIMEOUT_MS = 120000;
 
 export const graphApi = {
@@ -297,6 +300,7 @@ export const graphApi = {
     userProfile = null,
     learningPurpose = "apply",
     onProgress = null,
+    language = "zh-CN",
   ) => {
     // 检测是否是旧调用（第二个参数是 profile）还是新调用（第二个是 interpretation）
     let interpretation, profile;
@@ -313,7 +317,12 @@ export const graphApi = {
       profile = userProfile;
     }
 
-    const body = { input, interpretation, learning_purpose: learningPurpose };
+    const body = {
+      input,
+      interpretation,
+      learning_purpose: learningPurpose,
+      ...(language ? { language: normalizeApiLanguage(language) } : {}),
+    };
     const userBackground = mapUserProfileToBackground(profile);
     if (userBackground) {
       body.userBackground = userBackground;
@@ -504,8 +513,11 @@ export const notesApi = {
 // ─── AI API (Real Backend) ───
 
 export const aiApi = {
-  parseGoal: async (input, userProfile = null) => {
-    const body = { input };
+  parseGoal: async (input, userProfile = null, language = null) => {
+    const body = {
+      input,
+      ...(language ? { language: normalizeApiLanguage(language) } : {}),
+    };
     const userBackground = mapUserProfileToBackground(userProfile);
     if (userBackground) {
       body.userBackground = userBackground;
@@ -523,8 +535,14 @@ export const aiApi = {
     learningPurpose,
     userProfile,
     { onSkeleton, onNodeReady, onIntegrationDone, onError } = {},
+    language = null,
   ) => {
-    const body = { input, interpretation, learning_purpose: learningPurpose };
+    const body = {
+      input,
+      interpretation,
+      learning_purpose: learningPurpose,
+      ...(language ? { language: normalizeApiLanguage(language) } : {}),
+    };
     const userBackground = mapUserProfileToBackground(userProfile);
     if (userBackground) body.userBackground = userBackground;
 
@@ -584,17 +602,27 @@ export const aiApi = {
     }
   },
 
-  clarifyGoal: async (originalGoal, newGoal, planId = null) => {
+  clarifyGoal: async (originalGoal, newGoal, planId = null, language = null) => {
     return await fetchApi("/ai/clarify-goal", {
       method: "POST",
-      body: JSON.stringify({ originalGoal, newGoal, ...(planId ? { planId } : {}) }),
+      body: JSON.stringify({
+        originalGoal,
+        newGoal,
+        ...(language ? { language: normalizeApiLanguage(language) } : {}),
+        ...(planId ? { planId } : {}),
+      }),
     });
   },
 
   recommendNext: async (planId, options = {}) => {
     return await fetchApi("/ai/recommend-next", {
       method: "POST",
-      body: JSON.stringify({ planId }),
+      body: JSON.stringify({
+        planId,
+        ...(options.language
+          ? { language: normalizeApiLanguage(options.language) }
+          : {}),
+      }),
       signal: options.signal,
     });
   },
@@ -618,7 +646,15 @@ export const aiApi = {
     const res = await fetch(buildApiUrl("/ai/explain-topic"), {
       method: "POST",
       headers,
-      body: JSON.stringify({ nodeId, topicIndex, topicText, nodeContext }),
+      body: JSON.stringify({
+        nodeId,
+        topicIndex,
+        topicText,
+        nodeContext,
+        ...(options.language
+          ? { language: normalizeApiLanguage(options.language) }
+          : {}),
+      }),
       signal: options.signal,
     });
 
@@ -671,6 +707,7 @@ export const aiApi = {
       onSources,
       onSearchStatus,
       signal,
+      language = null,
     } = options;
 
     const token = tokenManager.get();
@@ -680,7 +717,12 @@ export const aiApi = {
     const res = await fetch(buildApiUrl("/ai/chat"), {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages, nodeContext, enableWebSearch }),
+      body: JSON.stringify({
+        messages,
+        nodeContext,
+        enableWebSearch,
+        ...(language ? { language: normalizeApiLanguage(language) } : {}),
+      }),
       signal,
     });
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from enum import Enum
 
 
@@ -502,6 +502,7 @@ class ExplainTopicRequest(BaseModel):
     topicIndex: int
     topicText: str
     nodeContext: NodeContextInput
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
 
 class ChatMessage(BaseModel):
@@ -515,3 +516,4 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     nodeContext: Optional[NodeContextInput] = None
     enableWebSearch: bool = False
+    language: Literal["en-US", "zh-CN"] = "en-US"

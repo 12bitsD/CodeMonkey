@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from threading import Lock
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -118,6 +119,7 @@ async def initialize(
     session_id: str,
     http_request: Request,
     background_tasks: BackgroundTasks,
+    language: Literal["en-US", "zh-CN"] = "en-US",
     user_id: str = Depends(get_current_user_id),
 ):
     with get_db_context() as db:
@@ -132,7 +134,12 @@ async def initialize(
         node_meta = _service._fetch_node_meta(db, session.node_id)
 
     async def gen():
-        async for event in _service.stream_initialize(session, node_meta, background_tasks=background_tasks):
+        async for event in _service.stream_initialize(
+            session,
+            node_meta,
+            background_tasks=background_tasks,
+            language=language,
+        ):
             if await http_request.is_disconnected():
                 return
             yield event
@@ -160,7 +167,13 @@ async def send_message(
         node_meta = _service._fetch_node_meta(db, session.node_id)
 
     async def gen():
-        async for event in _service.stream_message(session, node_meta, req.content, background_tasks=background_tasks):
+        async for event in _service.stream_message(
+            session,
+            node_meta,
+            req.content,
+            background_tasks=background_tasks,
+            language=req.language,
+        ):
             if await http_request.is_disconnected():
                 return
             yield event
@@ -188,7 +201,13 @@ async def send_command(
         node_meta = _service._fetch_node_meta(db, session.node_id)
 
     async def gen():
-        async for event in _service.stream_command(session, node_meta, req.command, background_tasks=background_tasks):
+        async for event in _service.stream_command(
+            session,
+            node_meta,
+            req.command,
+            background_tasks=background_tasks,
+            language=req.language,
+        ):
             if await http_request.is_disconnected():
                 return
             yield event

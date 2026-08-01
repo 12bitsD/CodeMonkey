@@ -26,6 +26,7 @@ from models import (
 )
 from services.llm import get_llm_client, LLMServiceError
 from services.llm.configs import load_ai_config, ConfigLoadError
+from services.llm.language import apply_response_language, normalize_language
 from services.llm.providers import LLMMessage
 from services.search_service import SearchServiceError, get_search_service
 
@@ -43,11 +44,13 @@ def _fallback_depth_level(learning_purpose: str) -> int:
 def _build_fallback_graph(
     interpretation: str,
     learning_purpose: str = "apply",
+    language: str = "en-US",
 ) -> GenerateGraphResponse:
-    goal = (interpretation or "当前学习目标").strip()
+    is_chinese = language == "zh-CN"
+    goal = (interpretation or ("当前学习目标" if is_chinese else "Current learning goal")).strip()
     depth_level = _fallback_depth_level(learning_purpose)
     target_count = {"explore": 5, "master": 10}.get(learning_purpose, 7)
-    templates = [
+    chinese_templates = [
         (
             "领域全景与目标拆解",
             "先建立整体地图，明确术语边界、学习目标和后续知识之间的关系。",
@@ -118,7 +121,80 @@ def _build_fallback_graph(
             ["能定义项目验收标准", "能完成一次复盘"],
             "请设计一个项目化验收方案。",
         ),
-    ][:target_count]
+    ]
+    english_templates = [
+        (
+            "Field overview and goal breakdown",
+            "Build the big picture first so the terminology, goal, and knowledge dependencies are clear.",
+            ["Core questions", "Terminology boundaries", "Goal breakdown", "Knowledge dependencies"],
+            ["Explain the learning goal in your own words", "List the main subtopics"],
+            "Build a high-level knowledge map for this learning goal.",
+        ),
+        (
+            "Foundational concepts and terminology",
+            "Fill the foundations that later topics reuse, reducing gaps when advanced material appears.",
+            ["Core definitions", "Common terminology", "Concept distinctions", "Typical use cases"],
+            ["Explain the core terms", "Distinguish commonly confused concepts"],
+            "Explain these foundations and compare the concepts that are easy to confuse.",
+        ),
+        (
+            "Core mechanisms and workflow",
+            "Understanding how the system works is the bridge from using it to making sound decisions.",
+            ["Input-output relationship", "Core workflow", "Key constraints", "Failure modes", "Debugging approach"],
+            ["Draw the basic workflow", "Explain the purpose of each step"],
+            "Break down the complete workflow behind the core mechanism.",
+        ),
+        (
+            "Methods and practical patterns",
+            "Turn concepts into repeatable steps and a reliable method for practice.",
+            ["Basic steps", "Common strategies", "Quality criteria", "Iteration methods"],
+            ["Complete a small task independently", "Explain why each step is used"],
+            "Provide practical steps and clear decision criteria.",
+        ),
+        (
+            "Case analysis and transfer",
+            "Use a concrete case to verify understanding and transfer the method to a new problem.",
+            ["Case context", "Solution approach", "Key decisions", "Transfer conditions", "Counterexample"],
+            ["Analyze one case", "Transfer the method to a similar scenario"],
+            "Use a concrete case to show how this knowledge is applied.",
+        ),
+        (
+            "Tools and resource selection",
+            "Choose suitable tools and sources to make learning and practice more efficient.",
+            ["Common tools", "Source quality criteria", "Practice resources", "Review workflow"],
+            ["Choose an appropriate tool", "Plan follow-up practice resources"],
+            "Recommend an appropriate toolchain for learning and practicing this goal.",
+        ),
+        (
+            f"Integrated application: {goal[:24]}",
+            "Combine the foundations, mechanisms, and practical methods in a goal-focused application.",
+            ["Task breakdown", "Solution design", "Execution checkpoints", "Outcome evaluation", "Next improvement"],
+            ["Complete an integrated task", "Evaluate the result and propose an improvement"],
+            "Design an integrated exercise that tests whether I have mastered this goal.",
+        ),
+        (
+            "Common misconceptions and boundaries",
+            "Recognize failure patterns and boundary conditions so the method is not applied mechanically.",
+            ["Frequent misconceptions", "Boundary conditions", "Applicable cases", "Correction methods"],
+            ["Identify common misconceptions", "Judge whether the method applies"],
+            "Summarize the common misconceptions and boundary conditions for this topic.",
+        ),
+        (
+            "Advanced topics and extensions",
+            "Identify deeper directions after the main path is stable and form a longer-term learning route.",
+            ["Advanced branches", "Open questions", "Further reading", "Practice challenge"],
+            ["Explain the extension path", "Choose one advanced direction to continue"],
+            "Propose an advanced learning route for this goal.",
+        ),
+        (
+            "Project-based validation",
+            "Use a project outcome to verify that knowledge has become an independent capability.",
+            ["Project objective", "Acceptance criteria", "Risk checklist", "Review template"],
+            ["Define project acceptance criteria", "Complete a structured retrospective"],
+            "Design a project-based validation plan.",
+        ),
+    ]
+    templates = (chinese_templates if is_chinese else english_templates)[:target_count]
 
     nodes = []
     for index, (name, why, what, mastery, prompt) in enumerate(templates, start=1):
@@ -137,7 +213,7 @@ def _build_fallback_graph(
                 prompt=prompt,
                 resources=[],
                 isTarget=is_target,
-                domain="通用学习",
+                domain="通用学习" if is_chinese else "General learning",
                 depth_level=depth_level,
             )
         )
@@ -205,7 +281,10 @@ class AIService:
         self.search_service = get_search_service()
 
     async def parse_goal(
-        self, user_input: str, user_background: Optional[dict] = None
+        self,
+        user_input: str,
+        user_background: Optional[dict] = None,
+        language: str = "en-US",
     ) -> ParseGoalAIResult:
         """
         Parse user learning goal using LLM.
@@ -227,6 +306,7 @@ class AIService:
             params, sys_prompt, usr_prompt = load_ai_config(
                 "parse_goal", user_input, background=background_str
             )
+            sys_prompt = apply_response_language(sys_prompt, language, json_mode=True)
 
             # Call LLM with config-driven parameters
             result = await self.llm_client.chat_json(
@@ -262,6 +342,7 @@ class AIService:
         original_input: str,
         user_background: Optional[dict] = None,
         learning_purpose: str = "apply",
+        language: str = "en-US",
     ) -> GenerateGraphAIResult:
         """
         Generate knowledge graph using LLM.
@@ -290,6 +371,7 @@ class AIService:
                 background=background_str,
                 learning_purpose=learning_purpose,
             )
+            sys_prompt = apply_response_language(sys_prompt, language, json_mode=True)
 
             # Call LLM with config-driven parameters (model override for speed)
             result = await self.llm_client.chat_json(
@@ -313,7 +395,7 @@ class AIService:
             )
             return GenerateGraphAIResult(
                 success=True,
-                data=_build_fallback_graph(interpretation, learning_purpose),
+                data=_build_fallback_graph(interpretation, learning_purpose, language),
             )
         except ConfigLoadError as e:
             return GenerateGraphAIResult(
@@ -337,6 +419,7 @@ class AIService:
         original_input: str,
         user_background: Optional[dict],
         learning_purpose: str,
+        language: str = "en-US",
     ) -> SkeletonGraph:
         """Phase 1: Curriculum Architect returns graph skeleton."""
         background_str = (
@@ -349,6 +432,7 @@ class AIService:
             background=background_str,
             learning_purpose=learning_purpose,
         )
+        sys_prompt = apply_response_language(sys_prompt, language, json_mode=True)
         result = await self.llm_client.chat_json(
             system_prompt=sys_prompt,
             user_prompt=usr_prompt,
@@ -375,6 +459,7 @@ class AIService:
         learning_goal: str,
         learning_purpose: str,
         semaphore: asyncio.Semaphore,
+        language: str = "en-US",
     ) -> GeneratedNodeContent:
         """Phase 2: Content Generator creates content for one node."""
         neighbor_names = ", ".join(n.name for n in all_nodes if n.id != node.id)
@@ -391,6 +476,7 @@ class AIService:
             neighbor_names=neighbor_names,
             prerequisite_names=prerequisite_names,
         )
+        sys_prompt = apply_response_language(sys_prompt, language, json_mode=True)
 
         async with semaphore:
             result = await self.llm_client.chat_json(
@@ -408,6 +494,7 @@ class AIService:
         self,
         contents: list[GeneratedNodeContent],
         learning_goal: str,
+        language: str = "en-US",
     ) -> IntegrationResult:
         """Phase 3: Integration Agent deduplicates what lists across nodes."""
         nodes_payload = json.dumps(
@@ -422,6 +509,7 @@ class AIService:
             nodes_payload,
             learning_goal=learning_goal,
         )
+        sys_prompt = apply_response_language(sys_prompt, language, json_mode=True)
         try:
             result = await self.llm_client.chat_json(
                 system_prompt=sys_prompt,
@@ -440,6 +528,7 @@ class AIService:
         original_input: str,
         user_background: Optional[dict],
         learning_purpose: str,
+        language: str = "en-US",
     ) -> AsyncGenerator[str, None]:
         """
         Multi-agent graph generation, yielding SSE-formatted strings.
@@ -450,7 +539,7 @@ class AIService:
 
         try:
             skeleton = await self._run_phase1(
-                interpretation, original_input, user_background, learning_purpose
+                interpretation, original_input, user_background, learning_purpose, language
             )
         except Exception as e:
             yield _sse(
@@ -484,6 +573,7 @@ class AIService:
                     learning_goal=interpretation,
                     learning_purpose=learning_purpose,
                     semaphore=semaphore,
+                    language=language,
                 )
             )
             for node in skeleton.nodes
@@ -506,7 +596,7 @@ class AIService:
                         {"type": "node_error", "data": {"message": str(e)}}
                     )
 
-        integration = await self._run_phase3(completed_contents, interpretation)
+        integration = await self._run_phase3(completed_contents, interpretation, language)
         yield _sse({"type": "integration_done", "data": integration.model_dump()})
         await asyncio.sleep(0)
 
@@ -517,6 +607,7 @@ class AIService:
         original_goal: str,
         new_goal: str,
         existing_nodes: Optional[list] = None,
+        language: str = "en-US",
     ) -> ClarifyGoalAIResult:
         try:
             nodes_context = ""
@@ -533,6 +624,7 @@ class AIService:
             params, sys_prompt, usr_prompt = load_ai_config(
                 "clarify_goal", combined_input
             )
+            sys_prompt = apply_response_language(sys_prompt, language, json_mode=True)
 
             result = await self.llm_client.chat_json(
                 system_prompt=sys_prompt,
@@ -565,6 +657,7 @@ class AIService:
         user_profile: dict,
         learning_history: dict,
         learning_goal: str,
+        language: str = "en-US",
     ) -> RecommendNextAIResult:
         try:
             context = json.dumps(
@@ -577,6 +670,7 @@ class AIService:
                 ensure_ascii=False,
             )
             params, sys_prompt, usr_prompt = load_ai_config("recommend_next", context)
+            sys_prompt = apply_response_language(sys_prompt, language, json_mode=True)
 
             result = await self.llm_client.chat_json(
                 system_prompt=sys_prompt,
@@ -610,6 +704,7 @@ class AIService:
         node_name: str,
         plan_title: Optional[str] = None,
         why: Optional[str] = None,
+        language: str = "en-US",
     ) -> AsyncGenerator[str, None]:
         """
         F7: Stream an explanation for a specific what-item topic.
@@ -627,7 +722,10 @@ class AIService:
             config = {"model_params": {}, "system_prompt": "你是专业学习教练，请详细解释给定主题。"}
 
         params = config.get("model_params", {})
-        system_prompt = config.get("system_prompt", "")
+        system_prompt = apply_response_language(
+            config.get("system_prompt", ""),
+            language,
+        )
 
         context_parts = [f"正在学习的节点：{node_name}"]
         if plan_title:
@@ -657,6 +755,7 @@ class AIService:
         node_name: str = "",
         plan_title: Optional[str] = None,
         enable_web_search: bool = False,
+        language: str = "en-US",
     ) -> AsyncGenerator[str, None]:
         """F4: Stream a chat response given message history + node context."""
         session = await self.prepare_chat_session(
@@ -664,6 +763,7 @@ class AIService:
             node_name=node_name,
             plan_title=plan_title,
             enable_web_search=enable_web_search,
+            language=language,
         )
 
         async for chunk in self.stream_chat_session(session):
@@ -675,6 +775,7 @@ class AIService:
         node_name: str = "",
         plan_title: Optional[str] = None,
         enable_web_search: bool = False,
+        language: str = "en-US",
     ) -> dict:
         """
         Build the LLM chat payload and optionally enrich it with web-search context.
@@ -695,6 +796,7 @@ class AIService:
         system_prompt = config.get("system_prompt", "")
         system_prompt = system_prompt.replace("{{node_name}}", node_name)
         system_prompt = system_prompt.replace("{{plan_title}}", plan_title or "")
+        system_prompt = apply_response_language(system_prompt, language)
 
         llm_messages = [LLMMessage(role="system", content=system_prompt)]
         sources: list[dict] = []
@@ -723,7 +825,7 @@ class AIService:
             llm_messages.append(
                 LLMMessage(
                     role="system",
-                    content=self._build_search_context(sources),
+                    content=self._build_search_context(sources, language),
                 )
             )
 
@@ -737,6 +839,7 @@ class AIService:
             "model": params.get("model"),
             "sources": sources,
             "search_status": search_status,
+            "language": normalize_language(language),
         }
 
     async def stream_chat_session(self, session: dict) -> AsyncGenerator[str, None]:
@@ -760,8 +863,9 @@ class AIService:
             LLMMessage(
                 role="user",
                 content=(
-                    "你的上一条回答明显还没有结束。请从中断处继续，"
-                    "不要重复已经说过的内容，直接补完剩余推导或结论。"
+                    "你的上一条回答明显还没有结束。请从中断处继续，不要重复已经说过的内容，直接补完剩余推导或结论。"
+                    if session.get("language") == "zh-CN"
+                    else "Your previous answer is clearly incomplete. Continue exactly where it stopped, without repeating earlier content, and finish the remaining reasoning or conclusion in English."
                 ),
             ),
         ]
@@ -774,26 +878,28 @@ class AIService:
         ):
             yield chunk
 
-    def _build_search_context(self, sources: list[dict]) -> str:
+    def _build_search_context(self, sources: list[dict], language: str = "en-US") -> str:
+        is_chinese = language == "zh-CN"
         source_lines = []
         for index, source in enumerate(sources, start=1):
             source_lines.append(
                 "\n".join(
                     [
-                        f"[来源 {index}]",
-                        f"标题：{source.get('title', '')}",
-                        f"链接：{source.get('url', '')}",
-                        f"摘要：{source.get('snippet', '')}",
+                        f"[{'来源' if is_chinese else 'Source'} {index}]",
+                        f"{'标题' if is_chinese else 'Title'}：{source.get('title', '')}",
+                        f"{'链接' if is_chinese else 'URL'}：{source.get('url', '')}",
+                        f"{'摘要' if is_chinese else 'Snippet'}：{source.get('snippet', '')}",
                     ]
                 )
             )
 
         sources_block = "\n\n".join(source_lines)
-        return (
-            "以下是联网搜索结果，请优先依据这些资料回答。"
-            "如果搜索结果不足以支持结论，请明确说明不确定性，不要编造来源。\n\n"
-            f"{sources_block}"
+        intro = (
+            "以下是联网搜索结果，请优先依据这些资料回答。如果搜索结果不足以支持结论，请明确说明不确定性，不要编造来源。"
+            if is_chinese
+            else "These are web search results. Base the answer on them when relevant. If they do not support a conclusion, state the uncertainty clearly and do not invent sources."
         )
+        return f"{intro}\n\n{sources_block}"
 
 
     async def summarize_resource_results(

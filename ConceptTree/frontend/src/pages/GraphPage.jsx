@@ -291,7 +291,7 @@ const GraphPage = () => {
     if (!planId || loading) return;
     const abortController = new AbortController();
     aiApi
-      .recommendNext(planId, { signal: abortController.signal })
+      .recommendNext(planId, { signal: abortController.signal, language })
       .then((data) => {
         if (abortController.signal.aborted) return;
         if (data?.recommended_node_id) {
@@ -304,7 +304,7 @@ const GraphPage = () => {
         }
       });
     return () => abortController.abort();
-  }, [planId, loading]);
+  }, [language, planId, loading]);
 
   const [showGoalClarification, setShowGoalClarification] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState("");
@@ -620,7 +620,7 @@ const GraphPage = () => {
   const handleSaveExplainNote = async (topicText, topicIndex) => {
     if (!selectedNode) return;
 
-    const explainKey = `${selectedNode.id}_${topicIndex}`;
+    const explainKey = `${selectedNode.id}_${topicIndex}_${language}`;
     if (savingExplainNotes[explainKey]) return;
     const content = explainStates[explainKey]?.content || "";
 
@@ -751,7 +751,7 @@ const GraphPage = () => {
     if (!newGoalInput.trim() || !plan) return;
     setIsClarifying(true);
     try {
-      const result = await aiApi.clarifyGoal(plan.title, newGoalInput, planId);
+      const result = await aiApi.clarifyGoal(plan.title, newGoalInput, planId, language);
       setClarifyResult(result);
     } catch (err) {
       toast.error(t("graph.toast.analyzeFailed"));
@@ -891,6 +891,7 @@ const GraphPage = () => {
       questions: generateMasteryQuiz({
         nodeName: selectedNode.name,
         standard,
+        language,
       }),
     });
   };
@@ -1021,8 +1022,8 @@ const GraphPage = () => {
   // F7: click a what-item -> stream AI explanation
   const handleExplainTopic = async (topicText, topicIndex) => {
     if (!selectedNode) return;
-    const key = `${selectedNode.id}_${topicIndex}`;
-    const requestKey = `explain:${planId}:${selectedNode.id}:${topicIndex}`;
+    const key = `${selectedNode.id}_${topicIndex}_${language}`;
+    const requestKey = `explain:${planId}:${selectedNode.id}:${topicIndex}:${language}`;
     const nodeId = selectedNode.id;
     const current = explainStates[key];
 
@@ -1061,7 +1062,7 @@ const GraphPage = () => {
             [key]: { loading: false, content: accumulated, expanded: true },
           }));
         },
-        { signal: request.signal },
+        { signal: request.signal, language },
       );
       if (
         request.signal.aborted ||
@@ -1142,7 +1143,7 @@ const GraphPage = () => {
     setChatInput("");
     setChatLoading(true);
 
-    const requestKey = `chat:${planId}:${selectedNode.id}`;
+    const requestKey = `chat:${planId}:${selectedNode.id}:${language}`;
     const request = aiRequestRegistryRef.current.begin(requestKey);
 
     try {
@@ -1180,6 +1181,7 @@ const GraphPage = () => {
             scheduleChatMessageFlush();
           },
           signal: request.signal,
+          language,
         },
       );
       if (
@@ -1741,28 +1743,28 @@ const GraphPage = () => {
 
       {/* Node Detail Drawer */}
       <div
-        className={`absolute bottom-4 right-4 top-4 z-30 flex w-[400px] transform flex-col rounded-[26px] border border-white/80 bg-white/85 shadow-[var(--shadow-float)] backdrop-blur-2xl transition-transform duration-300 ease-[var(--ease-out-apple)] ${selectedNodeId ? "translate-x-0" : "translate-x-[calc(100%+2rem)]"}`}
+        className={`absolute bottom-3 right-3 top-3 z-30 flex w-[420px] max-w-[calc(100%-1.5rem)] transform flex-col rounded-[18px] border border-black/[0.1] bg-white/95 shadow-[0_16px_48px_rgba(15,15,15,0.13),0_2px_8px_rgba(15,15,15,0.05)] backdrop-blur-xl transition-transform duration-200 ease-[var(--ease-out-apple)] ${selectedNodeId ? "translate-x-0" : "translate-x-[calc(100%+2rem)]"}`}
       >
         {selectedNode && (
           <>
-            <div className="px-8 py-8 border-b border-zinc-50 flex justify-between items-start">
+            <div className="flex items-start justify-between border-b border-black/[0.07] px-6 py-5">
               <div>
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2 block">
+                  <span className="mb-1.5 block text-[0.65625rem] font-semibold uppercase tracking-[0.075em] text-[#8f8e8b]">
                     {t("graph.node")}
                   </span>
-                <h2 className="text-2xl font-semibold text-zinc-900 leading-tight">
+                <h2 className="text-xl font-semibold leading-tight tracking-[-0.018em] text-[#202020]">
                   {selectedNode.name}
                 </h2>
               </div>
               <button
                 onClick={() => setSelectedNodeId(null)}
-                className="p-2 -mr-2 text-zinc-300 hover:text-zinc-600 transition-colors rounded-full hover:bg-zinc-50"
+                className="-mr-1 flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.05] hover:text-zinc-700 active:scale-[0.96]"
               >
-                <X size={24} strokeWidth={1.5} />
+                <X size={17} strokeWidth={1.8} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10 custom-scrollbar">
+            <div className="custom-scrollbar flex-1 space-y-7 overflow-y-auto px-6 py-5">
               {/* Actions */}
               <div className="flex gap-3">
                 {selectedNode.status === "learned" ? (
@@ -1815,7 +1817,7 @@ const GraphPage = () => {
                 </Button>
               )}
 
-              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+              <div className="rounded-xl border border-black/[0.07] bg-[#fbfbfa] p-4">
                 <label className="flex items-center justify-between gap-4">
                   <span className="flex items-center gap-2 text-xs font-medium text-zinc-500">
                     <CalendarDays size={14} /> {t("graph.nodeDeadline")}
@@ -1829,6 +1831,7 @@ const GraphPage = () => {
                 <div className="mt-3 flex gap-2">
                   <input
                     type="date"
+                    lang={language}
                     min={minNodeDeadlineDate}
                     inputMode="none"
                     className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
@@ -1915,24 +1918,28 @@ const GraphPage = () => {
 
                 {selectedNode.what?.length > 0 && (
                   <section>
-                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <BookOpen size={14} /> {t("graph.coreContent")}
-                      <span className="ml-1 text-[10px] font-normal text-zinc-500">{t("graph.explainHint")}</span>
-                    </h4>
-                    <ul className="space-y-3">
+                    <div className="mb-3 flex items-start justify-between gap-4">
+                      <h4 className="flex shrink-0 items-center gap-2 text-[0.65625rem] font-semibold uppercase leading-4 tracking-[0.075em] text-[#8f8e8b]">
+                        <BookOpen size={13} strokeWidth={1.8} /> {t("graph.coreContent")}
+                      </h4>
+                      <p className="max-w-[12rem] text-right text-[0.625rem] uppercase leading-4 tracking-[0.06em] text-[#8f8e8b]">
+                        {t("graph.explainHint")}
+                      </p>
+                    </div>
+                    <ul className="space-y-2">
                       {selectedNode.what.map((item, i) => {
-                        const key = `${selectedNode.id}_${i}`;
+                        const key = `${selectedNode.id}_${i}_${language}`;
                         const state = explainStates[key];
                         const isSavingExplainNote = Boolean(savingExplainNotes[key]);
                         const isExplainSaved = Boolean(savedExplainNotes[key]);
                         return (
-                          <li key={i} className="text-sm text-zinc-600">
+                          <li key={i} className="text-[0.8125rem] text-[#5f5e5b]">
                             <button
                               className="flex items-start gap-3 w-full text-left group hover:text-teal-700 transition-colors"
                               onClick={() => handleExplainTopic(item, i)}
                             >
                               <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 mt-2 group-hover:bg-teal-500 transition-colors flex-shrink-0" />
-                              <span className="leading-relaxed flex-1">{item}</span>
+                              <span className="flex-1 leading-[1.55]">{item}</span>
                               {state?.loading ? (
                                 <Loader size={12} className="mt-1.5 text-teal-400 animate-spin flex-shrink-0" />
                               ) : state?.content ? (
@@ -2037,8 +2044,8 @@ const GraphPage = () => {
                 {/* Notes */}
                 <section>
                   <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                      <FileText size={14} /> {t("graph.notes")}
+                    <h4 className="flex items-center gap-2 text-[0.65625rem] font-semibold uppercase leading-4 tracking-[0.075em] text-[#8f8e8b]">
+                      <FileText size={13} strokeWidth={1.8} /> {t("graph.notes")}
                     </h4>
                     <button
                       onClick={openNewNoteEditor}

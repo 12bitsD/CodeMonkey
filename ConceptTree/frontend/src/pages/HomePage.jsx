@@ -36,10 +36,11 @@ const getTodayCacheDate = () => {
   return `${year}-${month}-${day}`;
 };
 
-const buildRecommendationCacheKey = (plan, dateKey = getTodayCacheDate()) => {
+const buildRecommendationCacheKey = (plan, language = "en-US", dateKey = getTodayCacheDate()) => {
   if (!plan?.id) return null;
   return [
     dateKey,
+    ...(language === "zh-CN" ? [] : [language]),
     plan.id,
     plan.progress ?? 0,
     plan.total ?? 0,
@@ -186,8 +187,8 @@ const HomePage = () => {
   const todayPlanId = todayPlan?.id || null;
   const todayPlanStatus = todayPlan?.status || null;
   const todayRecommendationCacheKey = useMemo(
-    () => buildRecommendationCacheKey(todayPlan),
-    [todayPlan],
+    () => buildRecommendationCacheKey(todayPlan, language),
+    [language, todayPlan],
   );
 
   useEffect(() => {
@@ -215,6 +216,7 @@ const HomePage = () => {
       try {
         const result = await aiApi.recommendNext(todayPlanId, {
           signal: abortController.signal,
+          language,
         });
         if (!cancelled) {
           setTodayRecommendation(result || null);
@@ -241,7 +243,7 @@ const HomePage = () => {
       clearTimeout(timeoutId);
       abortController.abort();
     };
-  }, [isAuthenticated, todayPlanId, todayPlanStatus, todayRecommendationCacheKey]);
+  }, [isAuthenticated, language, todayPlanId, todayPlanStatus, todayRecommendationCacheKey]);
 
   const openDeadlineModal = (plan) => {
     if (!plan) return;
@@ -308,7 +310,7 @@ const HomePage = () => {
     }, 900);
 
     try {
-      const result = await aiApi.parseGoal(inputText, userProfile);
+      const result = await aiApi.parseGoal(inputText, userProfile, language);
       setParsedGoal(result);
       setShowConfirmModal(true);
     } catch (error) {
@@ -330,17 +332,20 @@ const HomePage = () => {
     setStreamProgress(null);
 
     try {
-      const result = await graphApi.generate(
+      const onGenerationProgress = (evt) => {
+        if (evt.type === "node") {
+          setStreamProgress({ received: evt.received, total: evt.total || 0 });
+        }
+      };
+      const generationArgs = [
         inputText,
         confirmedInterpretation,
         userProfile,
         learningPurpose,
-        (evt) => {
-          if (evt.type === "node") {
-            setStreamProgress({ received: evt.received, total: evt.total || 0 });
-          }
-        },
-      );
+        onGenerationProgress,
+      ];
+      if (language !== "zh-CN") generationArgs.push(language);
+      const result = await graphApi.generate(...generationArgs);
 
       const positions = calculateLayout(
         result.nodes || [],
@@ -432,7 +437,7 @@ const HomePage = () => {
       <section className="mb-20 w-full max-w-4xl">
 
         {isLoadingScene ? (
-          <div className="relative min-h-[390px] overflow-hidden rounded-xl border border-black/[0.1] bg-white">
+          <div className="relative min-h-[500px] overflow-hidden rounded-xl border border-black/[0.1] bg-[#fbfbfa] sm:min-h-[460px]">
             {isAnalyzing ? <GoalAnalysisLoader step={analysisStep} /> : null}
             {isGenerating ? (
               <GraphGenerationLoader
@@ -760,6 +765,7 @@ const HomePage = () => {
         isOpen={showConfirmModal}
         onClose={() => setShowConfirmModal(false)}
         title={t("home.goal.confirmTitle")}
+        className="max-w-2xl"
         footer={
           <>
             <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>
@@ -769,21 +775,21 @@ const HomePage = () => {
           </>
         }
       >
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-6">
-            <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-zinc-400">
+        <div className="space-y-5">
+          <div className="rounded-xl border border-black/[0.07] bg-[#fbfbfa] p-5">
+            <h4 className="mb-2 text-[0.65625rem] font-semibold uppercase tracking-[0.075em] text-[#8f8e8b]">
               {t("home.goal.interpreted")}
             </h4>
-            <p className="text-xl font-light text-zinc-900">
+            <p className="text-[0.9375rem] font-normal leading-6 text-[#202020]">
               {parsedGoal?.interpretation}
             </p>
           </div>
 
           <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+            <h4 className="text-[0.65625rem] font-semibold uppercase tracking-[0.075em] text-[#8f8e8b]">
               {t("home.goal.purpose")}
             </h4>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
               {purposeOptions.map((option) => {
                 const selected = learningPurpose === option.id;
                 return (
@@ -791,13 +797,13 @@ const HomePage = () => {
                     key={option.id}
                     type="button"
                     onClick={() => setLearningPurpose(option.id)}
-                    className={`rounded-2xl border p-4 text-left transition-all ${
+                    className={`rounded-xl border p-3.5 text-left transition-[background-color,border-color,color,transform,box-shadow] duration-150 active:scale-[0.98] ${
                       selected
-                        ? "border-zinc-900 bg-zinc-900 text-white shadow-lg shadow-zinc-200"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300"
+                        ? "border-[#202020] bg-[#202020] text-white shadow-[0_4px_12px_rgba(15,15,15,0.12)]"
+                        : "border-black/[0.1] bg-white text-[#5f5e5b] hover:border-black/25"
                     }`}
                   >
-                    <p className="text-sm font-semibold">{option.label}</p>
+                    <p className="text-[0.8125rem] font-semibold leading-5">{option.label}</p>
                     <p
                       className={`mt-2 text-xs leading-5 ${
                         selected ? "text-zinc-300" : "text-zinc-500"

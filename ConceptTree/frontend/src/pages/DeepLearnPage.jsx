@@ -273,7 +273,7 @@ function NoteReaderPanel({ note, onEdit, onDelete, onClose }) {
 export default function DeepLearnPage() {
   const { planId, nodeId } = useParams();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const { allNotes, actions: noteActions } = useNoteContext();
   const layoutRef = useRef(null);
   const resizeRef = useRef(null);
@@ -286,7 +286,7 @@ export default function DeepLearnPage() {
     isInitializing, isRestarting, canSendMessage, uiFlags, sendMessage, sendCommand, error,
     pinnedImages, pinImage, unpinImage, noteSuggestion, dismissNoteSuggestion,
     noteId, isGeneratingNote, isCompleted,
-  } = useDeepLearnSession({ planId, nodeId });
+  } = useDeepLearnSession({ planId, nodeId, language });
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesInitial, setNotesInitial] = useState('');

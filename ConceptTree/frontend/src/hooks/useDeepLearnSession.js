@@ -20,7 +20,7 @@ async function consumeSSE(response, onEvent) {
   }
 }
 
-export function useDeepLearnSession({ planId, nodeId }) {
+export function useDeepLearnSession({ planId, nodeId, language = null }) {
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [conceptsStatus, setConceptsStatus] = useState({});
@@ -47,8 +47,13 @@ export function useDeepLearnSession({ planId, nodeId }) {
   const handleEventRef = useRef(null);
   const restartInProgressRef = useRef(false);
   const restartSessionReceivedRef = useRef(false);
+  const languageRef = useRef(language);
   const pinnedStorageLoadedRef = useRef(false);
   const pinnedStorageKey = planId && nodeId ? `deep-learn:pinned:${planId}:${nodeId}` : null;
+
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
 
   const deriveUiFlags = useCallback((state) => {
     if (state === 'AWAITING_COMMAND') {
@@ -123,7 +128,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
         setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
         setIsCompleted(true);
         break;
-      case 'restart':
+      case 'restart': {
         restartSessionReceivedRef.current = true;
         sessionIdRef.current = event.new_session_id;
         sessionStateRef.current = 'INITIALIZING';
@@ -141,7 +146,9 @@ export function useDeepLearnSession({ planId, nodeId }) {
         setIsCompleted(false);
         setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
         streamingMsgIdRef.current = null;
-        deepLearnApi.initialize(event.new_session_id).then(res =>
+        const initializeArgs = [event.new_session_id];
+        if (languageRef.current) initializeArgs.push(languageRef.current);
+        deepLearnApi.initialize(...initializeArgs).then(res =>
           consumeSSE(res, nextEvent => handleEventRef.current?.(nextEvent))
         ).catch(e => setError(e.message))
           .finally(() => {
@@ -152,6 +159,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
             streamingMsgIdRef.current = null;
           });
         break;
+      }
       case 'image_dalle_pending':
         setMessages(prev => [...prev, {
           id: event.id,
@@ -237,7 +245,9 @@ export function useDeepLearnSession({ planId, nodeId }) {
       role: 'user', kind: 'text', content: text,
     }]);
     setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
-    await streamFrom(deepLearnApi.sendMessage(sessionIdRef.current, text));
+    const messageArgs = [sessionIdRef.current, text];
+    if (languageRef.current) messageArgs.push(languageRef.current);
+    await streamFrom(deepLearnApi.sendMessage(...messageArgs));
   }, [canAcceptFreeText, deriveUiFlags, isStreaming, streamFrom]);
 
   const sendCommand = useCallback(async (cmd) => {
@@ -262,7 +272,9 @@ export function useDeepLearnSession({ planId, nodeId }) {
       setSession(prev => prev ? { ...prev, state: 'INITIALIZING' } : prev);
     }
     setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
-    await streamFrom(deepLearnApi.sendCommand(sessionIdRef.current, cmd));
+    const commandArgs = [sessionIdRef.current, cmd];
+    if (languageRef.current) commandArgs.push(languageRef.current);
+    await streamFrom(deepLearnApi.sendCommand(...commandArgs));
     if (cmd === 'restart' && !restartSessionReceivedRef.current) {
       restartInProgressRef.current = false;
       setIsRestarting(false);
@@ -276,7 +288,12 @@ export function useDeepLearnSession({ planId, nodeId }) {
 
     (async () => {
       try {
-        const res = await deepLearnApi.createSession({ nodeId, planId });
+        const sessionInput = {
+          nodeId,
+          planId,
+          ...(languageRef.current ? { language: languageRef.current } : {}),
+        };
+        const res = await deepLearnApi.createSession(sessionInput);
         if (cancelled) return;
         const data = res.data;
         sessionIdRef.current = data.session_id;
@@ -293,7 +310,9 @@ export function useDeepLearnSession({ planId, nodeId }) {
 
         if (data.state === 'INITIALIZING') {
           setIsInitializing(true);
-          await streamFrom(deepLearnApi.initialize(data.session_id));
+          const initializeArgs = [data.session_id];
+          if (languageRef.current) initializeArgs.push(languageRef.current);
+          await streamFrom(deepLearnApi.initialize(...initializeArgs));
           setIsInitializing(false);
         } else {
           const restoredMessages = data.recent_turns.map(t => ({
@@ -310,7 +329,11 @@ export function useDeepLearnSession({ planId, nodeId }) {
               id: Date.now() + Math.random(),
               role: 'assistant',
               kind: 'questions',
-              content: [`请用你自己的话解释「${concept}」，并举一个具体使用场景。`],
+              content: [
+                languageRef.current === 'en-US'
+                  ? `Explain “${concept}” in your own words and give one concrete use case.`
+                  : `请用你自己的话解释「${concept}」，并举一个具体使用场景。`,
+              ],
             });
           }
           setMessages(restoredMessages);

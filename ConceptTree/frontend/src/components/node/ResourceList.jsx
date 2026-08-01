@@ -7,8 +7,8 @@ export function ResourceList({ resources }) {
 
   return (
     <section className="space-y-3">
-      <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-400">
-        <ExternalLink size={12} /> {t("node.resources")}
+      <h4 className="flex items-center gap-2 text-[0.65625rem] font-semibold uppercase leading-4 tracking-[0.075em] text-[#8f8e8b]">
+        <ExternalLink size={12} strokeWidth={1.8} /> {t("node.resources")}
       </h4>
       <div className="space-y-2">
         {resources.map((resource, index) => (
