@@ -6,7 +6,7 @@ import starlette.config
 _orig_read_file = starlette.config.Config._read_file
 
 
-def _utf8_read_file(self, file_name):
+def _utf8_read_file(self, file_name, _encoding="utf-8"):
     import io, os
 
     file_values: dict[str, str] = {}

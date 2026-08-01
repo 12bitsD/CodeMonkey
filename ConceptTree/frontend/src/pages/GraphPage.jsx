@@ -62,46 +62,6 @@ import {
   generateMasteryQuiz,
 } from "../utils/masteryQuiz";
 
-const PHASE_ALIASES = {
-  基础: "基础",
-  鍦板熀: "基础",
-  核心: "核心",
-  鏍稿績: "核心",
-  应用: "应用",
-  搴旂敤: "应用",
-  进阶: "进阶",
-  杩涢樁: "进阶",
-};
-
-const PHASE_STYLE = {
-  基础: {
-    bg: "rgba(245,243,255,0.7)",
-    border: "rgba(167,139,250,0.3)",
-    label: "基础",
-    labelColor: "#7c3aed",
-  },
-  核心: {
-    bg: "rgba(240,253,250,0.7)",
-    border: "rgba(45,212,191,0.3)",
-    label: "核心",
-    labelColor: "#0d9488",
-  },
-  应用: {
-    bg: "rgba(240,249,255,0.7)",
-    border: "rgba(96,165,250,0.3)",
-    label: "应用",
-    labelColor: "#2563eb",
-  },
-  进阶: {
-    bg: "rgba(255,247,237,0.7)",
-    border: "rgba(251,146,60,0.3)",
-    label: "进阶",
-    labelColor: "#ea580c",
-  },
-};
-
-const normalizePhase = (phase) => PHASE_ALIASES[phase] || phase;
-
 const PLAN_FREQUENCY_OPTIONS = [
   { value: "flexible", label: "灵活安排" },
   { value: "daily", label: "每天学习" },
@@ -151,25 +111,31 @@ const getLocalDateInputValue = (value = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-const buildCurvedEdgePath = (from, to, edgeIndex) => {
+const NODE_HALF_W = 90;
+const NODE_HALF_H = 22;
+
+/**
+ * Orthogonal elbow edge path. Direction is inferred from the relative
+ * positions of `from` and `to`. Handles both the LR tree case AND the
+ * snake-wrap row transitions (where the wrap edge is purely vertical
+ * between two nodes at the same X).
+ */
+function buildOrthogonalEdgePath(from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const distance = Math.hypot(dx, dy);
-  if (distance === 0) {
-    return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  const horizontalDominant = Math.abs(dx) >= Math.abs(dy);
+
+  if (horizontalDominant) {
+    const exitX = dx >= 0 ? from.x + NODE_HALF_W : from.x - NODE_HALF_W;
+    const enterX = dx >= 0 ? to.x - NODE_HALF_W : to.x + NODE_HALF_W;
+    const midX = (exitX + enterX) / 2;
+    return `M ${exitX} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${enterX} ${to.y}`;
   }
-
-  const midX = (from.x + to.x) / 2;
-  const midY = (from.y + to.y) / 2;
-  const normalX = -dy / distance;
-  const normalY = dx / distance;
-  const bend = Math.min(Math.max(distance * 0.08, 10), 30);
-  const direction = edgeIndex % 2 === 0 ? 1 : -1;
-  const controlX = midX + normalX * bend * direction;
-  const controlY = midY + normalY * bend * direction;
-
-  return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
-};
+  const exitY = dy >= 0 ? from.y + NODE_HALF_H : from.y - NODE_HALF_H;
+  const enterY = dy >= 0 ? to.y - NODE_HALF_H : to.y + NODE_HALF_H;
+  const midY = (exitY + enterY) / 2;
+  return `M ${from.x} ${exitY} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${enterY}`;
+}
 
 const GraphPage = () => {
   const { planId } = useParams();
@@ -589,35 +555,6 @@ const GraphPage = () => {
     [nodes],
   );
 
-  const phaseRegions = useMemo(() => {
-    const phaseMap = {};
-    for (const node of nodes) {
-      if (!node.phase) continue;
-      const phase = normalizePhase(node.phase);
-      if (!phaseMap[phase]) phaseMap[phase] = [];
-      phaseMap[phase].push(node);
-    }
-
-    const PAD = 60;
-    return Object.entries(phaseMap).flatMap(([phase, phaseNodes]) => {
-      const style = PHASE_STYLE[phase];
-      if (!style || phaseNodes.length === 0) return [];
-
-      const xs = phaseNodes.map((node) => node.x);
-      const ys = phaseNodes.map((node) => node.y);
-      return [
-        {
-          key: phase,
-          style,
-          x: Math.min(...xs) - PAD,
-          y: Math.min(...ys) - PAD,
-          width: Math.max(...xs) - Math.min(...xs) + PAD * 2,
-          height: Math.max(...ys) - Math.min(...ys) + PAD * 2,
-        },
-      ];
-    });
-  }, [nodes]);
-
   const edgeGeometries = useMemo(
     () =>
       edges.flatMap((edge, index) => {
@@ -628,7 +565,7 @@ const GraphPage = () => {
         return [
           {
             key: `${edge.from}-${edge.to}-${index}`,
-            path: buildCurvedEdgePath(from, to, index),
+            path: buildOrthogonalEdgePath(from, to),
             midpoint: {
               x: (from.x + to.x) / 2,
               y: (from.y + to.y) / 2,
@@ -1547,32 +1484,32 @@ const GraphPage = () => {
             transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
           }}
         >
-          {/* F3: Phase background regions */}
-          {phaseRegions.map((region) => (
-            <div
-              key={region.key}
-              className="absolute pointer-events-none"
-              style={{
-                left: region.x,
-                top: region.y,
-                width: region.width,
-                height: region.height,
-                background: region.style.bg,
-                border: `1.5px solid ${region.style.border}`,
-                borderRadius: 20,
-              }}
-            >
-              <span
-                className="absolute top-3 left-4 text-xs font-bold tracking-widest uppercase"
-                style={{ color: region.style.labelColor }}
-              >
-                {region.style.label}
-              </span>
-            </div>
-          ))}
-
           {/* Edges */}
           <svg className="absolute top-0 left-0 overflow-visible w-full h-full pointer-events-none">
+            <defs>
+              <marker
+                id="graph-arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(113,113,122,0.45)" />
+              </marker>
+              <marker
+                id="graph-arrow-traversed"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(13,148,136,0.55)" />
+              </marker>
+            </defs>
             {edgeGeometries.map((edge) => (
               <g key={edge.key}>
                 <path
@@ -1592,6 +1529,7 @@ const GraphPage = () => {
                   strokeLinecap="round"
                   strokeDasharray={edge.isSkipped ? "5,6" : undefined}
                   vectorEffect="non-scaling-stroke"
+                  markerEnd={edge.isTraversed ? "url(#graph-arrow-traversed)" : "url(#graph-arrow)"}
                 />
                 {edge.isTraversed && (
                   <circle

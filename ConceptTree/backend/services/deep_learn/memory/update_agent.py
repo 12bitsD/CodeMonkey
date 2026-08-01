@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from models_memory import EpisodicRecord, ProceduralPattern, VALID_PROCEDURAL_KEYS
@@ -13,8 +13,11 @@ from services.llm.client import get_llm_client
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "../../../llm/configs/deep_learn_memory_update.json")
+_CONFIG_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "llm"
+    / "configs"
+    / "deep_learn_memory_update.json"
 )
 
 _VALID_VALUES: dict[str, Optional[set[str]]] = {

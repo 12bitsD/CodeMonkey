@@ -31,7 +31,7 @@ describe("DeepLearnPage", () => {
     useNoteContextMock.mockReturnValue({ allNotes: [], actions: { deleteNote: deleteNoteMock } });
   });
 
-  const mockReadySession = () => {
+  const mockReadySession = (overrides = {}) => {
     useDeepLearnSessionMock.mockReturnValue({
       session: {
         nodeName: "Pandas数据结构",
@@ -48,6 +48,7 @@ describe("DeepLearnPage", () => {
       sendMessage: vi.fn(),
       sendCommand: vi.fn(),
       error: null,
+      ...overrides,
     });
   };
 
@@ -154,6 +155,24 @@ describe("DeepLearnPage", () => {
     expect(screen.getByRole("button", { name: "侧边聊天" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "浏览器" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("要求后续变更")).toBeInTheDocument();
+  });
+
+  it("asks for confirmation before restarting the deep learn session", () => {
+    const sendCommand = vi.fn();
+    mockReadySession({ sendCommand });
+
+    render(<DeepLearnPage />);
+
+    fireEvent.click(screen.getAllByRole("button")[1]);
+
+    expect(screen.getByText("确认重新开始？")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(sendCommand).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole("button")[1]);
+    fireEvent.click(screen.getByRole("button", { name: "确认重新开始" }));
+
+    expect(sendCommand).toHaveBeenCalledWith("restart");
   });
 
   it("shows saved node notes below the notes button and opens a rendered side reader", () => {

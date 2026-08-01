@@ -31,7 +31,6 @@ export function useDeepLearnSession({ planId, nodeId }) {
     showCommands: false,
     showTestConfirm: null,
     showFailOptions: null,
-    showCompletion: false,
   });
   const [error, setError] = useState(null);
   const [pinnedImages, setPinnedImages] = useState([]);
@@ -39,6 +38,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
   const noteSuggestionTimestampRef = useRef(null);
   const [noteId, setNoteId] = useState(null);
   const [isGeneratingNote, setIsGeneratingNote] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
   const sessionIdRef = useRef(null);
@@ -52,9 +52,9 @@ export function useDeepLearnSession({ planId, nodeId }) {
 
   const deriveUiFlags = useCallback((state) => {
     if (state === 'AWAITING_COMMAND') {
-      return { showCommands: true, showTestConfirm: null, showFailOptions: null, showCompletion: false };
+      return { showCommands: true, showTestConfirm: null, showFailOptions: null };
     }
-    return { showCommands: false, showTestConfirm: null, showFailOptions: null, showCompletion: false };
+    return { showCommands: false, showTestConfirm: null, showFailOptions: null };
   }, []);
 
   const canAcceptFreeText = useCallback((state) => (
@@ -120,13 +120,16 @@ export function useDeepLearnSession({ planId, nodeId }) {
         setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: event });
         break;
       case 'node_completed':
-        setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null, showCompletion: true });
+        setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
+        setIsCompleted(true);
         break;
       case 'restart':
         restartSessionReceivedRef.current = true;
         sessionIdRef.current = event.new_session_id;
         sessionStateRef.current = 'INITIALIZING';
         setSession(prev => prev ? { ...prev, sessionId: event.new_session_id, state: 'INITIALIZING' } : prev);
+        setConceptsStatus({});
+        setWeakPoints([]);
         setIsInitializing(true);
         setIsRestarting(true);
         setError(null);
@@ -135,6 +138,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
         setNoteSuggestion(null);
         setNoteId(null);
         setIsGeneratingNote(false);
+        setIsCompleted(false);
         setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
         streamingMsgIdRef.current = null;
         deepLearnApi.initialize(event.new_session_id).then(res =>
@@ -246,6 +250,13 @@ export function useDeepLearnSession({ planId, nodeId }) {
       setIsInitializing(true);
       setError(null);
       setMessages([]);
+      setConceptsStatus({});
+      setWeakPoints([]);
+      setPinnedImages([]);
+      setNoteSuggestion(null);
+      setNoteId(null);
+      setIsGeneratingNote(false);
+      setIsCompleted(false);
       setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
       streamingMsgIdRef.current = null;
       setSession(prev => prev ? { ...prev, state: 'INITIALIZING' } : prev);
@@ -365,5 +376,6 @@ export function useDeepLearnSession({ planId, nodeId }) {
     dismissNoteSuggestion,
     noteId,
     isGeneratingNote,
+    isCompleted,
   };
 }

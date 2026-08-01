@@ -1,7 +1,7 @@
 import pytest
 
 from models_deep_learn import SessionState
-from models_deep_learn import AssessmentPerQuestionOutput, TeachingOutput
+from models_deep_learn import AssessmentOverallOutput, AssessmentPerQuestionOutput, TeachingOutput
 import services.deep_learn.service as service_module
 from services.deep_learn.service import (
     DeepLearnService,
@@ -191,3 +191,67 @@ async def test_failed_concept_emits_failed_status(monkeypatch):
 
     assert updated["concepts_status"] == {"0": "failed"}
     assert any('"type": "concept_update"' in event and '"status": "failed"' in event for event in events)
+
+
+@pytest.mark.asyncio
+async def test_last_concept_correct_enters_test_confirmation_without_completion_gate(monkeypatch):
+    class FakeDbContext:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *_args):
+            return False
+
+    updates = []
+    service = DeepLearnService()
+
+    async def fake_assessment_run(**_kwargs):
+        return AssessmentPerQuestionOutput(
+            is_correct=True,
+            quality_score=0.95,
+            explanation="correct",
+            feedback="ready",
+            update_weak_points=[],
+            difficulty_delta=0,
+            wrong_count=0,
+        )
+
+    async def fake_readiness_run(**_kwargs):
+        return AssessmentOverallOutput(
+            passed=True,
+            confidence=0.9,
+            ready_for_test=True,
+            reason="all concepts are covered",
+            strong_areas=["concepts"],
+            weak_areas=[],
+            suggest_review_concepts=[],
+        )
+
+    def fake_update(_db, _session_id, **fields):
+        updates.append(fields)
+
+    monkeypatch.setattr(service_module, "get_db_context", lambda: FakeDbContext())
+    monkeypatch.setattr(service_module, "update_session", fake_update)
+    service.assessment_per_q.run = fake_assessment_run
+    service.assessment_overall.run_readiness = fake_readiness_run
+
+    session = _session("QUESTIONING")
+    session.what_list = ["concept one", "concept two"]
+    session.current_concept_index = 1
+    session.concepts_status = {"0": "done", "1": "current"}
+
+    events = await _collect(
+        service._run_assessment(
+            session,
+            {"node_name": "node", "node_why": "", "what_list": session.what_list},
+            "correct answer",
+            False,
+        ),
+    )
+
+    assert any('"type": "concept_update"' in event and '"index": 1' in event and '"status": "done"' in event for event in events)
+    assert any('"type": "state_change"' in event and '"to": "AI_ASSESSING_READINESS"' in event for event in events)
+    assert any('"type": "state_change"' in event and '"to": "CONFIRMING_TEST"' in event for event in events)
+    assert any('"type": "test_confirm_prompt"' in event and '"confirm_test"' in event for event in events)
+    assert not any('"type": "show_commands"' in event for event in events)
+    assert any(update.get("state") == "CONFIRMING_TEST" for update in updates)

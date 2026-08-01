@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from config import settings
@@ -48,6 +49,7 @@ class UnifiedLLMClient:
             base_url=settings.LLM_BASE_URL if settings.LLM_BASE_URL else None,
             model=settings.LLM_MODEL,
             timeout=settings.LLM_TIMEOUT,
+            reasoning_effort=settings.LLM_REASONING_EFFORT,
         )
 
     def _create_fallback_provider(self) -> Optional[OpenAICompatibleProvider]:
@@ -94,6 +96,7 @@ class UnifiedLLMClient:
         max_tokens: int = 4096,
         use_fallback: bool = False,
         model: Optional[str] = None,
+        max_retries: Optional[int] = None,
     ) -> LLMResponse:
         """
         Send chat completion with retry and fallback.
@@ -122,24 +125,53 @@ class UnifiedLLMClient:
 
         temp = temperature if temperature is not None else settings.LLM_TEMPERATURE
         last_error = None
+        retry_count = max_retries if max_retries is not None else self.max_retries
 
-        for attempt in range(self.max_retries):
+        provider_label = "fallback" if provider is self.fallback else "primary"
+        for attempt in range(retry_count):
+            start = time.monotonic()
             try:
-                response = await provider.chat(
-                    messages=messages,
-                    temperature=temp,
-                    response_format=response_format,
-                    max_tokens=max_tokens,
-                    model=model,
+                provider_timeout = getattr(provider, "timeout", settings.LLM_TIMEOUT)
+                try:
+                    response = await asyncio.wait_for(
+                        provider.chat(
+                            messages=messages,
+                            temperature=temp,
+                            response_format=response_format,
+                            max_tokens=max_tokens,
+                            model=model,
+                        ),
+                        timeout=provider_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    raise LLMTimeoutError(
+                        f"Request timed out after {provider_timeout}s"
+                    )
+                duration_ms = int((time.monotonic() - start) * 1000)
+                logger.info(
+                    "llm_call provider=%s model=%s attempt=%d duration_ms=%d status=ok",
+                    provider_label,
+                    model or settings.LLM_MODEL,
+                    attempt,
+                    duration_ms,
                 )
                 return response
 
             except (LLMTimeoutError, LLMProviderError) as e:
+                duration_ms = int((time.monotonic() - start) * 1000)
+                logger.warning(
+                    "llm_call provider=%s model=%s attempt=%d duration_ms=%d status=error error=%s",
+                    provider_label,
+                    model or settings.LLM_MODEL,
+                    attempt,
+                    duration_ms,
+                    e,
+                )
                 last_error = e
                 if _is_non_retryable_provider_error(e):
                     break
-                if attempt < self.max_retries - 1:
-                    wait_time = 2**attempt
+                if attempt < retry_count - 1:
+                    wait_time = min(2**attempt, 3)
                     await asyncio.sleep(wait_time)
                 continue
 
@@ -151,6 +183,7 @@ class UnifiedLLMClient:
                     response_format=response_format,
                     max_tokens=max_tokens,
                     use_fallback=True,
+                    max_retries=max_retries,
                 )
             except Exception as fallback_error:
                 # Log fallback failure; will raise original error below
@@ -161,7 +194,7 @@ class UnifiedLLMClient:
                 )
 
         raise LLMServiceError(
-            f"LLM request failed after {self.max_retries} retries: {str(last_error)}"
+            f"LLM request failed after {retry_count} retries: {str(last_error)}"
         )
 
     async def chat_stream(
@@ -223,6 +256,7 @@ class UnifiedLLMClient:
         temperature: Optional[float] = None,
         max_tokens: int = 4096,
         model: Optional[str] = None,
+        max_retries: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Convenience method for JSON mode chat.
@@ -246,10 +280,11 @@ class UnifiedLLMClient:
             response_format={"type": "json_object"},
             max_tokens=max_tokens,
             model=model,
+            max_retries=max_retries,
         )
 
         try:
-            return json.loads(response.content)
+            return json.loads(response.content, strict=False)
         except json.JSONDecodeError as e:
             raise LLMServiceError(f"Failed to parse JSON response: {e}")
 

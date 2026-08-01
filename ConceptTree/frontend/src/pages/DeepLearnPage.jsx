@@ -86,6 +86,39 @@ function Header({ nodeName, onBack, onRestart, noteHref, isGeneratingNote }) {
   );
 }
 
+function RestartConfirmDialog({ open, onCancel, onConfirm }) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-zinc-900">确认重新开始？</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            当前深度学习进度会被清空，并从第一个概念重新生成讲解。
+          </p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-50"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white transition-colors hover:bg-zinc-700"
+          >
+            确认重新开始
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FullScreenLoader({ text }) {
   return (
     <div className="flex flex-1 items-center justify-center text-zinc-500 text-sm">
@@ -240,13 +273,14 @@ export default function DeepLearnPage() {
     session, messages, conceptsStatus, weakPoints, isStreaming,
     isInitializing, isRestarting, canSendMessage, uiFlags, sendMessage, sendCommand, error,
     pinnedImages, pinImage, unpinImage, noteSuggestion, dismissNoteSuggestion,
-    noteId, isGeneratingNote,
+    noteId, isGeneratingNote, isCompleted,
   } = useDeepLearnSession({ planId, nodeId });
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesInitial, setNotesInitial] = useState('');
   const [notesEditingId, setNotesEditingId] = useState(null);
   const [selectedNoteId, setSelectedNoteId] = useState(null);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
 
   const nodeNotes = useMemo(
     () => allNotes.filter(note => noteBelongsToNode(note, planId, nodeId)),
@@ -272,6 +306,11 @@ export default function DeepLearnPage() {
       console.error('delete note failed:', error);
     }
   }, [noteActions, notesEditingId, selectedNoteId]);
+
+  const handleConfirmRestart = useCallback(() => {
+    setRestartConfirmOpen(false);
+    sendCommand('restart');
+  }, [sendCommand]);
 
   const getMaxWidth = useCallback((side, widths = paneWidths) => {
     const totalWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth || 1440;
@@ -346,6 +385,14 @@ export default function DeepLearnPage() {
     }
   }, [selectedNote, selectedNoteId]);
 
+  useEffect(() => {
+    if (!isCompleted) return;
+    const destination = noteId
+      ? `/deep-learn/${planId}/${nodeId}/note/${noteId}`
+      : `/graph/${planId}`;
+    navigate(destination, { replace: true });
+  }, [isCompleted, navigate, nodeId, noteId, planId]);
+
   if (!session) {
     return (
       <div className="flex flex-col h-screen bg-[#FAFAFA] overflow-hidden">
@@ -367,9 +414,14 @@ export default function DeepLearnPage() {
       <Header
         nodeName={session.nodeName}
         onBack={() => navigate(`/graph/${planId}`)}
-        onRestart={isRestarting || isInitializing || isStreaming ? null : () => sendCommand('restart')}
+        onRestart={isRestarting || isInitializing || isStreaming ? null : () => setRestartConfirmOpen(true)}
         noteHref={noteId ? `/deep-learn/${planId}/${nodeId}/note/${noteId}` : null}
         isGeneratingNote={isGeneratingNote}
+      />
+      <RestartConfirmDialog
+        open={restartConfirmOpen}
+        onCancel={() => setRestartConfirmOpen(false)}
+        onConfirm={handleConfirmRestart}
       />
       <div ref={layoutRef} className="flex flex-1 overflow-hidden">
         <aside

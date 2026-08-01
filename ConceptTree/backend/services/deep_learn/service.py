@@ -548,9 +548,19 @@ class DeepLearnService:
                 session.weak_points = new_weak
                 session.difficulty_level = new_diff
                 yield _sse("concept_update", index=idx, status="done")
-                yield _sse("state_change", **{"from": "EVALUATING", "to": "AWAITING_COMMAND"})
-                session.state = "AWAITING_COMMAND"
-                yield _sse("show_commands", commands=["continue", "expand", "skip", "reteach"])
+
+                is_last_concept = idx == len(concepts) - 1
+                if is_last_concept and self._all_concepts_done_or_skipped(session):
+                    async for event in self._run_readiness(
+                        session, node_meta, background_tasks=background_tasks,
+                    ):
+                        yield event
+                else:
+                    with get_db_context() as db:
+                        update_session(db, session.id, state="AWAITING_COMMAND")
+                    yield _sse("state_change", **{"from": "EVALUATING", "to": "AWAITING_COMMAND"})
+                    session.state = "AWAITING_COMMAND"
+                    yield _sse("show_commands", commands=["continue", "expand", "skip", "reteach"])
 
             elif decision.action == "teach":
                 cs = dict(session.concepts_status)

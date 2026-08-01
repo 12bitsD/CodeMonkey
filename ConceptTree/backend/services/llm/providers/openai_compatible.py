@@ -17,8 +17,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         base_url: Optional[str] = None,
         model: str = "",
         timeout: int = 30,
+        reasoning_effort: Optional[str] = None,
     ):
         super().__init__(api_key, base_url, model, timeout)
+        self.reasoning_effort = reasoning_effort
 
         client_kwargs = {
             "api_key": api_key,
@@ -33,7 +35,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
     def is_available(self) -> bool:
         """Check if API key is configured"""
-        return bool(self.api_key and self.api_key.strip())
+        key = (self.api_key or "").strip()
+        return bool(key and not (key.startswith("<<") and key.endswith(">>")))
 
     async def chat(
         self,
@@ -53,21 +56,29 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 {"role": msg.role, "content": msg.content} for msg in messages
             ]
 
+            selected_model = model or self.model
             request_kwargs = {
-                "model": model or self.model,
+                "model": selected_model,
                 "messages": openai_messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
             }
+            if selected_model == "kimi-k3":
+                request_kwargs["max_completion_tokens"] = max_tokens
+                if self.reasoning_effort:
+                    request_kwargs["reasoning_effort"] = self.reasoning_effort
+            else:
+                request_kwargs["temperature"] = temperature
+                request_kwargs["max_tokens"] = max_tokens
 
             if response_format:
                 request_kwargs["response_format"] = response_format
 
             try:
                 response = await self.client.chat.completions.create(**request_kwargs)
+            except APITimeoutError:
+                raise
             except APIError as e:
                 # Some compatible models only accept temperature=1.
-                if e.status_code == 400 and "temperature" in str(e).lower():
+                if getattr(e, "status_code", None) == 400 and "temperature" in str(e).lower():
                     request_kwargs["temperature"] = 1
                     response = await self.client.chat.completions.create(**request_kwargs)
                 else:
@@ -102,7 +113,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         except APIConnectionError as e:
             raise LLMProviderError(f"Connection error: {str(e)}")
         except APIError as e:
-            raise LLMProviderError(f"API error: {e.message}", status_code=e.status_code)
+            raise LLMProviderError(
+                f"API error: {getattr(e, 'message', str(e))}",
+                status_code=getattr(e, "status_code", None),
+            )
         except Exception as e:
             raise LLMProviderError(f"Unexpected error: {str(e)}")
 
@@ -261,24 +275,33 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             openai_messages = [
                 {"role": msg.role, "content": msg.content} for msg in messages
             ]
+            selected_model = model or self.model
             request_kwargs = {
-                "model": model or self.model,
+                "model": selected_model,
                 "messages": openai_messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
                 "stream": True,
             }
+            if selected_model == "kimi-k3":
+                request_kwargs["max_completion_tokens"] = max_tokens
+                if self.reasoning_effort:
+                    request_kwargs["reasoning_effort"] = self.reasoning_effort
+            else:
+                request_kwargs["temperature"] = temperature
+                request_kwargs["max_tokens"] = max_tokens
 
             try:
                 stream = await self.client.chat.completions.create(**request_kwargs)
             except APIError as e:
                 # Keep streaming compatibility aligned with non-stream requests.
-                if e.status_code == 400 and "temperature" in str(e).lower():
+                if (
+                    selected_model != "kimi-k3"
+                    and e.status_code == 400
+                    and "temperature" in str(e).lower()
+                ):
                     request_kwargs["temperature"] = 1
                     stream = await self.client.chat.completions.create(**request_kwargs)
                 else:
                     raise
-
             async for chunk in stream:
                 if chunk.choices:
                     delta = chunk.choices[0].delta.content
@@ -289,7 +312,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         except APIConnectionError as e:
             raise LLMProviderError(f"Connection error during stream: {str(e)}")
         except APIError as e:
-            raise LLMProviderError(f"API error during stream: {e.message}", status_code=e.status_code)
+            raise LLMProviderError(
+                f"API error during stream: {getattr(e, 'message', str(e))}",
+                status_code=getattr(e, "status_code", None),
+            )
         except Exception as e:
             raise LLMProviderError(f"Unexpected error during stream: {str(e)}")
 

@@ -57,7 +57,7 @@ vi.mock("../contexts/PlanContext", () => ({
 
 vi.mock("../contexts/AuthContext", () => ({
   useAuth: () => ({
-    isAuthenticated: false,
+    isAuthenticated: true,
     login: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
@@ -142,7 +142,7 @@ describe("HomePage loading scenes", () => {
     fireEvent.click(screen.getByRole("button", { name: /确认生成/i }));
 
     expect(await screen.findByText("正在为你生成学习图谱")).toBeInTheDocument();
-    expect(screen.getByText(/构建核心概念/)).toBeInTheDocument();
+    expect(screen.getByText("解析学习目标")).toBeInTheDocument();
 
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 

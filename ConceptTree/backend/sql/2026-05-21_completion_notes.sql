@@ -1,9 +1,9 @@
 -- Phase 3: Completion notes storage
 CREATE TABLE IF NOT EXISTS completion_notes (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL,
+  user_id     TEXT NOT NULL,
   node_id     TEXT NOT NULL,
-  session_id  UUID NOT NULL REFERENCES deep_learn_sessions(id),
+  session_id          TEXT NOT NULL REFERENCES deep_learn_sessions(id),
   content     TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

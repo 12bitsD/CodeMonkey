@@ -3,7 +3,7 @@
 
 -- Long-term Memory
 CREATE TABLE IF NOT EXISTS user_learning_profile (
-  user_id           UUID PRIMARY KEY,
+  user_id           TEXT PRIMARY KEY,
   learning_style    JSONB NOT NULL DEFAULT '{}'::jsonb,
   mastered_concepts JSONB NOT NULL DEFAULT '[]'::jsonb,
   weak_concepts     JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS user_learning_profile (
 -- Episodic Memory
 CREATE TABLE IF NOT EXISTS learning_session_records (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id             UUID NOT NULL,
+  user_id             TEXT NOT NULL,
   node_id             TEXT NOT NULL,
   plan_id             TEXT NOT NULL,
-  session_id          UUID NOT NULL REFERENCES deep_learn_sessions(id) ON DELETE CASCADE,
+  session_id          TEXT NOT NULL REFERENCES deep_learn_sessions(id) ON DELETE CASCADE,
   summary             TEXT,
   concepts_covered    JSONB NOT NULL DEFAULT '[]'::jsonb,
   weak_points         JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_lsr_user_passed
 
 -- Procedural Memory
 CREATE TABLE IF NOT EXISTS teaching_patterns (
-  user_id       UUID NOT NULL,
+  user_id       TEXT NOT NULL,
   pattern_key   TEXT NOT NULL,
   pattern_value TEXT NOT NULL,
   confidence    REAL NOT NULL DEFAULT 0.5,

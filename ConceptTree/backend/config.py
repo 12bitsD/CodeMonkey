@@ -60,6 +60,7 @@ class Settings:
     LLM_TIMEOUT: int = int(_get_env("LLM_TIMEOUT", "30"))
     LLM_MAX_RETRIES: int = int(_get_env("LLM_MAX_RETRIES", "2"))
     LLM_TEMPERATURE: float = float(_get_env("LLM_TEMPERATURE", "0.7"))
+    LLM_REASONING_EFFORT: str = _get_env("LLM_REASONING_EFFORT", "low")
 
     # Image generation provider. Keep separate from the chat LLM so OpenRouter
     # credits/config can be used only when image_type == "dalle".
