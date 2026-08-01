@@ -6,6 +6,7 @@ import { buildApiUrl } from '../config/api';
 import { tokenManager } from '../services/api';
 import LanguageToggle from '../components/common/LanguageToggle';
 import { useLanguage } from '../contexts/LanguageContext';
+import completionIllustration from '../assets/illustrations/completion-path.jpg';
 
 export default function CompletionNotePage() {
   const { planId, nodeId, noteId } = useParams();
@@ -58,7 +59,7 @@ export default function CompletionNotePage() {
   return (
     <div className="min-h-screen bg-[var(--color-canvas)]">
       {/* Print-hidden controls */}
-      <div className="apple-toolbar print:hidden sticky top-3 z-10 mx-3 flex items-center gap-3 rounded-[18px] px-4 py-2.5">
+      <div className="apple-toolbar print:hidden sticky top-0 z-10 flex items-center gap-3 border-x-0 border-t-0 px-4 py-2.5">
         <button
           onClick={() => navigate(`/deep-learn/${planId}/${nodeId}`)}
           className="p-1.5 rounded-lg hover:bg-zinc-100 transition-colors"
@@ -78,7 +79,16 @@ export default function CompletionNotePage() {
       </div>
 
       {/* Note content — zhihu-style */}
-      <article className="apple-card mx-auto my-8 max-w-3xl rounded-[28px] px-6 py-10 print:my-0 print:max-w-none print:p-0 sm:px-10 sm:py-12">
+      <article className="mx-auto my-10 max-w-3xl px-6 py-8 print:my-0 print:max-w-none print:p-0 sm:px-10 sm:py-10">
+        <img
+          src={completionIllustration}
+          alt=""
+          className="notion-illustration mx-auto mb-10 w-full max-w-lg print:hidden"
+        />
+        <div className="mb-8 border-b border-black/[0.1] pb-5">
+          <p className="notion-section-label">PathFinder</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-[-0.03em] text-[#202020]">{t('completion.title')}</h1>
+        </div>
         <div className="note-zhihu">
           <MarkdownContent content={note.content} />
         </div>

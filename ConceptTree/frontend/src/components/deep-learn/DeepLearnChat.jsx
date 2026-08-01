@@ -142,7 +142,7 @@ export default function DeepLearnChat({
           if (msg.role === 'user') {
             return (
               <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex justify-end">
-                <div className="max-w-[70%] rounded-[20px] rounded-tr-[6px] bg-[#007AFF] px-4 py-2.5 text-sm text-white shadow-[0_3px_10px_rgba(0,122,255,0.18)]">
+                <div className="max-w-[70%] rounded-xl rounded-tr-sm bg-[#202020] px-4 py-2.5 text-sm text-white">
                   {msg.content}
                 </div>
               </div>
@@ -206,7 +206,7 @@ export default function DeepLearnChat({
         })}
         {isStreaming && !hasPendingAssistant && (
           <div className="flex justify-start">
-            <div className="w-full max-w-[85%] rounded-[22px] rounded-bl-sm border border-teal-100/80 bg-gradient-to-br from-white via-teal-50/70 to-cyan-50/80 px-4 py-3 shadow-[0_10px_30px_rgba(20,184,166,0.08)]">
+            <div className="w-full max-w-[85%] rounded-xl rounded-bl-sm border border-black/[0.1] bg-[#fbfbfa] px-4 py-3">
               <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-teal-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
                 {t('deep.aiReply')}
@@ -223,8 +223,8 @@ export default function DeepLearnChat({
 
       <div className="space-y-3 border-t border-black/[0.06] bg-white/75 px-4 py-3 backdrop-blur-xl sm:px-6">
         {showTestConfirm && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
-            <p className="text-blue-800 mb-2">{showTestConfirm.message}</p>
+          <div className="rounded-lg border border-black/[0.12] bg-[#f7f6f3] px-4 py-3 text-sm">
+            <p className="mb-2 text-zinc-800">{showTestConfirm.message}</p>
             <CommandBar commands={showTestConfirm.commands} onCommand={onSendCommand} />
           </div>
         )}
@@ -260,7 +260,7 @@ export default function DeepLearnChat({
           <button
             onClick={handleSubmit}
             disabled={isStreaming || !canSendMessage || !input.trim()}
-            className="self-end rounded-xl bg-[#007AFF] p-2.5 text-white transition-[background-color,transform] duration-150 hover:bg-[#0071E3] active:scale-[0.95] disabled:opacity-40"
+            className="self-end rounded-lg bg-[#202020] p-2.5 text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.96] disabled:opacity-40"
             aria-label={t('deep.send')}
           >
             <Send className="w-4 h-4" />

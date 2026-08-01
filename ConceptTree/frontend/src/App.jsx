@@ -20,9 +20,9 @@ export default function App() {
           <AppProvider>
             <BrowserRouter>
               <AppErrorBoundary>
-              <div className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-label)] font-sans selection:bg-blue-200 selection:text-zinc-950 antialiased overflow-hidden">
-                <DataSyncStatusBanner />
-                <Routes>
+                <div className="min-h-screen overflow-hidden bg-[var(--color-canvas)] font-sans text-[var(--color-label)] selection:bg-zinc-200 selection:text-zinc-950 antialiased">
+                  <DataSyncStatusBanner />
+                  <Routes>
                   <Route path="/auth" element={<AuthPage />} />
                   <Route path="/" element={<HomePage />} />
                   <Route 
@@ -58,8 +58,8 @@ export default function App() {
                     }
                   />
                   <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </div>
+                  </Routes>
+                </div>
               </AppErrorBoundary>
             </BrowserRouter>
           </AppProvider>

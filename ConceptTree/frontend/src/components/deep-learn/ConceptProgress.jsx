@@ -4,14 +4,14 @@ import { useLanguage } from '../../contexts/LanguageContext';
 
 const STATUS_ICON = {
   done: <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />,
-  current: <ChevronRight className="w-4 h-4 text-blue-500 shrink-0" />,
+  current: <ChevronRight className="w-4 h-4 text-zinc-700 shrink-0" />,
   failed: <XCircle className="w-4 h-4 text-red-500 shrink-0" />,
   skipped: <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />,
   pending: <Circle className="w-4 h-4 text-zinc-300 shrink-0" />,
 };
 
 const STATUS_CLASS = {
-  current: 'bg-blue-50 text-blue-700',
+  current: 'bg-black/[0.06] text-zinc-800',
   done: 'text-zinc-700',
   failed: 'bg-red-50 text-red-700',
   skipped: 'bg-amber-50 text-amber-700',
@@ -33,7 +33,7 @@ export default function ConceptProgress({ whatList, conceptsStatus, weakPoints, 
         </div>
         <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-blue-500 rounded-full transition-all duration-500"
+            className="h-full bg-[#202020] rounded-full transition-all duration-500"
             style={{ width: total ? `${(completed / total) * 100}%` : '0%' }}
           />
         </div>

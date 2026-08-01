@@ -112,7 +112,7 @@ test.describe('Deep Learn flow', () => {
     await expect(page.getByText('3 / 3')).toBeVisible({ timeout: 8000 });
     await expect(page.getByText('Ready for comprehensive test?')).toBeVisible();
 
-    await page.locator('.border-blue-200 button').first().click();
+    await page.getByRole('button', { name: 'Start quiz', exact: true }).click();
     expect(commands).toEqual(['confirm_test']);
   });
 

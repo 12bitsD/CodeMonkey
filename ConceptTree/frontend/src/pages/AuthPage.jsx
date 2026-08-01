@@ -4,6 +4,7 @@ import { BrainCircuit } from 'lucide-react';
 import LanguageToggle from '../components/common/LanguageToggle';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import learningMapIllustration from '../assets/illustrations/learning-map.jpg';
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -60,22 +61,25 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-6">
-      <div className="pointer-events-none absolute left-1/2 top-[-18rem] h-[38rem] w-[38rem] -translate-x-1/2 rounded-full bg-blue-300/25 blur-3xl" />
-      <div className="relative w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] p-5 sm:p-8">
+      <div className="grid w-full max-w-5xl items-center gap-12 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-20">
+        <div className="hidden lg:block">
+          <img src={learningMapIllustration} alt="" className="notion-illustration w-full" />
+        </div>
+      <div className="w-full max-w-md justify-self-center">
         <div className="mb-8 flex flex-col items-center text-center">
-          <button type="button" onClick={() => navigate('/')} className="mb-4 flex h-14 w-14 items-center justify-center rounded-[17px] bg-gradient-to-b from-[#1687ff] to-[#006ee6] text-white shadow-[0_8px_24px_rgba(0,122,255,0.28)] transition-transform duration-150 active:scale-[0.96]" aria-label="PathFinder home">
-            <BrainCircuit size={27} strokeWidth={1.8} />
+          <button type="button" onClick={() => navigate('/')} className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-black/[0.12] bg-white text-[#202020] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-transform duration-150 active:scale-[0.98]" aria-label="PathFinder home">
+            <BrainCircuit size={23} strokeWidth={1.8} />
           </button>
           <h1 className="mb-2 text-3xl font-semibold tracking-[-0.04em] text-[var(--color-label)]">PathFinder</h1>
           <p className="text-[var(--color-label-secondary)]">{t('auth.subtitle')}</p>
           <LanguageToggle className="mt-5" />
         </div>
 
-        <div className="apple-card rounded-[28px] p-6 sm:p-8">
-        <div className="apple-segmented mb-8 flex rounded-[13px] p-1">
+        <div className="rounded-xl border border-black/[0.12] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:p-8">
+        <div className="apple-segmented mb-8 flex p-1">
           <button
-            className={`min-h-10 flex-1 rounded-[10px] py-2.5 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ${mode === 'login' ? 'bg-white text-zinc-900 shadow-[0_1px_4px_rgba(0,0,0,0.13)]' : 'text-zinc-500 hover:text-zinc-900'}`}
+            className={`min-h-10 flex-1 rounded-[5px] py-2.5 text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ${mode === 'login' ? 'bg-white text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-zinc-500 hover:text-zinc-900'}`}
             onClick={() => {
               setMode('login');
               setError('');
@@ -84,7 +88,7 @@ export default function AuthPage() {
             {t('auth.login')}
           </button>
           <button
-            className={`min-h-10 flex-1 rounded-[10px] py-2.5 text-sm font-semibold transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ${mode === 'register' ? 'bg-white text-zinc-900 shadow-[0_1px_4px_rgba(0,0,0,0.13)]' : 'text-zinc-500 hover:text-zinc-900'}`}
+            className={`min-h-10 flex-1 rounded-[5px] py-2.5 text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ${mode === 'register' ? 'bg-white text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-zinc-500 hover:text-zinc-900'}`}
             onClick={() => {
               setMode('register');
               setError('');
@@ -104,7 +108,7 @@ export default function AuthPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="apple-input w-full rounded-xl px-4 py-3 outline-none"
+                className="apple-input w-full rounded-lg px-4 py-3 outline-none"
                 placeholder="your@email.com"
                 disabled={isLoading}
               />
@@ -118,7 +122,7 @@ export default function AuthPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="apple-input w-full rounded-xl px-4 py-3 outline-none"
+                className="apple-input w-full rounded-lg px-4 py-3 outline-none"
                 placeholder={t('auth.passwordHint')}
                 disabled={isLoading}
               />
@@ -133,7 +137,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="mt-2 min-h-12 w-full rounded-xl bg-[#007AFF] py-3.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(0,122,255,0.25)] transition-[background-color,box-shadow,transform] duration-150 hover:bg-[#0071E3] hover:shadow-[0_6px_20px_rgba(0,122,255,0.3)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-2 min-h-11 w-full rounded-lg bg-[#202020] py-3 text-sm font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? (mode === 'login' ? t('auth.loggingIn') : t('auth.registering')) : (mode === 'login' ? t('auth.login') : t('auth.register'))}
             </button>
@@ -175,6 +179,7 @@ export default function AuthPage() {
         <p className="text-center text-sm text-zinc-500 mt-6">
           {t('auth.agreement')}
         </p>
+      </div>
       </div>
     </div>
   );

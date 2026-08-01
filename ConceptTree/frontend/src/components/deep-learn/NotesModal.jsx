@@ -135,7 +135,7 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
       onClick={onClose}
     >
       <div
-        className="flex h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-[var(--shadow-float)] backdrop-blur-2xl"
+        className="flex h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-black/[0.12] bg-white shadow-[var(--shadow-float)]"
         onClick={event => event.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
@@ -161,8 +161,8 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                 onClick={openNewNote}
                 className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                   isCreating
-                    ? 'border-blue-200 bg-blue-50 text-blue-900'
-                    : 'border-zinc-200 bg-white text-zinc-700 hover:border-blue-200 hover:text-blue-800'
+                    ? 'border-black/[0.14] bg-black/[0.05] text-zinc-900'
+                    : 'border-zinc-200 bg-white text-zinc-700 hover:border-black/[0.16] hover:text-zinc-900'
                 }`}
               >
                 <Plus size={15} />
@@ -179,7 +179,7 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                     onClick={() => openExistingNote(note)}
                     className={`w-full rounded-xl border p-3 text-left transition-colors ${
                       editingNoteId === note.id
-                        ? 'border-blue-200 bg-white text-zinc-900 shadow-sm'
+                        ? 'border-black/[0.14] bg-white text-zinc-900 shadow-sm'
                         : 'border-transparent bg-white/70 text-zinc-600 hover:border-zinc-200 hover:bg-white'
                     }`}
                   >
@@ -249,7 +249,7 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                 type="button"
                 onClick={handleSave}
                 disabled={saving || !content.trim()}
-                className="flex items-center gap-1.5 rounded-full bg-[#007AFF] px-4 py-1.5 text-sm font-semibold text-white transition-[background-color,transform] duration-150 hover:bg-[#0071E3] active:scale-[0.97] disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-md bg-[#202020] px-4 py-1.5 text-sm font-medium text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98] disabled:opacity-40"
               >
                 <Save size={14} />
                 {saving ? t('common.saving') : t('common.save')}

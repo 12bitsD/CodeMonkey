@@ -9,26 +9,26 @@ const Modal = ({ isOpen, onClose, title, children, footer }) => {
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="presentation">
-      <div 
-        className="absolute inset-0 bg-black/20 backdrop-blur-md transition-opacity"
+      <div
+        className="absolute inset-0 bg-black/20 transition-opacity"
         onClick={onClose}
       />
-      <div className="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white/90 shadow-[var(--shadow-float)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-200" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div className="flex items-center justify-between border-b border-black/[0.06] px-6 py-5 sm:px-7">
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-black/[0.12] bg-white shadow-[var(--shadow-float)] animate-in fade-in zoom-in-95 duration-200" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div className="flex items-center justify-between border-b border-black/[0.08] px-5 py-4 sm:px-6">
           <h3 id={titleId} className="text-lg font-semibold tracking-tight text-[var(--color-label)]">{title}</h3>
           <button 
             onClick={onClose} 
-            className="-mr-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.06] text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.1] hover:text-zinc-900 active:scale-[0.94]"
+            className="-mr-1 flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.06] hover:text-zinc-900 active:scale-[0.96]"
             aria-label={t('common.close')}
           >
             <X size={16} strokeWidth={2} />
           </button>
         </div>
-        <div className="overflow-y-auto px-6 py-6 custom-scrollbar sm:px-7">
+        <div className="overflow-y-auto px-5 py-5 custom-scrollbar sm:px-6">
           {children}
         </div>
         {footer && (
-          <div className="flex justify-end gap-3 border-t border-black/[0.06] bg-black/[0.02] px-6 py-5 sm:px-7">
+          <div className="flex justify-end gap-2 border-t border-black/[0.08] bg-[#fbfbfa] px-5 py-4 sm:px-6">
             {footer}
           </div>
         )}

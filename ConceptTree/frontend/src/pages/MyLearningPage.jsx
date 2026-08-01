@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Archive,
-  ArrowLeft,
   BarChart3,
   BookOpen,
   Pause,
@@ -16,7 +15,7 @@ import {
 import { Badge, Button } from "../components/ui";
 import { ChartBar, StatCard } from "../components/common";
 import MarkdownContent from "../components/common/MarkdownContent";
-import LanguageToggle from "../components/common/LanguageToggle";
+import WorkspaceShell from "../components/common/WorkspaceShell";
 import { useNoteContext } from "../contexts/NoteContext";
 import { usePlanContext } from "../contexts/PlanContext";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -183,28 +182,25 @@ const MyLearningPage = () => {
   };
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-screen-xl flex-col px-4 py-4 sm:px-6 md:px-10">
-      <div className="apple-toolbar sticky top-4 z-30 mb-10 flex items-center gap-3 rounded-[20px] px-3 py-2.5">
-        <button
-          onClick={() => navigate("/")}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition-[background-color,transform] duration-150 hover:bg-black/[0.06] active:scale-[0.94]"
-        >
-          <ArrowLeft size={24} strokeWidth={1.5} />
-        </button>
-        <h1 className="flex-1 text-lg font-semibold tracking-tight text-zinc-900">{t("learning.title")}</h1>
-        <LanguageToggle />
-      </div>
+    <WorkspaceShell active="learning">
+      <div className="notion-page">
+        <div className="mb-10 flex h-16 w-16 items-center justify-center rounded-lg border border-black/[0.1] bg-white text-3xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]" aria-hidden="true">
+          ◧
+        </div>
+        <h1 className="mb-10 text-[clamp(2.25rem,5vw,3.75rem)] font-bold leading-none tracking-[-0.04em] text-[#202020]">
+          {t("learning.title")}
+        </h1>
 
-      <div className="flex flex-col gap-12 lg:flex-row">
-        <div className="w-full flex-shrink-0 space-y-1 lg:w-64">
+      <div className="flex flex-col gap-8">
+        <div className="flex w-full flex-wrap gap-1 border-b border-black/[0.1] pb-2">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex w-full items-center gap-4 rounded-xl px-6 py-4 text-sm font-medium transition-all duration-300 ${
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.98] ${
                 activeTab === tab.id
-                  ? "bg-white text-zinc-900 shadow-[0_2px_10px_rgba(0,0,0,0.08)]"
-                  : "text-zinc-500 hover:bg-white/60 hover:text-zinc-900"
+                  ? "bg-black/[0.055] text-zinc-900"
+                  : "text-zinc-500 hover:bg-black/[0.035] hover:text-zinc-900"
               }`}
             >
               <tab.icon size={18} strokeWidth={1.5} />
@@ -213,7 +209,7 @@ const MyLearningPage = () => {
           ))}
         </div>
 
-        <div className="apple-card min-h-[600px] flex-1 rounded-[28px] p-6 sm:p-8 lg:p-10">
+        <div className="min-h-[600px] flex-1 py-2">
           {activeTab === "profile" ? (
             <div className="max-w-2xl space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <section>
@@ -389,14 +385,14 @@ const MyLearningPage = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="border-y border-black/[0.1]">
                 {filteredPlans.map((plan) => {
                   const percent =
                     plan.total > 0 ? Math.round((plan.progress / plan.total) * 100) : 0;
                   return (
                     <div
                       key={plan.id}
-                      className="rounded-3xl border border-zinc-100 bg-zinc-50/80 p-6 transition-all hover:border-zinc-200 hover:bg-white hover:shadow-md"
+                      className="notion-row p-5"
                     >
                       <div className="flex flex-col gap-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -408,27 +404,27 @@ const MyLearningPage = () => {
                               {t("learning.plans.recent", { value: plan.lastAccess || t("home.justNow") })}
                             </p>
                           </div>
-                          <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600">
+                          <span className="rounded-md bg-[#f7f6f3] px-2.5 py-1 text-xs font-medium text-zinc-600">
                             {getPlanStatusLabel(plan, t)}
                           </span>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-500">
+                          <span className="rounded-md bg-[#f7f6f3] px-2.5 py-1 text-xs font-medium text-zinc-500">
                             {getFrequencyLabel(plan.studyFrequency, plan.studyDaysPerWeek, t)}
                           </span>
                           {plan.targetEndDate ? (
-                            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                            <span className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
                               {t("home.deadline", { date: formatPlanDate(plan.targetEndDate, language) })}
                             </span>
                           ) : null}
                           {plan.reminderEnabled ? (
-                            <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700">
+                            <span className="rounded-md bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
                               {t("learning.plans.reminder", { value: plan.reminderTime || t("graph.reminderOn") })}
                             </span>
                           ) : null}
                           {plan.archivedReason ? (
-                            <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-500">
+                            <span className="rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500">
                               {t("learning.plans.archiveReason", { value: plan.archivedReason === "completed" ? t("status.completed") : t("learning.plans.manual") })}
                             </span>
                           ) : null}
@@ -439,7 +435,7 @@ const MyLearningPage = () => {
                             <span>{t("learning.plans.completion")}</span>
                             <span className="text-zinc-900">{percent}%</span>
                           </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-zinc-200/70">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-zinc-200/70">
                             <div
                               className="h-full rounded-full bg-zinc-900 transition-all duration-500"
                               style={{ width: `${percent}%` }}
@@ -639,7 +635,8 @@ const MyLearningPage = () => {
           ) : null}
         </div>
       </div>
-    </div>
+      </div>
+    </WorkspaceShell>
   );
 };
 

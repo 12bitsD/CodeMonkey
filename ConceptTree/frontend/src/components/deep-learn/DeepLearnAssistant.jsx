@@ -248,7 +248,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
             {messages.map((msg, index) => (
               <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'user' ? (
-                  <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-[#007AFF] px-3 py-2 text-xs leading-relaxed text-white">
+                  <div className="max-w-[85%] rounded-xl rounded-br-sm bg-[#202020] px-3 py-2 text-xs leading-relaxed text-white">
                     {msg.displayContent || msg.content}
                     {msg.attachments?.length > 0 && (
                       <div className="mt-2 space-y-1 border-t border-white/15 pt-2 text-[10px] text-zinc-300">
@@ -342,7 +342,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
                   onClick={send}
                   disabled={(!input.trim() && attachedFiles.length === 0) || loading}
                   aria-label={t('deep.send')}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-[#007AFF] text-white transition-[background-color,transform] duration-150 hover:bg-[#0071E3] active:scale-[0.95] disabled:bg-zinc-200 disabled:text-zinc-400"
+                  className="flex h-8 w-8 items-center justify-center rounded-md bg-[#202020] text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.96] disabled:bg-zinc-200 disabled:text-zinc-400"
                 >
                   {loading ? <Loader size={12} className="animate-spin" /> : <Send size={13} />}
                 </button>

@@ -3,22 +3,21 @@ import { useNavigate } from "react-router-dom";
 import {
   Archive,
   Bell,
-  BrainCircuit,
   CalendarDays,
   Edit3,
-  LogOut,
   MoreVertical,
   Pause,
   Play,
   Sparkles,
   Target,
-  User,
   ChevronRight,
 } from "lucide-react";
 import { Button, Modal } from "../components/ui";
 import GoalAnalysisLoader from "../components/loaders/GoalAnalysisLoader";
 import GraphGenerationLoader from "../components/loaders/GraphGenerationLoader";
-import LanguageToggle from "../components/common/LanguageToggle";
+import WorkspaceShell from "../components/common/WorkspaceShell";
+import learningMapIllustration from "../assets/illustrations/learning-map.jpg";
+import emptyPathIllustration from "../assets/illustrations/empty-path.jpg";
 import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { usePlanContext } from "../contexts/PlanContext";
@@ -405,78 +404,35 @@ const HomePage = () => {
     setShowRenameModal(false);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate("/");
-  };
-
   return (
-    <div
-      className="relative mx-auto flex min-h-screen max-w-[1440px] flex-col px-4 pb-16 pt-4 sm:px-6 md:px-10"
-      onClick={() => setActiveMenuPlanId(null)}
-    >
-      <header className="apple-toolbar sticky top-4 z-40 mb-16 flex items-center justify-between rounded-[20px] px-3 py-2.5 sm:px-4">
-        <div
-          className="group flex cursor-pointer items-center gap-3"
-          onClick={() => navigate("/")}
-        >
-          <div className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-gradient-to-b from-[#1687ff] to-[#006ee6] text-white shadow-[0_4px_12px_rgba(0,122,255,0.24)] transition-transform duration-150 group-active:scale-[0.96]">
-            <BrainCircuit size={19} strokeWidth={1.8} />
+    <WorkspaceShell active="home">
+      <div className="notion-page" onClick={() => setActiveMenuPlanId(null)}>
+      <section className="mb-20 grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div>
+          <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-lg border border-black/[0.1] bg-white text-3xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]" aria-hidden="true">
+            ◫
           </div>
-          <span className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--color-label)] sm:text-base">
-            PathFinder
-          </span>
-        </div>
-
-        {!isAuthenticated ? (
-          <div className="flex items-center gap-2">
-            <LanguageToggle />
-            <button
-              onClick={() => navigate("/auth")}
-              className="min-h-9 rounded-full bg-[#007AFF] px-4 py-2 text-sm font-semibold text-white shadow-[0_2px_8px_rgba(0,122,255,0.22)] transition-[background-color,transform] duration-150 hover:bg-[#0071E3] active:scale-[0.97] sm:px-5"
-            >
-              {t("nav.signIn")}
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <LanguageToggle className="hidden sm:inline-flex" />
-            <div className="flex items-center gap-1 rounded-full border border-black/[0.06] bg-white/70 p-1 shadow-sm">
-            <button
-              onClick={() => navigate("/my-learning")}
-              className="flex min-h-8 items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-zinc-600 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.05] hover:text-zinc-900 active:scale-[0.97] sm:px-4"
-            >
-              <User size={16} strokeWidth={2} />
-              <span className="hidden sm:inline">{t("nav.myLearning")}</span>
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-400 transition-[background-color,color,transform] duration-150 hover:bg-red-50 hover:text-red-600 active:scale-[0.94]"
-              title={t("nav.signOut")}
-              aria-label={t("nav.signOut")}
-            >
-              <LogOut size={16} strokeWidth={2} />
-            </button>
-            </div>
-          </div>
-        )}
-      </header>
-
-      <section className="mx-auto mb-24 flex w-full max-w-4xl flex-1 flex-col justify-center pt-8">
-        <div className="mb-10 space-y-4 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#007AFF]">
+          <p className="notion-section-label mb-3">
             {t("home.eyebrow")}
           </p>
-          <h1 className="text-[clamp(2.5rem,6vw,4.75rem)] font-semibold leading-[1.02] tracking-[-0.055em] text-[var(--color-label)]">
-            {t("home.title.before")}<span className="text-[#007AFF]">{t("home.title.emphasis")}</span>{t("home.title.after")}
+          <h1 className="max-w-3xl text-[clamp(2.5rem,6vw,4.5rem)] font-bold leading-[1.03] tracking-[-0.045em] text-[#202020]">
+            {t("home.title.before")}<span>{t("home.title.emphasis")}</span>{t("home.title.after")}
           </h1>
-          <p className="mx-auto max-w-2xl text-lg font-normal leading-7 text-[var(--color-label-secondary)]">
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--color-label-secondary)] sm:text-lg">
             {t("home.subtitle")}
           </p>
         </div>
+        <img
+          src={learningMapIllustration}
+          alt=""
+          className="notion-illustration mx-auto hidden w-full max-w-[360px] lg:block"
+        />
+      </section>
+
+      <section className="mb-20 w-full max-w-4xl">
 
         {isLoadingScene ? (
-          <div className="relative min-h-[430px] overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_8px_40px_rgba(0,0,0,0.04)]">
+          <div className="relative min-h-[390px] overflow-hidden rounded-xl border border-black/[0.1] bg-white">
             {isAnalyzing ? <GoalAnalysisLoader step={analysisStep} /> : null}
             {isGenerating ? (
               <GraphGenerationLoader
@@ -486,7 +442,7 @@ const HomePage = () => {
             ) : null}
           </div>
         ) : (
-          <div className="apple-card group relative overflow-hidden rounded-[28px] p-2 transition-[border-color,box-shadow,transform] duration-200 focus-within:border-blue-300/70 focus-within:shadow-[0_16px_50px_rgba(0,93,200,0.12)]">
+          <div className="group relative overflow-hidden rounded-xl border border-black/[0.13] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] duration-150 focus-within:border-black/35 focus-within:shadow-[0_0_0_3px_rgba(32,32,32,0.06)]">
           <textarea
             className="h-44 w-full resize-none bg-transparent p-5 text-lg font-normal leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 sm:p-7 sm:text-xl"
             placeholder={t("home.goal.placeholder")}
@@ -500,7 +456,7 @@ const HomePage = () => {
               {userProfile?.abilities?.slice(0, 2).map((tag) => (
                 <span
                   key={tag}
-                  className="whitespace-nowrap rounded-full border border-teal-100/50 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700"
+                  className="whitespace-nowrap rounded-md border border-black/[0.08] bg-[#f7f6f3] px-2.5 py-1 text-xs font-medium text-[#5f5e5b]"
                 >
                   {tag}
                 </span>
@@ -519,7 +475,7 @@ const HomePage = () => {
         )}
 
         {!inputText && !isLoadingScene ? (
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-2.5">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             {[
               t("home.suggestion.backprop"),
               t("home.suggestion.python"),
@@ -528,7 +484,7 @@ const HomePage = () => {
               <button
                 key={text}
                 onClick={() => setInputText(text)}
-                className="min-h-10 rounded-full border border-black/[0.08] bg-white/60 px-4 py-2 text-sm text-zinc-600 shadow-sm backdrop-blur-xl transition-[background-color,border-color,color,transform] duration-150 hover:border-black/[0.14] hover:bg-white hover:text-zinc-900 active:scale-[0.97]"
+                className="min-h-9 rounded-md border border-black/[0.1] bg-white px-3 py-1.5 text-sm text-zinc-600 transition-[background-color,border-color,color,transform] duration-150 hover:border-black/[0.16] hover:bg-[#f7f6f3] hover:text-zinc-900 active:scale-[0.98]"
               >
                 {text}
               </button>
@@ -538,11 +494,10 @@ const HomePage = () => {
       </section>
 
       {todayPlan && todayReminder ? (
-        <section className="relative mb-10 overflow-hidden rounded-[30px] border border-white/10 bg-[#17171a] p-6 text-white shadow-[0_20px_60px_rgba(0,0,0,0.16)] sm:p-8">
-          <div className="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full bg-blue-500/25 blur-3xl" />
+        <section className="relative mb-14 overflow-hidden rounded-xl border border-black/10 bg-[#202020] p-6 text-white shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:p-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0 flex-1 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-300">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
                 {t("home.today")}
               </p>
               <h2 className="max-w-3xl text-2xl font-semibold leading-snug text-white md:text-[26px]">
@@ -641,7 +596,7 @@ const HomePage = () => {
                   ? t("home.neverStarted")
                   : t("home.daysSince", { count: todayReminder.lastStudyDaysAgo })}
               </p>
-              <Button onClick={() => navigate(`/graph/${todayPlan.id}`)} size="sm">
+              <Button variant="secondary" onClick={() => navigate(`/graph/${todayPlan.id}`)} size="sm">
                 {t("home.continue")}
               </Button>
             </div>
@@ -651,13 +606,13 @@ const HomePage = () => {
 
       {currentPlans.length > 0 ? (
         <section>
-          <div className="mb-8 flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="notion-section-label">
               {t("home.plans")}
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="overflow-visible border-y border-black/[0.1]">
             {currentPlans.map((plan) => {
               const percent =
                 plan.total > 0 ? Math.round((plan.progress / plan.total) * 100) : 0;
@@ -666,12 +621,12 @@ const HomePage = () => {
                 <div
                   key={plan.id}
                   onClick={() => navigate(`/graph/${plan.id}`)}
-                  className="apple-card group relative cursor-pointer overflow-visible rounded-[26px] p-6 transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white hover:shadow-[0_18px_45px_rgba(0,0,0,0.09)] active:translate-y-0 sm:p-7"
+                  className="notion-row group relative cursor-pointer overflow-visible px-3 py-5 sm:px-4"
                 >
                   <div className="relative z-10 mb-6 flex items-start justify-between">
                     <div className="space-y-3">
                       <div>
-                        <h3 className="mb-1 text-lg font-medium text-zinc-900 transition-colors group-hover:text-teal-700">
+                        <h3 className="mb-1 text-base font-semibold text-zinc-900">
                           {plan.title}
                         </h3>
                         <p className="text-xs font-medium tracking-wide text-zinc-400">
@@ -733,7 +688,7 @@ const HomePage = () => {
                             activeMenuPlanId === plan.id ? null : plan.id,
                           )
                         }
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.04] text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.08] hover:text-zinc-700 active:scale-[0.94]"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.06] hover:text-zinc-700 active:scale-[0.96]"
                       >
                         <MoreVertical size={16} />
                       </button>
@@ -787,7 +742,19 @@ const HomePage = () => {
             })}
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="border-t border-black/[0.1] py-10">
+          <div className="flex flex-col items-center text-center">
+            <img
+              src={emptyPathIllustration}
+              alt=""
+              className="notion-illustration mb-4 w-full max-w-[260px]"
+            />
+            <h2 className="text-lg font-semibold text-[#202020]">{t("home.plans")}</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-[#6f6e6b]">{t("home.subtitle")}</p>
+          </div>
+        </section>
+      )}
 
       <Modal
         isOpen={showConfirmModal}
@@ -918,7 +885,8 @@ const HomePage = () => {
           autoFocus
         />
       </Modal>
-    </div>
+      </div>
+    </WorkspaceShell>
   );
 };
 

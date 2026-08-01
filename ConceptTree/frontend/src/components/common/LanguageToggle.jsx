@@ -7,11 +7,11 @@ const LanguageToggle = ({ className = "" }) => {
 
   return (
     <div
-      className={`apple-segmented inline-flex items-center gap-1 ${className}`}
+      className={`apple-segmented inline-flex items-center gap-0.5 ${className}`}
       role="group"
       aria-label={t("language.switch")}
     >
-      <Languages size={14} aria-hidden="true" className="ml-1.5 text-[var(--color-label-tertiary)]" />
+      <Languages size={13} aria-hidden="true" className="ml-1 text-[var(--color-label-tertiary)]" />
       {[
         ["en", "EN"],
         ["zh-CN", "中文"],
@@ -20,7 +20,7 @@ const LanguageToggle = ({ className = "" }) => {
           key={value}
           type="button"
           onClick={() => setLanguage(value)}
-          className={`min-h-8 rounded-[9px] px-2.5 text-xs font-semibold transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.97] ${
+          className={`min-h-7 rounded-[5px] px-2 text-[11px] font-medium transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ${
             language === value
               ? "bg-white text-[var(--color-label)] shadow-[0_1px_3px_rgba(0,0,0,0.12)]"
               : "text-[var(--color-label-secondary)] hover:text-[var(--color-label)]"

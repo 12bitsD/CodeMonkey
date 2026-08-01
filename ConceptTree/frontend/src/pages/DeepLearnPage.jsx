@@ -50,12 +50,12 @@ function getNoteSnippet(note) {
 function Header({ nodeName, onBack, onRestart, noteHref, isGeneratingNote }) {
   const { t } = useLanguage();
   return (
-    <div className="apple-toolbar z-30 mx-3 mt-3 flex shrink-0 items-center gap-2 rounded-[18px] px-3 py-2.5 sm:gap-3 sm:px-4">
+    <div className="apple-toolbar z-30 flex shrink-0 items-center gap-2 border-x-0 border-t-0 px-3 py-2.5 sm:gap-3 sm:px-4">
       <button
         type="button"
         aria-label={t('deep.backToMap')}
         onClick={onBack}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-600 transition-[background-color,transform] duration-150 hover:bg-black/[0.06] active:scale-[0.94]"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-600 transition-[background-color,transform] duration-150 hover:bg-black/[0.06] active:scale-[0.96]"
       >
         <ArrowLeft className="w-4 h-4 text-zinc-600" />
       </button>
@@ -73,7 +73,7 @@ function Header({ nodeName, onBack, onRestart, noteHref, isGeneratingNote }) {
           href={noteHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex min-h-8 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition-[background-color,transform] duration-150 hover:bg-blue-100 active:scale-[0.97]"
+          className="flex min-h-8 items-center gap-1.5 rounded-md border border-black/[0.12] bg-white px-3 py-1.5 text-xs font-medium text-[#37352f] transition-[background-color,transform] duration-150 hover:bg-[#f7f6f3] active:scale-[0.98]"
         >
           {t('deep.note.complete')}
         </a>
@@ -83,7 +83,7 @@ function Header({ nodeName, onBack, onRestart, noteHref, isGeneratingNote }) {
         aria-label={t('deep.restart')}
         onClick={onRestart}
         disabled={!onRestart}
-        className="flex min-h-8 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.05] hover:text-zinc-700 active:scale-[0.97] disabled:text-zinc-300 disabled:hover:bg-transparent"
+        className="flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.05] hover:text-zinc-700 active:scale-[0.98] disabled:text-zinc-300 disabled:hover:bg-transparent"
       >
         <RotateCcw className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">{t('deep.restart')}</span>
@@ -99,7 +99,7 @@ function RestartConfirmDialog({ open, onCancel, onConfirm }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="w-full max-w-sm rounded-[24px] border border-white/80 bg-white/95 p-6 shadow-[var(--shadow-float)] backdrop-blur-2xl">
+      <div className="w-full max-w-sm rounded-xl border border-black/[0.12] bg-white p-6 shadow-[var(--shadow-float)]">
         <div className="mb-4">
           <h2 className="text-base font-semibold text-zinc-900">{t('deep.restartTitle')}</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-500">
@@ -117,7 +117,7 @@ function RestartConfirmDialog({ open, onCancel, onConfirm }) {
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-full bg-[#007AFF] px-4 py-2 text-sm font-semibold text-white transition-[background-color,transform] duration-150 hover:bg-[#0071E3] active:scale-[0.97]"
+            className="rounded-md bg-[#202020] px-4 py-2 text-sm font-medium text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98]"
           >
             {t('deep.restartConfirm')}
           </button>
@@ -139,10 +139,10 @@ function InitializationPanel({ nodeName }) {
   const { t } = useLanguage();
   return (
     <div className="flex flex-1 items-center justify-center px-6">
-      <div className="apple-card w-full max-w-xl rounded-[26px] px-6 py-6">
+      <div className="apple-card w-full max-w-xl rounded-xl px-6 py-6">
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-blue-50 text-blue-600">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-blue-500" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f7f6f3] text-[#202020]">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#202020]" />
           </div>
           <div>
             <p className="text-sm font-semibold text-zinc-900">{t('deep.initializing.title')}</p>
@@ -228,7 +228,7 @@ function NoteReaderPanel({ note, onEdit, onDelete, onClose }) {
   return (
     <aside
       aria-label={t('deep.note.reader')}
-      className="flex h-full min-h-0 w-full flex-col border-l border-black/[0.07] bg-white/70 text-zinc-900 backdrop-blur-xl"
+      className="flex h-full min-h-0 w-full flex-col border-l border-black/[0.07] bg-[#fbfbfa] text-zinc-900"
     >
       <header className="flex min-h-12 items-center gap-2 border-b border-zinc-100 px-4 py-3">
         <FileText size={16} className="shrink-0 text-amber-600" />
@@ -261,7 +261,7 @@ function NoteReaderPanel({ note, onEdit, onDelete, onClose }) {
           <X size={16} />
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-50 px-5 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfbfa] px-5 py-5">
         <div className="rounded-xl border border-zinc-100 bg-white p-5">
           <MarkdownContent content={note.content || ''} />
         </div>
@@ -435,10 +435,10 @@ export default function DeepLearnPage() {
         onCancel={() => setRestartConfirmOpen(false)}
         onConfirm={handleConfirmRestart}
       />
-      <div ref={layoutRef} className="mx-3 mb-3 mt-2 flex flex-1 overflow-hidden rounded-[22px] border border-white/80 bg-white/55 shadow-[var(--shadow-card)] backdrop-blur-xl">
+      <div ref={layoutRef} className="mx-2 mb-2 mt-2 flex flex-1 overflow-hidden rounded-lg border border-black/[0.1] bg-white">
         <aside
           aria-label={t('deep.conceptsArea')}
-          className="shrink-0 overflow-y-auto bg-white/70"
+          className="shrink-0 overflow-y-auto bg-[#f7f6f3]"
           style={{ width: `${paneWidths.left}px` }}
         >
           <ConceptProgress
@@ -464,9 +464,9 @@ export default function DeepLearnPage() {
           title={t('deep.resizeHint')}
           onMouseDown={event => startResize('left', event)}
           onDoubleClick={resetPaneWidths}
-          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-black/[0.06] bg-black/[0.025] transition-colors hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-300"
+          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-black/[0.06] bg-white transition-colors hover:bg-black/[0.03] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-black/15"
         >
-          <span className="absolute left-1/2 top-1/2 h-10 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-300 transition-colors group-hover:bg-blue-400" />
+          <span className="absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-zinc-300 transition-colors group-hover:bg-zinc-500" />
         </button>
         <main className="flex-1 overflow-hidden flex flex-col">
           {error && <ErrorBanner message={error} />}
@@ -492,9 +492,9 @@ export default function DeepLearnPage() {
           title={t('deep.resizeHint')}
           onMouseDown={event => startResize('right', event)}
           onDoubleClick={resetPaneWidths}
-          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-black/[0.06] bg-black/[0.025] transition-colors hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-300"
+          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-black/[0.06] bg-white transition-colors hover:bg-black/[0.03] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-black/15"
         >
-          <span className="absolute left-1/2 top-1/2 h-10 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-300 transition-colors group-hover:bg-blue-400" />
+          <span className="absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-zinc-300 transition-colors group-hover:bg-zinc-500" />
         </button>
         <div
           aria-label={t('deep.sidebarContainer')}

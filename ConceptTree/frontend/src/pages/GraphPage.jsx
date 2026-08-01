@@ -1328,7 +1328,7 @@ const GraphPage = () => {
       {/* Top Navigation */}
       <div className="absolute top-0 left-0 right-0 z-20 px-6 py-4 pointer-events-none">
         <div className="max-w-screen-xl mx-auto flex justify-between items-start">
-          <div className="apple-toolbar pointer-events-auto flex items-center gap-4 rounded-[20px] px-4 py-3 transition-shadow hover:shadow-md sm:px-5">
+          <div className="apple-toolbar pointer-events-auto flex items-center gap-4 rounded-lg px-4 py-3 sm:px-5">
             <button
               onClick={handleNavigateBack}
               className="text-zinc-400 hover:text-zinc-900 transition-colors"
@@ -1343,7 +1343,7 @@ const GraphPage = () => {
               <div className="flex items-center gap-2 mt-0.5">
                 <div className="h-1 w-16 bg-zinc-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-[#007AFF] transition-[width] duration-500"
+                    className="h-full rounded-full bg-[#202020] transition-[width] duration-500"
                     style={{
                       width:
                         totalCount > 0
@@ -1386,7 +1386,7 @@ const GraphPage = () => {
             </div>
           </div>
 
-          <div className="apple-toolbar pointer-events-auto flex items-center gap-1 rounded-[20px] p-2">
+          <div className="apple-toolbar pointer-events-auto flex items-center gap-1 rounded-lg p-2">
             <LanguageToggle className="mr-1 hidden xl:inline-flex" />
             {savedAt && !isDirty ? (
               <span className="text-[10px] text-zinc-400 px-2">
@@ -1399,7 +1399,7 @@ const GraphPage = () => {
               <button
                 onClick={handleSavePlan}
                 disabled={isSaving}
-                className="flex items-center gap-1.5 rounded-full bg-[#007AFF] px-3 py-1.5 text-xs font-semibold text-white transition-[background-color,transform] duration-150 hover:bg-[#0071E3] active:scale-[0.97] disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-md bg-[#202020] px-3 py-1.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98] disabled:opacity-50"
               >
                 <Save size={12} />
                 {isSaving ? t("common.saving") : t("graph.savePlan")}
@@ -1606,7 +1606,7 @@ const GraphPage = () => {
               >
                 {scale < 0.6 ? (
                   isGhost ? (
-                    <div className="h-2.5 w-2.5 animate-spin rounded-full border border-zinc-200 border-t-blue-400" />
+                    <div className="h-2.5 w-2.5 animate-spin rounded-full border border-zinc-200 border-t-zinc-700" />
                   ) : isLearned ? (
                     <div className="w-2 h-2 bg-emerald-400 rounded-full" />
                   ) : (
@@ -1615,7 +1615,7 @@ const GraphPage = () => {
                 ) : (
                   <div className="flex items-center gap-3">
                     {isGhost ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-200 border-t-blue-400" />
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
                     ) : isLearned ? (
                       <CheckCircle2
                         size={16}
@@ -1808,7 +1808,7 @@ const GraphPage = () => {
               {selectedNode.what?.length > 0 && (
                 <Button
                   variant="secondary"
-                  className="w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  className="w-full border-black/[0.12] bg-[#f7f6f3] text-zinc-800 hover:bg-black/[0.06]"
                   onClick={() => navigate(`/deep-learn/${planId}/${selectedNode.id}`)}
                 >
                   <Sparkles size={16} className="mr-2" /> {t("graph.deepLearn")}
@@ -1917,7 +1917,7 @@ const GraphPage = () => {
                   <section>
                     <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                       <BookOpen size={14} /> {t("graph.coreContent")}
-                      <span className="ml-1 text-[10px] font-normal text-blue-500">{t("graph.explainHint")}</span>
+                      <span className="ml-1 text-[10px] font-normal text-zinc-500">{t("graph.explainHint")}</span>
                     </h4>
                     <ul className="space-y-3">
                       {selectedNode.what.map((item, i) => {
