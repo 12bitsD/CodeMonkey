@@ -346,7 +346,7 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
     })();
 
     return () => { cancelled = true; };
-  }, [deriveUiFlags, planId, nodeId, streamFrom]);
+  }, [deriveUiFlags, language, planId, nodeId, streamFrom]);
 
   useEffect(() => {
     if (!pinnedStorageKey) return;

@@ -468,7 +468,7 @@ export default function DeepLearnPage() {
         >
           <span className="absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-zinc-300 transition-colors group-hover:bg-zinc-500" />
         </button>
-        <main className="flex-1 overflow-hidden flex flex-col">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {error && <ErrorBanner message={error} />}
           {isInitializing && messages.length === 0 ? (
             <InitializationPanel nodeName={session.nodeName} />

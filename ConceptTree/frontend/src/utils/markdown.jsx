@@ -87,7 +87,7 @@ function MathText({ children, block = false }) {
 
 function renderPlainText(text, keyPrefix) {
   const latexPattern =
-    /(\\begin\{?bmatrix\}?[\s\S]+?\\end\{?bmatrix\}?|\\begin\{?pmatrix\}?[\s\S]+?\\end\{?pmatrix\}?|[A-Za-z][A-Za-z0-9_\\{}()[\]\s+\-*/^=<>|&,.]*=\s*[A-Za-z0-9_\\{}()[\]\s+\-*/^=<>|&,.]+|\\(?:det|mathbf|mathrm|mathbb|frac|sqrt|mu|lambda|min|max|in|top|leq?|geq?|cdot|times|nabla)(?:\{[^}]*\})?(?:(?:\s*[A-Za-z0-9()[\]{}_^+\-=<>|,.&]+|\\[A-Za-z]+(?:\{[^}]*\})?)+)?)/g;
+    /([A-Za-z][A-Za-z0-9_]*\s*=\s*\\begin\{?bmatrix\}?[\s\S]+?\\end\{?bmatrix\}?|[A-Za-z][A-Za-z0-9_]*\s*=\s*\\begin\{?pmatrix\}?[\s\S]+?\\end\{?pmatrix\}?|\\begin\{?bmatrix\}?[\s\S]+?\\end\{?bmatrix\}?|\\begin\{?pmatrix\}?[\s\S]+?\\end\{?pmatrix\}?|[A-Za-z][A-Za-z0-9_]*(?:'?\([^\n)]{1,32}\))?\s*=\s*(?:\\[A-Za-z]+(?:\{[^}]*\})?|[A-Za-z0-9_.+\-*/^{}()[\]\\]+)(?:\s*(?:[+\-*/<>]=?|→)\s*(?:\\[A-Za-z]+(?:\{[^}]*\})?|[A-Za-z0-9_.+\-*/^{}()[\]\\]+))*|\\(?:det|mathbf|mathrm|mathbb|frac|sqrt|mu|lambda|min|max|in|top|leq?|geq?|cdot|times|nabla)(?:\{[^}]*\})?(?:(?:\s*[A-Za-z0-9()[\]{}_^+\-=<>|,.&]+|\\[A-Za-z]+(?:\{[^}]*\})?)+)?)/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -369,9 +369,14 @@ export function renderMarkdown(markdown) {
       return (
         <pre
           key={key}
-          className="overflow-x-auto rounded-2xl border border-zinc-900/5 bg-zinc-950 px-4 py-3 text-[12px] leading-6 text-zinc-100 shadow-inner"
+          className="max-w-full overflow-x-auto rounded-xl border border-black/[0.08] bg-zinc-50 px-4 py-3 text-[12px] leading-6 text-zinc-800 shadow-inner"
         >
-          <code data-language={block.language || undefined}>{block.content}</code>
+          <code
+            data-language={block.language || undefined}
+            className="bg-transparent p-0 text-inherit"
+          >
+            {block.content}
+          </code>
         </pre>
       );
     }

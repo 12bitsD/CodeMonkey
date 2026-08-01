@@ -38,6 +38,42 @@ async def _collect(generator):
     return [event async for event in generator]
 
 
+@pytest.mark.asyncio
+async def test_localize_node_meta_translates_historical_chinese_content_for_english(monkeypatch):
+    calls = []
+
+    class FakeLlm:
+        async def chat_json(self, system, user, **kwargs):
+            calls.append((system, user, kwargs))
+            return {
+                "node_name": "Numerical gradient checking",
+                "node_why": "Verify analytical gradients before training.",
+                "what_list": [
+                    "Finite-difference derivative approximation",
+                    "Centered versus one-sided differences",
+                ],
+            }
+
+    monkeypatch.setattr(service_module, "get_llm_client", lambda: FakeLlm())
+    service = DeepLearnService()
+    source = {
+        "node_name": "梯度数值检验",
+        "node_why": "验证解析梯度",
+        "what_list": ["有限差分近似导数", "中心差分与单边差分"],
+    }
+
+    localized = await service.localize_node_meta(source, "en-US")
+    cached = await service.localize_node_meta(source, "en-US")
+
+    assert localized["node_name"] == "Numerical gradient checking"
+    assert localized["what_list"] == [
+        "Finite-difference derivative approximation",
+        "Centered versus one-sided differences",
+    ]
+    assert cached == localized
+    assert len(calls) == 1
+
+
 def test_split_text_for_streaming_returns_multiple_chunks():
     chunks = _split_text_for_streaming("第一句很短。第二句也会独立推送。第三句继续用于验证。", chunk_size=12)
 

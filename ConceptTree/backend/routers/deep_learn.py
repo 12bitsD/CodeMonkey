@@ -82,6 +82,7 @@ async def create_session(
     session, node_meta = await _service.get_or_create_session(
         db=db, user_id=user_id, node_id=req.node_id, plan_id=req.plan_id,
     )
+    node_meta = await _service.localize_node_meta(node_meta, req.language)
     is_resumed = session.state != "INITIALIZING"
     data = CreateSessionData(
         session_id=session.id,
@@ -89,7 +90,7 @@ async def create_session(
         is_resumed=is_resumed,
         node_name=node_meta["node_name"],
         node_why=node_meta["node_why"],
-        what_list=session.what_list,
+        what_list=node_meta["what_list"],
         concepts_status=session.concepts_status,
         weak_points=session.weak_points,
         current_concept_index=session.current_concept_index,
@@ -132,6 +133,7 @@ async def initialize(
 
     with get_db_context() as db:
         node_meta = _service._fetch_node_meta(db, session.node_id)
+    node_meta = await _service.localize_node_meta(node_meta, language)
 
     async def gen():
         async for event in _service.stream_initialize(
@@ -165,6 +167,7 @@ async def send_message(
 
     with get_db_context() as db:
         node_meta = _service._fetch_node_meta(db, session.node_id)
+    node_meta = await _service.localize_node_meta(node_meta, req.language)
 
     async def gen():
         async for event in _service.stream_message(
@@ -199,6 +202,7 @@ async def send_command(
 
     with get_db_context() as db:
         node_meta = _service._fetch_node_meta(db, session.node_id)
+    node_meta = await _service.localize_node_meta(node_meta, req.language)
 
     async def gen():
         async for event in _service.stream_command(

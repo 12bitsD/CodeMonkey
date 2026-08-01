@@ -110,7 +110,7 @@ export default function DeepLearnChat({
   );
 
   return (
-    <div className="relative flex flex-col h-full">
+    <div data-testid="deep-learn-chat" className="relative flex h-full min-w-0 flex-col overflow-hidden">
       {outlineItems.length > 0 && (
         <div className="absolute right-4 top-4 z-20">
           <button
@@ -137,12 +137,16 @@ export default function DeepLearnChat({
           )}
         </div>
       )}
-      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div
+        ref={scrollAreaRef}
+        data-testid="deep-learn-scroll-area"
+        className="min-h-0 min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6"
+      >
         {messages.map((msg) => {
           if (msg.role === 'user') {
             return (
-              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex justify-end">
-                <div className="max-w-[70%] rounded-xl rounded-tr-sm bg-[#202020] px-4 py-2.5 text-sm text-white">
+              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex min-w-0 justify-end">
+                <div className="max-w-[70%] break-words rounded-xl rounded-tr-sm bg-[#202020] px-4 py-2.5 text-sm text-white [overflow-wrap:anywhere]">
                   {msg.content}
                 </div>
               </div>
@@ -150,8 +154,8 @@ export default function DeepLearnChat({
           }
           if (msg.kind === 'text') {
             return (
-              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex justify-start">
-                <div className="w-full max-w-[85%]">
+              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex min-w-0 max-w-full justify-start">
+                <div className="min-w-0 w-full max-w-[85%]">
                   <ChatMarkdownMessage
                     content={msg.content}
                     isPending={isStreaming && !msg.content}
@@ -221,7 +225,7 @@ export default function DeepLearnChat({
         )}
       </div>
 
-      <div className="space-y-3 border-t border-black/[0.06] bg-white/75 px-4 py-3 backdrop-blur-xl sm:px-6">
+      <div data-testid="deep-learn-composer" className="min-w-0 space-y-3 border-t border-black/[0.06] bg-white/75 px-4 py-3 backdrop-blur-xl sm:px-6">
         {showTestConfirm && (
           <div className="rounded-lg border border-black/[0.12] bg-[#f7f6f3] px-4 py-3 text-sm">
             <p className="mb-2 text-zinc-800">{showTestConfirm.message}</p>
@@ -241,7 +245,7 @@ export default function DeepLearnChat({
         {showCommands && !showTestConfirm && !showFailOptions && (
           <CommandBar commands={['continue', 'expand', 'skip', 'reteach']} onCommand={onSendCommand} />
         )}
-        <div className="flex gap-2">
+        <div className="flex min-w-0 items-end gap-2">
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -255,7 +259,7 @@ export default function DeepLearnChat({
                   : t('deep.input.choose')
             }
             rows={2}
-            className="apple-input flex-1 resize-none rounded-xl px-3 py-2 text-sm outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
+            className="apple-input min-w-0 flex-1 resize-none rounded-xl px-3 py-2 text-sm outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
           />
           <button
             onClick={handleSubmit}

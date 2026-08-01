@@ -52,6 +52,7 @@ _DEFINITION_PATTERNS = re.compile(
     r"(是指|是一种|指的是|定义为|称为|即|就是说|也就是).{5,80}[。！；\n]",
     re.UNICODE,
 )
+_CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def _sse(event_type: str, **data) -> str:
@@ -138,6 +139,70 @@ class DeepLearnService:
         self.memory_updater = MemoryUpdateService()
         self.image_trigger = ImageTriggerAgent()
         self.note_generator = NoteGeneratorAgent()
+        self._localized_node_cache: dict[str, dict] = {}
+
+    async def localize_node_meta(self, node_meta: dict, language: str) -> dict:
+        """Return display/agent metadata in the requested UI language.
+
+        Learning maps keep their original authored language in storage. This
+        translation layer lets an existing Chinese map render and teach in
+        English (and vice versa) without mutating the saved graph.
+        """
+        target_language = "zh-CN" if language == "zh-CN" else "en-US"
+        source = {
+            "node_name": str(node_meta.get("node_name") or ""),
+            "node_why": str(node_meta.get("node_why") or ""),
+            "what_list": [str(item) for item in (node_meta.get("what_list") or [])],
+        }
+        combined = " ".join([source["node_name"], source["node_why"], *source["what_list"]])
+        has_cjk = bool(_CJK_PATTERN.search(combined))
+        if (target_language == "en-US" and not has_cjk) or (target_language == "zh-CN" and has_cjk):
+            return source
+
+        cache_key = json.dumps(
+            {"language": target_language, "source": source},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        cached = self._localized_node_cache.get(cache_key)
+        if cached:
+            return dict(cached)
+
+        target_name = "natural English" if target_language == "en-US" else "Simplified Chinese"
+        system_prompt = (
+            f"Translate learning-map metadata into {target_name}. "
+            "Preserve technical meaning, formulas, symbols, library names, and list order. "
+            "Do not add explanations. Return only a JSON object with exactly these keys: "
+            "node_name (string), node_why (string), what_list (array of strings)."
+        )
+        user_prompt = json.dumps(source, ensure_ascii=False)
+        try:
+            translated = await get_llm_client().chat_json(
+                system_prompt,
+                user_prompt,
+                temperature=0.0,
+                max_tokens=1200,
+                max_retries=2,
+            )
+            translated_list = translated.get("what_list")
+            if (
+                not isinstance(translated.get("node_name"), str)
+                or not isinstance(translated.get("node_why"), str)
+                or not isinstance(translated_list, list)
+                or len(translated_list) != len(source["what_list"])
+                or not all(isinstance(item, str) and item.strip() for item in translated_list)
+            ):
+                raise ValueError("localized node metadata has an invalid shape")
+            result = {
+                "node_name": translated["node_name"].strip(),
+                "node_why": translated["node_why"].strip(),
+                "what_list": [item.strip() for item in translated_list],
+            }
+            self._localized_node_cache[cache_key] = result
+            return dict(result)
+        except Exception as error:
+            logger.warning("node metadata localization failed; using source text: %s", error)
+            return source
 
     async def get_or_create_session(
         self, *, db: DbSession, user_id: str, node_id: str, plan_id: str,
@@ -317,6 +382,11 @@ class DeepLearnService:
                 return False
         return True
 
+    @staticmethod
+    def _display_concepts(session: SessionState, node_meta: dict) -> list[str]:
+        localized = node_meta.get("what_list") or []
+        return localized if len(localized) == len(session.what_list) else session.what_list
+
     def _count_images_in_turns(self, session: SessionState) -> int:
         return sum(
             1 for m in session.recent_turns
@@ -335,7 +405,7 @@ class DeepLearnService:
         session.state = "TEACHING"
 
         idx = session.current_concept_index
-        concepts = session.what_list
+        concepts = self._display_concepts(session, node_meta)
         current_concept = concepts[idx] if idx < len(concepts) else ""
 
         # Build memory context
@@ -473,7 +543,7 @@ class DeepLearnService:
         session.state = new_state
 
         idx = session.current_concept_index
-        concepts = session.what_list
+        concepts = self._display_concepts(session, node_meta)
         current_concept = concepts[idx] if idx < len(concepts) else ""
 
         if is_test:
@@ -647,7 +717,7 @@ class DeepLearnService:
         yield _sse("state_change", **{"from": prev_state, "to": "AI_ASSESSING_READINESS"})
         session.state = "AI_ASSESSING_READINESS"
 
-        concepts = session.what_list
+        concepts = self._display_concepts(session, node_meta)
         done = [concepts[i] for i in range(len(concepts)) if session.concepts_status.get(str(i)) == "done"]
         skipped = [concepts[i] for i in range(len(concepts)) if session.concepts_status.get(str(i)) == "skipped"]
 
@@ -693,7 +763,7 @@ class DeepLearnService:
         session.state = "TESTING"
 
         questions = await _generate_test_questions(
-            node_meta["node_name"], session.what_list, session.weak_points, language
+            node_meta["node_name"], self._display_concepts(session, node_meta), session.weak_points, language
         )
         session.test_questions = questions
         session.test_current_index = 0
@@ -725,9 +795,10 @@ class DeepLearnService:
         decision = decide_on_final_judge(result.passed)
 
         # Determine concepts covered (all that are "done")
+        display_concepts = self._display_concepts(session, node_meta)
         concepts_covered = [
-            session.what_list[i]
-            for i in range(len(session.what_list))
+            display_concepts[i]
+            for i in range(len(display_concepts))
             if session.concepts_status.get(str(i)) == "done"
         ]
 
@@ -742,8 +813,9 @@ class DeepLearnService:
             # Generate the completion note (failure is non-fatal)
             note_id: Optional[str] = None
             try:
+                localized_session = session.model_copy(update={"what_list": display_concepts})
                 note_output = await self.note_generator.generate(
-                    session=session,
+                    session=localized_session,
                     node_name=node_meta.get("node_name", ""),
                     node_why=node_meta.get("node_why", ""),
                     language=language,

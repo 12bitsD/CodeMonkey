@@ -83,7 +83,7 @@ Hessian行列式 \\det(H) = 4 > 0。`}
     expect(container.querySelectorAll(".katex").length).toBeGreaterThan(0);
     expect(container.textContent).not.toContain("\\beginbmatrix");
     expect(container.textContent).not.toContain("\\det");
-    expect(screen.getByText(/H =/)).toBeInTheDocument();
+    expect(screen.getAllByText(/H =/).length).toBeGreaterThan(0);
   });
 
   it("renders markdown tables", () => {
@@ -99,5 +99,25 @@ Hessian行列式 \\det(H) = 4 > 0。`}
     expect(container.querySelector("table")).toBeInTheDocument();
     expect(screen.getByText("调整措施")).toBeInTheDocument();
     expect(screen.getByText("减小 β2")).toBeInTheDocument();
+  });
+  it("keeps fenced code readable on the light completion-note surface", () => {
+    const { container } = render(
+      <MarkdownContent content={'```python\nprint("visible")\n```'} />,
+    );
+
+    const pre = container.querySelector("pre");
+    expect(pre).toHaveClass("bg-zinc-50", "text-zinc-800");
+    expect(pre?.querySelector("code")).toHaveClass("bg-transparent", "text-inherit");
+  });
+
+  it("does not treat an English sentence around an assignment as one long formula", () => {
+    const { container } = render(
+      <MarkdownContent content="At theta = 2, a buggy implementation returns g = 11 instead of 12." />,
+    );
+
+    expect(
+      [...container.querySelectorAll(".katex-html")]
+        .some(element => element.textContent.includes("buggy")),
+    ).toBe(false);
   });
 });

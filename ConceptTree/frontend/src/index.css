@@ -173,6 +173,7 @@ a:focus-visible {
 
 .note-zhihu h1 {
   font-size: 1.75rem;
+  line-height: 1.18;
   font-weight: 700;
   margin-bottom: 0.75rem;
   margin-top: 2rem;
@@ -180,6 +181,7 @@ a:focus-visible {
 
 .note-zhihu h2 {
   font-size: 1.375rem;
+  line-height: 1.3;
   font-weight: 600;
   margin-top: 2rem;
   margin-bottom: 0.5rem;
@@ -198,6 +200,7 @@ a:focus-visible {
 
 .note-zhihu code {
   background: #f4f4f5;
+  color: #0f766e;
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.875em;
@@ -205,10 +208,17 @@ a:focus-visible {
 
 .note-zhihu pre {
   background: #f4f4f5;
+  color: #27272a;
   padding: 1rem;
   border-radius: 8px;
   overflow-x: auto;
   margin: 1.25rem 0;
+}
+
+.note-zhihu pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
 }
 
 /* ── Print / PDF export ─────────────────────────────────────── */
