@@ -16,6 +16,7 @@ import { Badge, Button } from "../components/ui";
 import { ChartBar, StatCard } from "../components/common";
 import MarkdownContent from "../components/common/MarkdownContent";
 import WorkspaceShell from "../components/common/WorkspaceShell";
+import { compactPlanTitle } from "../utils/planTitle";
 import { useNoteContext } from "../contexts/NoteContext";
 import { usePlanContext } from "../contexts/PlanContext";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -184,9 +185,6 @@ const MyLearningPage = () => {
   return (
     <WorkspaceShell active="learning">
       <div className="notion-page">
-        <div className="mb-10 flex h-16 w-16 items-center justify-center rounded-lg border border-black/[0.1] bg-white text-3xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]" aria-hidden="true">
-          ◧
-        </div>
         <h1 className="mb-10 text-[clamp(2.25rem,5vw,3.75rem)] font-bold leading-none tracking-[-0.04em] text-[#202020]">
           {t("learning.title")}
         </h1>
@@ -398,7 +396,7 @@ const MyLearningPage = () => {
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <h3 className="text-lg font-medium text-zinc-900">
-                              {plan.title}
+                              {compactPlanTitle(plan.title)}
                             </h3>
                             <p className="mt-1 text-xs text-zinc-400">
                               {t("learning.plans.recent", { value: plan.lastAccess || t("home.justNow") })}
@@ -497,7 +495,7 @@ const MyLearningPage = () => {
                     <option value="all">{t("learning.notes.allPlans")}</option>
                     {plans.map((plan) => (
                       <option key={plan.id} value={plan.id}>
-                        {plan.title}
+                        {compactPlanTitle(plan.title)}
                       </option>
                     ))}
                   </select>

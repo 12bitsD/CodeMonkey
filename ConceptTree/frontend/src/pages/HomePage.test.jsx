@@ -87,6 +87,12 @@ describe("HomePage confirm generation", () => {
     vi.clearAllMocks();
   });
 
+  it("does not render the decorative square glyph", () => {
+    const { container } = render(<HomePage />);
+
+    expect(container.textContent).not.toContain("◫");
+  });
+
   it("passes the confirmed interpretation into graph generation instead of the raw input", async () => {
     render(<HomePage />);
 

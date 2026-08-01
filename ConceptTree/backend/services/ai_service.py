@@ -33,6 +33,19 @@ from services.search_service import SearchServiceError, get_search_service
 logger = logging.getLogger(__name__)
 
 
+def _compact_goal_title(value: Optional[str], fallback: str, language: str) -> str:
+    title = " ".join(str(value or fallback).split()).strip(" \t\r\n,.;:!?，。；：！？")
+    if not title:
+        title = "新学习计划" if normalize_language(language) == "zh-CN" else "New learning plan"
+
+    has_cjk = any("\u3400" <= char <= "\u9fff" for char in title)
+    if has_cjk:
+        return title if len(title) <= 13 else f"{title[:13].rstrip('，、；：,.!?。！？')}…"
+
+    words = title.split()
+    return title if len(words) <= 7 else f"{' '.join(words[:7]).rstrip(',;:.!?')}…"
+
+
 def _fallback_depth_level(learning_purpose: str) -> int:
     if learning_purpose == "explore":
         return 2
@@ -314,6 +327,10 @@ class AIService:
                 user_prompt=usr_prompt,
                 temperature=params.get("temperature", 0.7),
                 max_tokens=params.get("max_tokens", 4096),
+            )
+
+            result["title"] = _compact_goal_title(
+                result.get("title"), result.get("interpretation") or user_input, language
             )
 
             # Validate with Pydantic

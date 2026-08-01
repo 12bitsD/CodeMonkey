@@ -107,7 +107,7 @@ export const PlanProvider = ({ children }) => {
       async createPlan(input, graphResult, learningPurpose = "apply", metadata = {}) {
         try {
           const newPlan = await plansApi.create({
-            title: graphResult.interpretation || input,
+            title: graphResult.title || graphResult.interpretation || input,
             originalInput: input,
             targetNodeId: graphResult.targetNodeId,
             nodes: graphResult.nodes,

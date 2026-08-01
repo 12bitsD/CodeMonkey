@@ -33,6 +33,7 @@ import { InfoSection } from "../components/common";
 import ChatMarkdownMessage from "../components/chat/ChatMarkdownMessage";
 import MarkdownContent from "../components/common/MarkdownContent";
 import LanguageToggle from "../components/common/LanguageToggle";
+import LocalizedDateInput from "../components/common/LocalizedDateInput";
 import { MasteryChecklist } from "../components/node/MasteryChecklist";
 import MasteryQuizModal from "../components/node/MasteryQuizModal";
 import { ResourceList } from "../components/node/ResourceList";
@@ -1829,12 +1830,12 @@ const GraphPage = () => {
                   ) : null}
                 </label>
                 <div className="mt-3 flex gap-2">
-                  <input
-                    type="date"
-                    lang={language}
+                  <LocalizedDateInput
+                    language={language}
+                    wrapperClassName="min-w-0 flex-1"
                     min={minNodeDeadlineDate}
                     inputMode="none"
-                    className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
                     value={nodeDeadlineDraft}
                     onChange={(event) => setNodeDeadlineDraft(event.target.value)}
                     onBeforeInput={(event) => event.preventDefault()}
@@ -2332,8 +2333,7 @@ const GraphPage = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="space-y-2">
               <span className="text-xs font-medium text-zinc-500">{t("graph.settings.start")}</span>
-              <input
-                type="date"
+              <LocalizedDateInput
                 className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
                 value={planSettings.startDate}
                 onChange={(e) => handlePlanSettingChange("startDate", e.target.value)}
@@ -2341,8 +2341,7 @@ const GraphPage = () => {
             </label>
             <label className="space-y-2">
               <span className="text-xs font-medium text-zinc-500">{t("graph.settings.target")}</span>
-              <input
-                type="date"
+              <LocalizedDateInput
                 className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
                 value={planSettings.targetEndDate}
                 onChange={(e) =>

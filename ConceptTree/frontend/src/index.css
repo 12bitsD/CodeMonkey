@@ -87,6 +87,15 @@ a:focus-visible {
   box-shadow: 0 0 0 3px rgba(32, 32, 32, 0.07);
 }
 
+.localized-date-input::-webkit-datetime-edit {
+  opacity: 0;
+}
+
+.localized-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
+}
+
 .notion-page {
   margin: 0 auto;
   width: 100%;

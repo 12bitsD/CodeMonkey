@@ -15,6 +15,7 @@ import {
 import { Button, Modal } from "../components/ui";
 import GoalAnalysisLoader from "../components/loaders/GoalAnalysisLoader";
 import GraphGenerationLoader from "../components/loaders/GraphGenerationLoader";
+import LocalizedDateInput from "../components/common/LocalizedDateInput";
 import WorkspaceShell from "../components/common/WorkspaceShell";
 import learningMapIllustration from "../assets/illustrations/learning-map.jpg";
 import emptyPathIllustration from "../assets/illustrations/empty-path.jpg";
@@ -25,6 +26,7 @@ import { useToast } from "../contexts/ToastContext";
 import { aiApi, graphApi, plansApi } from "../services/api";
 import { calculateLayout } from "../utils/layoutEngine";
 import { getPlanReminder, getTopPlanReminder } from "../utils/planReminders";
+import { compactPlanTitle } from "../utils/planTitle";
 
 const TODAY_RECOMMENDATION_CACHE_KEY = "concept_tree_today_recommendation";
 
@@ -353,6 +355,7 @@ const HomePage = () => {
         result.targetNodeId,
       );
       const graphResult = {
+        title: parsedGoal?.title?.trim() || confirmedInterpretation,
         interpretation: confirmedInterpretation,
         targetNodeId: result.targetNodeId,
         edges: result.edges || [],
@@ -414,9 +417,6 @@ const HomePage = () => {
       <div className="notion-page" onClick={() => setActiveMenuPlanId(null)}>
       <section className="mb-20 grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div>
-          <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-lg border border-black/[0.1] bg-white text-3xl shadow-[0_1px_2px_rgba(0,0,0,0.04)]" aria-hidden="true">
-            ◫
-          </div>
           <p className="notion-section-label mb-3">
             {t("home.eyebrow")}
           </p>
@@ -631,8 +631,8 @@ const HomePage = () => {
                   <div className="relative z-10 mb-6 flex items-start justify-between">
                     <div className="space-y-3">
                       <div>
-                        <h3 className="mb-1 text-base font-semibold text-zinc-900">
-                          {plan.title}
+                        <h3 className="mb-1 text-base font-semibold text-zinc-900" title={plan.title}>
+                          {compactPlanTitle(plan.title)}
                         </h3>
                         <p className="text-xs font-medium tracking-wide text-zinc-400">
                           {t("home.lastStudied", { value: plan.lastAccess || t("home.justNow") })}
@@ -849,8 +849,8 @@ const HomePage = () => {
           <p className="text-sm leading-6 text-zinc-500">
             {t("home.deadline.help", { name: deadlinePlan?.title || t("home.plans") })}
           </p>
-          <input
-            type="date"
+          <LocalizedDateInput
+            aria-label={t("home.deadline.title")}
             className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm outline-none transition-colors focus:border-zinc-400"
             value={deadlineInput}
             onChange={(event) => setDeadlineInput(event.target.value)}

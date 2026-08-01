@@ -317,6 +317,7 @@ class BackgroundItem(BaseModel):
 class ParseGoalResponse(BaseModel):
     """AI response for parse-goal endpoint"""
 
+    title: Optional[str] = None
     interpretation: str
     backgroundSummary: List[BackgroundItem]
     suggestedNodeCount: int

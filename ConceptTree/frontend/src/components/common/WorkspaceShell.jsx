@@ -16,6 +16,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { usePlanContext } from "../../contexts/PlanContext";
 import LanguageToggle from "./LanguageToggle";
+import { compactPlanTitle } from "../../utils/planTitle";
 
 const NavButton = ({ active = false, icon: Icon, label, onClick }) => (
   <button
@@ -118,7 +119,7 @@ const SidebarContent = ({ active, onNavigate, onClose }) => {
                   className="flex min-h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm text-[#6f6e6b] hover:bg-black/[0.04] hover:text-[#202020]"
                 >
                   <span className="text-[13px]" aria-hidden="true">▱</span>
-                  <span className="truncate">{plan.title}</span>
+                  <span className="truncate" title={plan.title}>{compactPlanTitle(plan.title)}</span>
                 </button>
               ))}
             </div>
