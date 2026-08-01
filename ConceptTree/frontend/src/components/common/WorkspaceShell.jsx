@@ -1,13 +1,11 @@
 import React, { useState } from "react";
 import {
   BookOpen,
-  BrainCircuit,
   ChevronRight,
   Home,
   LogIn,
   LogOut,
   Menu,
-  PanelLeftClose,
   Plus,
   X,
 } from "lucide-react";
@@ -17,6 +15,7 @@ import { useLanguage } from "../../contexts/LanguageContext";
 import { usePlanContext } from "../../contexts/PlanContext";
 import LanguageToggle from "./LanguageToggle";
 import { compactPlanTitle } from "../../utils/planTitle";
+import learningMasterMark from "../../assets/branding/learningmaster-mark.png";
 
 const NavButton = ({ active = false, icon: Icon, label, onClick }) => (
   <button
@@ -60,11 +59,16 @@ const SidebarContent = ({ active, onNavigate, onClose }) => {
           onClick={() => go("/")}
           className="group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-black/[0.035]"
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] border border-black/15 bg-white text-[#202020] shadow-[0_1px_1px_rgba(0,0,0,0.05)]">
-            <BrainCircuit size={14} strokeWidth={1.9} />
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white p-0.5 shadow-[0_1px_2px_rgba(0,0,0,0.08)] ring-1 ring-black/[0.08]">
+            <img
+              src={learningMasterMark}
+              alt=""
+              aria-hidden="true"
+              className="h-full w-full object-contain"
+            />
           </span>
           <span className="truncate text-sm font-semibold tracking-[-0.01em] text-[#202020]">
-            PathFinder
+            LearningMaster
           </span>
           <ChevronRight size={13} className="ml-auto text-[#9b9a97] opacity-0 transition-opacity group-hover:opacity-100" />
         </button>
@@ -77,9 +81,7 @@ const SidebarContent = ({ active, onNavigate, onClose }) => {
           >
             <X size={17} />
           </button>
-        ) : (
-          <PanelLeftClose size={16} className="text-[#aaa9a6]" aria-hidden="true" />
-        )}
+        ) : null}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-4 custom-scrollbar" aria-label={t("nav.workspace") }>
@@ -172,7 +174,7 @@ const WorkspaceShell = ({ active, children, contentClassName = "" }) => {
         >
           <Menu size={18} />
         </button>
-        <span className="text-sm font-semibold text-[#202020]">PathFinder</span>
+        <span className="text-sm font-semibold text-[#202020]">LearningMaster</span>
         <span className="h-8 w-8" aria-hidden="true" />
       </header>
 

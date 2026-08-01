@@ -86,7 +86,7 @@ export default function CompletionNotePage() {
           className="notion-illustration mx-auto mb-10 w-full max-w-lg print:hidden"
         />
         <div className="mb-8 border-b border-black/[0.1] pb-5">
-          <p className="notion-section-label">PathFinder</p>
+          <p className="notion-section-label">LearningMaster</p>
           <h1 className="mt-2 text-3xl font-bold tracking-[-0.03em] text-[#202020]">{t('completion.title')}</h1>
         </div>
         <div className="note-zhihu">

@@ -25,7 +25,7 @@ def _get_bool_env(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    APP_NAME: str = _get_env("APP_NAME", "PathFinder API")
+    APP_NAME: str = _get_env("APP_NAME", "LearningMaster API")
     APP_VERSION: str = _get_env("APP_VERSION", "1.0.0")
     DEBUG: bool = _get_bool_env("DEBUG", False)
 

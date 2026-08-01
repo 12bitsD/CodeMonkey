@@ -415,12 +415,12 @@ const HomePage = () => {
   return (
     <WorkspaceShell active="home">
       <div className="notion-page" onClick={() => setActiveMenuPlanId(null)}>
-      <section className="mb-20 grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="mb-14 grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-16">
         <div>
           <p className="notion-section-label mb-3">
             {t("home.eyebrow")}
           </p>
-          <h1 className="max-w-3xl text-[clamp(2.5rem,6vw,4.5rem)] font-bold leading-[1.03] tracking-[-0.045em] text-[#202020]">
+          <h1 className="max-w-3xl text-[clamp(2.65rem,6vw,4.65rem)] font-bold leading-[1.02] tracking-[-0.05em] text-[#1d1d1f]">
             {t("home.title.before")}<span>{t("home.title.emphasis")}</span>{t("home.title.after")}
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--color-label-secondary)] sm:text-lg">
@@ -430,7 +430,7 @@ const HomePage = () => {
         <img
           src={learningMapIllustration}
           alt=""
-          className="notion-illustration mx-auto hidden w-full max-w-[360px] lg:block"
+          className="notion-illustration mx-auto hidden w-full max-w-[330px] lg:block"
         />
       </section>
 
@@ -447,35 +447,36 @@ const HomePage = () => {
             ) : null}
           </div>
         ) : (
-          <div className="group relative overflow-hidden rounded-xl border border-black/[0.13] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] duration-150 focus-within:border-black/35 focus-within:shadow-[0_0_0_3px_rgba(32,32,32,0.06)]">
-          <textarea
-            className="h-44 w-full resize-none bg-transparent p-5 text-lg font-normal leading-relaxed text-zinc-800 outline-none placeholder:text-zinc-400 sm:p-7 sm:text-xl"
-            placeholder={t("home.goal.placeholder")}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            disabled={isAnalyzing || isGenerating}
-          />
+          <div className="group relative overflow-hidden rounded-[22px] border border-black/[0.12] bg-white/95 shadow-[0_14px_40px_rgba(15,15,15,0.07),0_2px_8px_rgba(15,15,15,0.04)] transition-[border-color,box-shadow,transform] duration-200 focus-within:border-[#0071e3]/45 focus-within:shadow-[0_0_0_4px_rgba(0,113,227,0.09),0_18px_48px_rgba(15,15,15,0.09)]">
+            <textarea
+              className="h-40 w-full resize-none bg-transparent px-6 pb-4 pt-6 text-base font-normal leading-7 text-[#1d1d1f] outline-none placeholder:text-[#9a9aa0] focus-visible:outline-none sm:h-44 sm:px-7 sm:pt-7 sm:text-lg"
+              placeholder={t("home.goal.placeholder")}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              disabled={isAnalyzing || isGenerating}
+            />
 
-          <div className="flex items-end justify-between px-6 pb-6">
-            <div className="flex max-w-[60%] items-center gap-3 overflow-hidden">
-              {userProfile?.abilities?.slice(0, 2).map((tag) => (
-                <span
-                  key={tag}
-                  className="whitespace-nowrap rounded-md border border-black/[0.08] bg-[#f7f6f3] px-2.5 py-1 text-xs font-medium text-[#5f5e5b]"
-                >
-                  {tag}
-                </span>
-              ))}
+            <div className="flex min-h-[68px] items-center justify-between gap-4 border-t border-black/[0.06] bg-[#fbfbfd]/80 px-4 py-3 sm:px-5">
+              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                {userProfile?.abilities?.slice(0, 2).map((tag) => (
+                  <span
+                    key={tag}
+                    className="truncate rounded-full bg-black/[0.045] px-3 py-1.5 text-xs font-medium text-[#6e6e73]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <Button
+                onClick={handleStartAnalysis}
+                disabled={!inputText.trim() || isAnalyzing || isGenerating}
+                size="lg"
+                icon={Sparkles}
+                className="shrink-0 rounded-full bg-[#0071e3] px-5 shadow-none hover:bg-[#0077ed] focus-visible:outline-[#0071e3]"
+              >
+                {isAnalyzing ? t("home.goal.analyzing") : t("home.goal.generate")}
+              </Button>
             </div>
-            <Button
-              onClick={handleStartAnalysis}
-              disabled={!inputText.trim() || isAnalyzing || isGenerating}
-              size="md"
-              icon={Sparkles}
-            >
-              {isAnalyzing ? t("home.goal.analyzing") : t("home.goal.generate")}
-            </Button>
-          </div>
           </div>
         )}
 
@@ -489,7 +490,7 @@ const HomePage = () => {
               <button
                 key={text}
                 onClick={() => setInputText(text)}
-                className="min-h-9 rounded-md border border-black/[0.1] bg-white px-3 py-1.5 text-sm text-zinc-600 transition-[background-color,border-color,color,transform] duration-150 hover:border-black/[0.16] hover:bg-[#f7f6f3] hover:text-zinc-900 active:scale-[0.98]"
+                className="min-h-9 rounded-full border border-black/[0.09] bg-white/80 px-3.5 py-1.5 text-sm text-[#6e6e73] shadow-[0_1px_2px_rgba(15,15,15,0.025)] transition-[background-color,border-color,color,transform] duration-150 hover:border-black/[0.15] hover:bg-white hover:text-[#1d1d1f] active:scale-[0.98]"
               >
                 {text}
               </button>

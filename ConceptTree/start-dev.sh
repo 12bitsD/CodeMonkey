@@ -2,7 +2,7 @@
 
 # 快速启动脚本 - 同时启动前端和后端开发服务器
 
-echo "🚀 启动 PathFinder 开发环境..."
+echo "🚀 启动 LearningMaster 开发环境..."
 
 # 检查是否在正确的目录
 if [ ! -d "ConceptTree" ]; then

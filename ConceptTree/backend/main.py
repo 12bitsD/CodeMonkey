@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     close_connection_pool()
 
 app = FastAPI(
-    title="PathFinder API",
+    title="LearningMaster API",
     description="Learning Path Planner Backend",
     version="1.0.0",
     docs_url=_docs_url,
@@ -332,4 +332,4 @@ def health_metrics():
 
 @app.get("/")
 def root():
-    return {"message": "PathFinder API", "docs": "/docs", "version": "1.0.0"}
+    return {"message": "LearningMaster API", "docs": "/docs", "version": "1.0.0"}

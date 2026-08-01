@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { BrainCircuit } from 'lucide-react';
 import LanguageToggle from '../components/common/LanguageToggle';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import learningMapIllustration from '../assets/illustrations/learning-map.jpg';
+import learningMasterMark from '../assets/branding/learningmaster-mark.png';
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -68,10 +68,10 @@ export default function AuthPage() {
         </div>
       <div className="w-full max-w-md justify-self-center">
         <div className="mb-8 flex flex-col items-center text-center">
-          <button type="button" onClick={() => navigate('/')} className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-black/[0.12] bg-white text-[#202020] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-transform duration-150 active:scale-[0.98]" aria-label="PathFinder home">
-            <BrainCircuit size={23} strokeWidth={1.8} />
+          <button type="button" onClick={() => navigate('/')} className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-[0_4px_16px_rgba(15,15,15,0.08)] ring-1 ring-black/[0.08] transition-transform duration-150 active:scale-[0.97]" aria-label="LearningMaster home">
+            <img src={learningMasterMark} alt="" aria-hidden="true" className="h-full w-full object-contain" />
           </button>
-          <h1 className="mb-2 text-3xl font-semibold tracking-[-0.04em] text-[var(--color-label)]">PathFinder</h1>
+          <h1 className="mb-2 text-3xl font-semibold tracking-[-0.04em] text-[var(--color-label)]">LearningMaster</h1>
           <p className="text-[var(--color-label-secondary)]">{t('auth.subtitle')}</p>
           <LanguageToggle className="mt-5" />
         </div>
