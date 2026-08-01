@@ -2,6 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter,
+    "Segoe UI", sans-serif;
+  --color-canvas: #f5f5f7;
+  --color-surface: rgba(255, 255, 255, 0.78);
+  --color-surface-solid: #ffffff;
+  --color-label: #1d1d1f;
+  --color-label-secondary: #6e6e73;
+  --color-label-tertiary: #86868b;
+  --color-separator: rgba(60, 60, 67, 0.16);
+  --color-accent: #007aff;
+  --color-accent-hover: #0071e3;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 36px rgba(0, 0, 0, 0.06);
+  --shadow-float: 0 20px 60px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --ease-out-apple: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html {
+  background: var(--color-canvas);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 50% -20%, rgba(122, 184, 255, 0.2), transparent 35rem),
+    var(--color-canvas);
+  color: var(--color-label);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(0, 122, 255, 0.32);
+  outline-offset: 2px;
+}
+
+.apple-toolbar {
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: rgba(250, 250, 252, 0.74);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 30px rgba(0, 0, 0, 0.06);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+}
+
+.apple-card {
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: saturate(160%) blur(18px);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+}
+
+.apple-segmented {
+  border: 1px solid rgba(60, 60, 67, 0.08);
+  border-radius: 12px;
+  background: rgba(118, 118, 128, 0.1);
+  padding: 2px;
+}
+
+.apple-input {
+  border: 1px solid var(--color-separator);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.apple-input:focus-within,
+.apple-input:focus {
+  border-color: rgba(0, 122, 255, 0.55);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-separator: rgba(0, 0, 0, 0.38);
+  }
+
+  .apple-card,
+  .apple-toolbar {
+    border-color: var(--color-separator);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .apple-card,
+  .apple-toolbar {
+    background: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }

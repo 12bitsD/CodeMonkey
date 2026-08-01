@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 const STAGES = [
-  { key: "parse", label: "解析学习目标", startSec: 0 },
-  { key: "recall", label: "召回学科核心概念", startSec: 3 },
-  { key: "graph", label: "构建知识依赖关系", startSec: 10 },
-  { key: "verify", label: "校验图谱结构", startSec: 20 },
+  { key: "parse", messageKey: "loader.graph.parse", startSec: 0 },
+  { key: "recall", messageKey: "loader.graph.recall", startSec: 3 },
+  { key: "graph", messageKey: "loader.graph.build", startSec: 10 },
+  { key: "verify", messageKey: "loader.graph.verify", startSec: 20 },
 ];
 
 const OVERTIME_THRESHOLD_SEC = 30;
@@ -22,6 +23,7 @@ export default function GraphGenerationLoader({
   readyCount = 0,
   totalCount = 0,
 }) {
+  const { t } = useLanguage();
   const [elapsedSec, setElapsedSec] = useState(0);
 
   useEffect(() => {
@@ -37,8 +39,8 @@ export default function GraphGenerationLoader({
   const progress = totalCount > 0 ? Math.max(4, (readyCount / totalCount) * 100) : null;
 
   const subtitle = isOvertime
-    ? "正在为更复杂的主题做更深推理..."
-    : `已用 ${elapsedSec} 秒，通常需要 15-30 秒`;
+    ? t("loader.graph.overtime")
+    : t("loader.graph.elapsed", { count: elapsedSec });
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.99))] px-8 text-center">
@@ -47,7 +49,7 @@ export default function GraphGenerationLoader({
       </span>
 
       <h3 className="mb-2 text-2xl font-semibold tracking-tight text-zinc-900">
-        正在为你生成学习图谱
+        {t("loader.graph.title")}
       </h3>
       <p className="mb-8 text-sm text-zinc-500">{subtitle}</p>
 
@@ -76,7 +78,7 @@ export default function GraphGenerationLoader({
                       : "text-sm text-zinc-300"
                 }
               >
-                {stage.label}
+                {t(stage.messageKey)}
               </span>
             </li>
           );
@@ -96,7 +98,7 @@ export default function GraphGenerationLoader({
 
       {totalCount > 0 && (
         <p className="mt-3 text-xs text-zinc-400">
-          {readyCount} / {totalCount} 个节点已完成
+          {t("loader.graph.nodes", { ready: readyCount, total: totalCount })}
         </p>
       )}
     </div>

@@ -1,23 +1,16 @@
-const LABELS = {
-  continue: '继续 →',
-  expand: '展开',
-  skip: '跳过',
-  reteach: '重讲',
-  confirm_test: '✅ 开始测试',
-  not_ready: '再复习一下',
-  restart: '🔄 重新开始',
-};
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function CommandBar({ commands, labels = {}, onCommand }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-wrap gap-2">
       {commands.map(cmd => (
         <button
           key={cmd}
           onClick={() => onCommand(cmd)}
-          className="px-3 py-1.5 rounded-lg text-sm border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors"
+          className="min-h-9 rounded-full border border-black/[0.1] bg-white/80 px-4 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition-[background-color,border-color,transform] duration-150 hover:border-black/[0.18] hover:bg-white active:scale-[0.97]"
         >
-          {labels[cmd] || LABELS[cmd] || cmd}
+          {labels[cmd] || t(`deep.command.${cmd}`) || cmd}
         </button>
       ))}
     </div>

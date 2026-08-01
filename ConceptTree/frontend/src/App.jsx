@@ -10,15 +10,17 @@ import CompletionNotePage from './pages/CompletionNotePage';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AppErrorBoundary from './components/common/AppErrorBoundary';
 import DataSyncStatusBanner from './components/common/DataSyncStatusBanner';
+import { LanguageProvider } from './contexts/LanguageContext';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <AppProvider>
-          <BrowserRouter>
-            <AppErrorBoundary>
-              <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans selection:bg-zinc-200 selection:text-zinc-900 antialiased overflow-hidden">
+    <LanguageProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <AppProvider>
+            <BrowserRouter>
+              <AppErrorBoundary>
+              <div className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-label)] font-sans selection:bg-blue-200 selection:text-zinc-950 antialiased overflow-hidden">
                 <DataSyncStatusBanner />
                 <Routes>
                   <Route path="/auth" element={<AuthPage />} />
@@ -58,10 +60,11 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </div>
-            </AppErrorBoundary>
-          </BrowserRouter>
-        </AppProvider>
-      </ToastProvider>
-    </AuthProvider>
+              </AppErrorBoundary>
+            </BrowserRouter>
+          </AppProvider>
+        </ToastProvider>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }

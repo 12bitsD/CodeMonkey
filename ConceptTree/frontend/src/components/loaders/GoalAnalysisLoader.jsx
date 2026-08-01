@@ -1,11 +1,9 @@
-const ANALYSIS_LOADING_TEXTS = [
-  "解析概念边界与学习意图",
-  "识别你的背景与目标重点",
-  "准备更清晰的学习澄清问题",
-];
+import { useLanguage } from "../../contexts/LanguageContext";
 
 export default function GoalAnalysisLoader({ step = 0 }) {
-  const message = ANALYSIS_LOADING_TEXTS[step % ANALYSIS_LOADING_TEXTS.length];
+  const { t } = useLanguage();
+  const analysisLoadingTexts = [t("loader.analysis.boundary"), t("loader.analysis.background"), t("loader.analysis.questions")];
+  const message = analysisLoadingTexts[step % analysisLoadingTexts.length];
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(94,234,212,0.16),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] px-8 text-center">
@@ -26,7 +24,7 @@ export default function GoalAnalysisLoader({ step = 0 }) {
         Goal Analysis
       </span>
       <h3 className="mb-3 text-2xl font-semibold tracking-tight text-zinc-900">
-        AI 正在理解你的学习目标
+        {t("loader.analysis.title")}
       </h3>
       <p className="mb-6 text-sm text-zinc-500">{message}</p>
 

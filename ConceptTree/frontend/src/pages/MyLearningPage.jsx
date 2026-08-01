@@ -16,43 +16,45 @@ import {
 import { Badge, Button } from "../components/ui";
 import { ChartBar, StatCard } from "../components/common";
 import MarkdownContent from "../components/common/MarkdownContent";
+import LanguageToggle from "../components/common/LanguageToggle";
 import { useNoteContext } from "../contexts/NoteContext";
 import { usePlanContext } from "../contexts/PlanContext";
+import { useLanguage } from "../contexts/LanguageContext";
 import { statsApi } from "../services/api";
 
-const tabs = [
-  { id: "profile", label: "我的画像", icon: User },
-  { id: "plans", label: "学习计划", icon: Archive },
-  { id: "notes", label: "全部笔记", icon: BookOpen },
-  { id: "stats", label: "学习统计", icon: BarChart3 },
+const getTabs = (t) => [
+  { id: "profile", label: t("learning.tab.profile"), icon: User },
+  { id: "plans", label: t("learning.tab.plans"), icon: Archive },
+  { id: "notes", label: t("learning.tab.notes"), icon: BookOpen },
+  { id: "stats", label: t("learning.tab.stats"), icon: BarChart3 },
 ];
 
-const statusFilters = [
-  { id: "all", label: "全部" },
-  { id: "active", label: "进行中" },
-  { id: "paused", label: "已暂停" },
-  { id: "completed", label: "已完成" },
-  { id: "archived", label: "已归档" },
+const getStatusFilters = (t) => [
+  { id: "all", label: t("learning.filter.all") },
+  { id: "active", label: t("status.active") },
+  { id: "paused", label: t("status.paused") },
+  { id: "completed", label: t("status.completed") },
+  { id: "archived", label: t("status.archived") },
 ];
 
-const getFrequencyLabel = (frequency, daysPerWeek) => {
+const getFrequencyLabel = (frequency, daysPerWeek, t) => {
   switch (frequency) {
     case "daily":
-      return "每天学习";
+      return t("frequency.daily");
     case "weekly":
-      return "每周复盘";
+      return t("frequency.weekly");
     case "custom":
-      return `每周 ${daysPerWeek || 3} 次`;
+      return t("frequency.custom", { count: daysPerWeek || 3 });
     default:
-      return "灵活安排";
+      return t("frequency.flexible");
   }
 };
 
-const getPlanStatusLabel = (plan) => {
-  if (plan.status === "paused") return "已暂停";
-  if (plan.archivedReason === "completed") return "已完成";
-  if (plan.status === "archived") return "已归档";
-  return "进行中";
+const getPlanStatusLabel = (plan, t) => {
+  if (plan.status === "paused") return t("status.paused");
+  if (plan.archivedReason === "completed") return t("status.completed");
+  if (plan.status === "archived") return t("status.archived");
+  return t("status.active");
 };
 
 const matchesPlanFilter = (plan, filter) => {
@@ -66,15 +68,16 @@ const matchesPlanFilter = (plan, filter) => {
   return plan.status === filter;
 };
 
-const formatPlanDate = (value) => {
+const formatPlanDate = (value, language) => {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString("zh-CN", { year: "numeric", month: "numeric", day: "numeric" });
+  return date.toLocaleDateString(language === "zh-CN" ? "zh-CN" : "en-US", { year: "numeric", month: "numeric", day: "numeric" });
 };
 
 const MyLearningPage = () => {
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
   const { userProfile, plans, actions } = usePlanContext();
   const { allNotes, actions: noteActions } = useNoteContext();
 
@@ -87,6 +90,8 @@ const MyLearningPage = () => {
   const [localEducation, setLocalEducation] = useState(userProfile?.education || "");
   const [statsData, setStatsData] = useState(null);
   const [distributionData, setDistributionData] = useState([]);
+  const tabs = useMemo(() => getTabs(t), [t]);
+  const statusFilters = useMemo(() => getStatusFilters(t), [t]);
 
   useEffect(() => {
     setLocalOccupation(userProfile?.occupation || "");
@@ -149,7 +154,7 @@ const MyLearningPage = () => {
   ).length;
 
   const handleAddAbility = () => {
-    const newAbility = prompt("添加新的能力标签:");
+    const newAbility = prompt(t("learning.profile.addPrompt"));
     if (!newAbility?.trim()) return;
     actions.setUserProfile({
       ...userProfile,
@@ -178,15 +183,16 @@ const MyLearningPage = () => {
   };
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-screen-xl flex-col px-6 py-10 md:px-12">
-      <div className="mb-12 flex items-center gap-4">
+    <div className="mx-auto flex min-h-screen max-w-screen-xl flex-col px-4 py-4 sm:px-6 md:px-10">
+      <div className="apple-toolbar sticky top-4 z-30 mb-10 flex items-center gap-3 rounded-[20px] px-3 py-2.5">
         <button
           onClick={() => navigate("/")}
-          className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition-[background-color,transform] duration-150 hover:bg-black/[0.06] active:scale-[0.94]"
         >
           <ArrowLeft size={24} strokeWidth={1.5} />
         </button>
-        <h1 className="text-2xl font-light text-zinc-900">我的学习</h1>
+        <h1 className="flex-1 text-lg font-semibold tracking-tight text-zinc-900">{t("learning.title")}</h1>
+        <LanguageToggle />
       </div>
 
       <div className="flex flex-col gap-12 lg:flex-row">
@@ -197,8 +203,8 @@ const MyLearningPage = () => {
               onClick={() => setActiveTab(tab.id)}
               className={`flex w-full items-center gap-4 rounded-xl px-6 py-4 text-sm font-medium transition-all duration-300 ${
                 activeTab === tab.id
-                  ? "bg-zinc-900 text-white shadow-lg shadow-zinc-200"
-                  : "text-zinc-500 hover:bg-white hover:text-zinc-900 hover:shadow-sm"
+                  ? "bg-white text-zinc-900 shadow-[0_2px_10px_rgba(0,0,0,0.08)]"
+                  : "text-zinc-500 hover:bg-white/60 hover:text-zinc-900"
               }`}
             >
               <tab.icon size={18} strokeWidth={1.5} />
@@ -207,17 +213,17 @@ const MyLearningPage = () => {
           ))}
         </div>
 
-        <div className="min-h-[600px] flex-1 rounded-[2rem] border border-zinc-100 bg-white p-10 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+        <div className="apple-card min-h-[600px] flex-1 rounded-[28px] p-6 sm:p-8 lg:p-10">
           {activeTab === "profile" ? (
             <div className="max-w-2xl space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <section>
                 <h2 className="mb-6 text-sm font-bold uppercase tracking-widest text-zinc-400">
-                  基础信息
+                  {t("learning.profile.info")}
                 </h2>
                 <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-zinc-500">
-                      职业 / 身份
+                      {t("learning.profile.occupation")}
                     </label>
                     <input
                       type="text"
@@ -239,13 +245,13 @@ const MyLearningPage = () => {
                       }
                       onCompositionStart={() => setIsComposing(true)}
                       onCompositionEnd={() => setIsComposing(false)}
-                      placeholder="例如：大三计算机学生"
+                      placeholder={t("learning.profile.occupationPlaceholder")}
                       className="w-full rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-sm outline-none transition-colors focus:border-zinc-300 focus:bg-white"
                     />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-zinc-500">
-                      教育背景
+                      {t("learning.profile.education")}
                     </label>
                     <input
                       type="text"
@@ -267,13 +273,13 @@ const MyLearningPage = () => {
                       }
                       onCompositionStart={() => setIsComposing(true)}
                       onCompositionEnd={() => setIsComposing(false)}
-                      placeholder="例如：信息工程本科"
+                      placeholder={t("learning.profile.educationPlaceholder")}
                       className="w-full rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-sm outline-none transition-colors focus:border-zinc-300 focus:bg-white"
                     />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-zinc-500">
-                      编程基础
+                      {t("learning.profile.programming")}
                     </label>
                     <select
                       value={userProfile?.programmingLevel || "入门"}
@@ -285,16 +291,16 @@ const MyLearningPage = () => {
                       }
                       className="w-full rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-sm outline-none transition-colors focus:border-zinc-300 focus:bg-white"
                     >
-                      {["无基础", "入门", "熟练"].map((level) => (
+                      {[["无基础", "none"], ["入门", "beginner"], ["熟练", "proficient"]].map(([level, key]) => (
                         <option key={level} value={level}>
-                          {level}
+                          {t(`learning.level.${key}`)}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-zinc-500">
-                      数学基础
+                      {t("learning.profile.math")}
                     </label>
                     <select
                       value={userProfile?.mathLevel || "入门"}
@@ -306,9 +312,9 @@ const MyLearningPage = () => {
                       }
                       className="w-full rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-sm outline-none transition-colors focus:border-zinc-300 focus:bg-white"
                     >
-                      {["无基础", "入门", "熟练"].map((level) => (
+                      {[["无基础", "none"], ["入门", "beginner"], ["熟练", "proficient"]].map(([level, key]) => (
                         <option key={level} value={level}>
-                          {level}
+                          {t(`learning.level.${key}`)}
                         </option>
                       ))}
                     </select>
@@ -318,7 +324,7 @@ const MyLearningPage = () => {
 
               <section>
                 <h2 className="mb-6 text-sm font-bold uppercase tracking-widest text-zinc-400">
-                  能力标签
+                  {t("learning.profile.abilities")}
                 </h2>
                 <div className="flex flex-wrap gap-2">
                   {(userProfile?.abilities || []).map((tag, index) => (
@@ -330,7 +336,7 @@ const MyLearningPage = () => {
                     onClick={handleAddAbility}
                     className="flex items-center gap-1 rounded-full border border-dashed border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-900"
                   >
-                    <Plus size={12} /> 添加
+                    <Plus size={12} /> {t("learning.profile.add")}
                   </button>
                 </div>
               </section>
@@ -338,7 +344,7 @@ const MyLearningPage = () => {
               {(userProfile?.masteredKnowledge || []).length > 0 ? (
                 <section>
                   <h2 className="mb-6 text-sm font-bold uppercase tracking-widest text-zinc-400">
-                    已掌握知识
+                    {t("learning.profile.mastered")}
                   </h2>
                   <div className="flex flex-wrap gap-2">
                     {userProfile.masteredKnowledge.map((knowledge) => (
@@ -360,10 +366,10 @@ const MyLearningPage = () => {
               <div className="flex flex-col gap-4 border-b border-zinc-50 pb-6 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-400">
-                    学习计划
+                    {t("learning.tab.plans")}
                   </h2>
                   <p className="mt-2 text-sm text-zinc-500">
-                    区分进行中、暂停中、已完成和已归档的计划状态。
+                    {t("learning.plans.help")}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -399,38 +405,38 @@ const MyLearningPage = () => {
                               {plan.title}
                             </h3>
                             <p className="mt-1 text-xs text-zinc-400">
-                              最近学习 {plan.lastAccess || "刚刚"}
+                              {t("learning.plans.recent", { value: plan.lastAccess || t("home.justNow") })}
                             </p>
                           </div>
                           <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600">
-                            {getPlanStatusLabel(plan)}
+                            {getPlanStatusLabel(plan, t)}
                           </span>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
                           <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-500">
-                            {getFrequencyLabel(plan.studyFrequency, plan.studyDaysPerWeek)}
+                            {getFrequencyLabel(plan.studyFrequency, plan.studyDaysPerWeek, t)}
                           </span>
                           {plan.targetEndDate ? (
                             <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
-                              截止 {formatPlanDate(plan.targetEndDate)}
+                              {t("home.deadline", { date: formatPlanDate(plan.targetEndDate, language) })}
                             </span>
                           ) : null}
                           {plan.reminderEnabled ? (
                             <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700">
-                              提醒 {plan.reminderTime || "已开启"}
+                              {t("learning.plans.reminder", { value: plan.reminderTime || t("graph.reminderOn") })}
                             </span>
                           ) : null}
                           {plan.archivedReason ? (
                             <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-500">
-                              归档原因 {plan.archivedReason === "completed" ? "完成" : "手动"}
+                              {t("learning.plans.archiveReason", { value: plan.archivedReason === "completed" ? t("status.completed") : t("learning.plans.manual") })}
                             </span>
                           ) : null}
                         </div>
 
                         <div>
                           <div className="mb-2 flex justify-between text-xs font-medium text-zinc-400">
-                            <span>完成度</span>
+                            <span>{t("learning.plans.completion")}</span>
                             <span className="text-zinc-900">{percent}%</span>
                           </div>
                           <div className="h-2 overflow-hidden rounded-full bg-zinc-200/70">
@@ -443,7 +449,7 @@ const MyLearningPage = () => {
 
                         <div className="flex flex-wrap gap-3">
                           <Button size="sm" onClick={() => navigate(`/graph/${plan.id}`)}>
-                            打开图谱
+                            {t("learning.plans.open")}
                           </Button>
                           {plan.status === "archived" ? (
                             <Button
@@ -452,7 +458,7 @@ const MyLearningPage = () => {
                               icon={RotateCcw}
                               onClick={() => handleRestore(plan.id)}
                             >
-                              恢复
+                              {t("home.plan.resume")}
                             </Button>
                           ) : (
                             <Button
@@ -461,7 +467,7 @@ const MyLearningPage = () => {
                               icon={plan.status === "paused" ? Play : Pause}
                               onClick={() => handleResumeOrPause(plan)}
                             >
-                              {plan.status === "paused" ? "恢复学习" : "暂停计划"}
+                              {plan.status === "paused" ? t("learning.plans.resumeLearning") : t("learning.plans.pause")}
                             </Button>
                           )}
                         </div>
@@ -474,7 +480,7 @@ const MyLearningPage = () => {
               {filteredPlans.length === 0 ? (
                 <div className="py-20 text-center text-zinc-400">
                   <Archive size={48} className="mx-auto mb-4 opacity-20" strokeWidth={1} />
-                  当前筛选下还没有学习计划
+                  {t("learning.plans.empty")}
                 </div>
               ) : null}
             </div>
@@ -485,14 +491,14 @@ const MyLearningPage = () => {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-50 pb-6">
                 <div className="flex items-center gap-3">
                   <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-400">
-                    全部笔记
+                    {t("learning.tab.notes")}
                   </h2>
                   <select
                     value={selectedPlanFilter}
                     onChange={(e) => setSelectedPlanFilter(e.target.value)}
                     className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-500 outline-none focus:ring-1 focus:ring-zinc-200"
                   >
-                    <option value="all">全部计划</option>
+                    <option value="all">{t("learning.notes.allPlans")}</option>
                     {plans.map((plan) => (
                       <option key={plan.id} value={plan.id}>
                         {plan.title}
@@ -507,7 +513,7 @@ const MyLearningPage = () => {
                   />
                   <input
                     type="text"
-                    placeholder="搜索笔记..."
+                    placeholder={t("learning.notes.search")}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-56 rounded-full bg-zinc-50 py-2 pl-10 pr-4 text-sm transition-all focus:ring-1 focus:ring-zinc-200"
@@ -531,7 +537,7 @@ const MyLearningPage = () => {
                             <button
                               onClick={() => noteActions.deleteNote(note.id).catch(() => {})}
                               className="absolute right-3 top-3 rounded-full p-1 text-zinc-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-400 group-hover:opacity-100"
-                              title="删除笔记"
+                              title={t("learning.notes.delete")}
                             >
                               <X size={13} />
                             </button>
@@ -574,8 +580,8 @@ const MyLearningPage = () => {
                 <div className="py-20 text-center text-zinc-400">
                   <BookOpen size={48} className="mx-auto mb-4 opacity-20" strokeWidth={1} />
                   {searchQuery || selectedPlanFilter !== "all"
-                    ? "没有找到匹配的笔记"
-                    : "暂时还没有笔记"}
+                    ? t("learning.notes.noMatch")
+                    : t("learning.notes.empty")}
                 </div>
               )}
             </div>
@@ -585,32 +591,32 @@ const MyLearningPage = () => {
             <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <section>
                 <h2 className="mb-6 text-sm font-bold uppercase tracking-widest text-zinc-400">
-                  总览
+                  {t("learning.stats.overview")}
                 </h2>
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                   <StatCard
-                    label="已完成计划"
+                    label={t("learning.stats.completed")}
                     value={statsData?.summary?.completedPlans ?? completedPlansCount}
                   />
                   <StatCard
-                    label="进行中"
+                    label={t("learning.stats.active")}
                     value={statsData?.summary?.activePlans ?? activePlansCount}
                   />
-                  <StatCard label="已暂停" value={pausedPlansCount} />
-                  <StatCard label="已归档" value={archivedPlansCount} />
+                  <StatCard label={t("learning.stats.paused")} value={pausedPlansCount} />
+                  <StatCard label={t("learning.stats.archived")} value={archivedPlansCount} />
                 </div>
               </section>
 
               <section>
                 <h2 className="mb-6 text-sm font-bold uppercase tracking-widest text-zinc-400">
-                  知识领域分布
+                  {t("learning.stats.distribution")}
                 </h2>
                 <div className="space-y-6 rounded-2xl border border-zinc-100 bg-zinc-50 p-8">
                   {distributionData.length > 0 ? (
                     distributionData.map((item, index) => (
                       <ChartBar
                         key={item.domain || index}
-                        label={item.domain || "未分类"}
+                        label={item.domain || t("learning.stats.uncategorized")}
                         value={item.percentage || 0}
                         color={
                           item.domain?.includes("数学")
@@ -624,7 +630,7 @@ const MyLearningPage = () => {
                     ))
                   ) : (
                     <div className="py-8 text-center text-sm text-zinc-400">
-                      开始学习后，这里会显示你的知识领域分布
+                      {t("learning.stats.empty")}
                     </div>
                   )}
                 </div>

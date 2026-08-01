@@ -122,12 +122,12 @@ test.describe('ConceptTree Main Flow', () => {
     await page.goto('/');
 
     await page.locator('textarea').fill('我想学React');
-    await page.click('button:has-text("生成图谱")');
+    await page.click('button:has-text("Create learning map")');
 
-    await expect(page.locator('text=识别目标')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('text=Interpreted goal')).toBeVisible({ timeout: 8000 });
     await expect(page.locator('text=掌握React基础')).toBeVisible();
 
-    await page.click('button:has-text("确认生成")');
+    await page.click('button:has-text("Create map")');
 
     await page.waitForURL('**/graph/p_mock_123', { timeout: 15000 });
     expect(page.url()).toContain('/graph/p_mock_123');
@@ -157,14 +157,14 @@ test.describe('ConceptTree Main Flow', () => {
     await page.goto('/');
 
     await page.locator('textarea').fill('我想学编程');
-    await page.click('button:has-text("生成图谱")');
+    await page.click('button:has-text("Create learning map")');
 
-    await expect(page.locator('text=识别目标')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('text=Interpreted goal')).toBeVisible({ timeout: 8000 });
     await expect(page.locator('text=学习编程')).toBeVisible();
 
-    await page.click('button:has-text("修改输入")');
+    await page.click('button:has-text("Edit input")');
 
-    await expect(page.locator('text=识别目标')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('text=Interpreted goal')).not.toBeVisible({ timeout: 3000 });
     await expect(page.locator('textarea')).toHaveValue('我想学编程');
   });
 
@@ -217,12 +217,12 @@ test.describe('ConceptTree Main Flow', () => {
 
     await page.goto('/my-learning');
 
-    await page.click('button:has-text("学习统计")');
+    await page.click('button:has-text("Insights")');
 
     await expect(page.getByText('42').first()).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('3').first()).toBeVisible();
 
-    await expect(page.getByRole('heading', { name: '知识领域分布' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Knowledge areas' })).toBeVisible();
   });
 
   test('error state: 500 from parse-goal returns button to interactive state', async ({ page }) => {
@@ -240,9 +240,9 @@ test.describe('ConceptTree Main Flow', () => {
 
     await page.goto('/');
     await page.locator('textarea').fill('我想报错');
-    await page.click('button:has-text("生成图谱")');
+    await page.click('button:has-text("Create learning map")');
 
-    await expect(page.locator('button:has-text("生成图谱")')).toBeEnabled({ timeout: 8000 });
+    await expect(page.locator('button:has-text("Create learning map")')).toBeEnabled({ timeout: 8000 });
 
     expect(page.url()).not.toContain('/graph');
   });
@@ -306,9 +306,9 @@ test.describe('ConceptTree Main Flow', () => {
 
     await page.goto('/');
     await page.locator('textarea').fill('我想学React');
-    await page.click('button:has-text("生成图谱")');
+    await page.click('button:has-text("Create learning map")');
     await expect(page.locator('text=掌握React')).toBeVisible({ timeout: 8000 });
-    await page.click('button:has-text("确认生成")');
+    await page.click('button:has-text("Create map")');
     await page.waitForURL('**/graph/p_bg_test', { timeout: 15000 });
 
     expect(capturedBody).not.toBeNull();
@@ -359,13 +359,13 @@ test.describe('ConceptTree Main Flow', () => {
     });
 
     await page.goto('/graph/p_test_plan');
-    await page.click('button[title="修改目标"]');
+    await page.click('button[title="Edit goal"]');
 
-    await expect(page.locator('text=修改学习目标')).toBeVisible({ timeout: 5000 });
-    await page.locator('textarea[placeholder*="输入修改后"]').fill('学Python数据分析');
-    await page.click('button:has-text("分析变更")');
+    await expect(page.locator('text=Edit learning goal')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea[placeholder*="updated learning goal"]').fill('学Python数据分析');
+    await page.click('button:has-text("Analyze change")');
 
-    await expect(page.locator('text=小幅调整')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('text=This is a focused adjustment')).toBeVisible({ timeout: 8000 });
     await expect(page.locator('text=新目标是原目标的具体化')).toBeVisible();
   });
 
@@ -381,8 +381,8 @@ test.describe('ConceptTree Main Flow', () => {
 
     await page.goto('/');
     await page.locator('textarea').fill('触发错误');
-    await page.click('button:has-text("生成图谱")');
+    await page.click('button:has-text("Create learning map")');
 
-    await expect(page.locator('text=解析目标失败，请稍后重试')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Could not analyze the goal. Please try again.')).toBeVisible({ timeout: 5000 });
   });
 });

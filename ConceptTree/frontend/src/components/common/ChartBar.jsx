@@ -1,10 +1,12 @@
 import React from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
-const ChartBar = ({ label, value, color, count }) => (
-  <div className="space-y-2">
+const ChartBar = ({ label, value, color, count }) => {
+  const { t } = useLanguage();
+  return <div className="space-y-2">
     <div className="flex justify-between text-xs font-medium text-zinc-500">
       <span>{label}</span>
-      <span>{count} 知识点</span>
+      <span>{t('chart.concepts', { count })}</span>
     </div>
     <div className="h-3 bg-zinc-200/50 rounded-full overflow-hidden">
       <div 
@@ -12,7 +14,7 @@ const ChartBar = ({ label, value, color, count }) => (
         style={{ width: `${value}%` }}
       />
     </div>
-  </div>
-);
+  </div>;
+};
 
 export default ChartBar;

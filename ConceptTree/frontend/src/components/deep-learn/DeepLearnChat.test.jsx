@@ -33,7 +33,7 @@ describe("DeepLearnChat", () => {
   });
 
   it("uses a full assistant bubble while waiting for a response", () => {
-    const { container } = render(
+    render(
       <DeepLearnChat
         {...baseProps}
         isStreaming

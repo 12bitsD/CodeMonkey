@@ -1,11 +1,13 @@
 import { CheckCircle2, Circle, HelpCircle } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export function MasteryChecklist({ items, passedKeys = new Set(), getItemKey, onStartQuiz }) {
+  const { t } = useLanguage();
   if (!items?.length) return null;
   return (
     <section data-testid="mastery-section" className="space-y-3">
       <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-        <CheckCircle2 size={12} /> 掌握标准
+        <CheckCircle2 size={12} /> {t('node.mastery')}
       </h4>
       <ul className="space-y-2">
         {items.map((item, i) => {

@@ -96,7 +96,7 @@ const fetchApi = async (endpoint, options = {}) => {
 
     if (!json.success) {
       if (res.status === 401) {
-        notifyAuthInvalid();
+        notifyAuthExpired();
       }
       throw new ApiError({
         message: json.error?.message || "API Error",
