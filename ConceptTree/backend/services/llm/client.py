@@ -49,6 +49,7 @@ class UnifiedLLMClient:
             base_url=settings.LLM_BASE_URL if settings.LLM_BASE_URL else None,
             model=settings.LLM_MODEL,
             timeout=settings.LLM_TIMEOUT,
+            reasoning_effort=settings.LLM_REASONING_EFFORT,
         )
 
     def _create_fallback_provider(self) -> Optional[OpenAICompatibleProvider]:
@@ -283,7 +284,7 @@ class UnifiedLLMClient:
         )
 
         try:
-            return json.loads(response.content)
+            return json.loads(response.content, strict=False)
         except json.JSONDecodeError as e:
             raise LLMServiceError(f"Failed to parse JSON response: {e}")
 

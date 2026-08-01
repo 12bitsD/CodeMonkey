@@ -36,6 +36,7 @@
     "targetNodeId": "id of the target node"
   },
   "rules": [
+    "Branching reflection (do this BEFORE finalizing): pause and ask - are there genuinely independent prerequisite skills that should be parallel nodes at the same depth? If yes, include them. If a long linear chain (>5 nodes deep without branching) emerges, that is usually a sign that you missed parallel prerequisites - reconsider. Do NOT fabricate parallel nodes for visual balance - quality of dependency truth over visual aesthetics.",
     "Node Count: Calibrate by learning_purpose — explore: 5-7 nodes, apply: 7-10 nodes, master: 10-15 nodes",
     "Node Fields: id MUST be n1, n2 format. name MUST be Chinese. isTarget MUST be true for exactly ONE node.",
     "what Count: Decide per node based on conceptual complexity. Do NOT output exactly 3 items by default. Simple/foundational nodes: 3-4 items. Normal application nodes: 4-6 items. Core algorithm/theory/target nodes: 5-8 items, up to 10 if the node genuinely contains more distinct learnable units.",

@@ -273,7 +273,7 @@ export default function DeepLearnPage() {
     session, messages, conceptsStatus, weakPoints, isStreaming,
     isInitializing, isRestarting, canSendMessage, uiFlags, sendMessage, sendCommand, error,
     pinnedImages, pinImage, unpinImage, noteSuggestion, dismissNoteSuggestion,
-    noteId, isGeneratingNote,
+    noteId, isGeneratingNote, isCompleted,
   } = useDeepLearnSession({ planId, nodeId });
 
   const [notesOpen, setNotesOpen] = useState(false);
@@ -384,6 +384,14 @@ export default function DeepLearnPage() {
       setSelectedNoteId(null);
     }
   }, [selectedNote, selectedNoteId]);
+
+  useEffect(() => {
+    if (!isCompleted) return;
+    const destination = noteId
+      ? `/deep-learn/${planId}/${nodeId}/note/${noteId}`
+      : `/graph/${planId}`;
+    navigate(destination, { replace: true });
+  }, [isCompleted, navigate, nodeId, noteId, planId]);
 
   if (!session) {
     return (

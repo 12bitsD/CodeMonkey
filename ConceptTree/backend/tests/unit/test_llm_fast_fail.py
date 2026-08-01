@@ -1,7 +1,7 @@
 import pytest
 
 from services.llm.client import LLMServiceError, UnifiedLLMClient
-from services.llm.providers import LLMMessage
+from services.llm.providers import LLMMessage, LLMResponse
 from services.llm.providers.openai_compatible import LLMProviderError
 
 pytestmark = pytest.mark.no_db
@@ -97,3 +97,21 @@ async def test_provider_call_is_hard_capped_by_provider_timeout(monkeypatch):
         await client.chat([LLMMessage(role="user", content="hi")])
 
     assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_json_accepts_unescaped_control_characters_from_json_mode():
+    client = UnifiedLLMClient.__new__(UnifiedLLMClient)
+
+    async def fake_chat(**_kwargs):
+        return LLMResponse(
+            content='{"is_correct": true, "feedback": "第一行\n第二行"}',
+            model="kimi-k3",
+            finish_reason="stop",
+        )
+
+    client.chat = fake_chat
+
+    result = await client.chat_json("system", "user")
+
+    assert result == {"is_correct": True, "feedback": "第一行\n第二行"}

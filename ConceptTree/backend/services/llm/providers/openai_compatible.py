@@ -17,8 +17,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         base_url: Optional[str] = None,
         model: str = "",
         timeout: int = 30,
+        reasoning_effort: Optional[str] = None,
     ):
         super().__init__(api_key, base_url, model, timeout)
+        self.reasoning_effort = reasoning_effort
 
         client_kwargs = {
             "api_key": api_key,
@@ -54,12 +56,18 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 {"role": msg.role, "content": msg.content} for msg in messages
             ]
 
+            selected_model = model or self.model
             request_kwargs = {
-                "model": model or self.model,
+                "model": selected_model,
                 "messages": openai_messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
             }
+            if selected_model == "kimi-k3":
+                request_kwargs["max_completion_tokens"] = max_tokens
+                if self.reasoning_effort:
+                    request_kwargs["reasoning_effort"] = self.reasoning_effort
+            else:
+                request_kwargs["temperature"] = temperature
+                request_kwargs["max_tokens"] = max_tokens
 
             if response_format:
                 request_kwargs["response_format"] = response_format
@@ -267,13 +275,20 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             openai_messages = [
                 {"role": msg.role, "content": msg.content} for msg in messages
             ]
-            stream = await self.client.chat.completions.create(
-                model=model or self.model,
-                messages=openai_messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-            )
+            selected_model = model or self.model
+            request_kwargs = {
+                "model": selected_model,
+                "messages": openai_messages,
+                "stream": True,
+            }
+            if selected_model == "kimi-k3":
+                request_kwargs["max_completion_tokens"] = max_tokens
+                if self.reasoning_effort:
+                    request_kwargs["reasoning_effort"] = self.reasoning_effort
+            else:
+                request_kwargs["temperature"] = temperature
+                request_kwargs["max_tokens"] = max_tokens
+            stream = await self.client.chat.completions.create(**request_kwargs)
             async for chunk in stream:
                 if chunk.choices:
                     delta = chunk.choices[0].delta.content

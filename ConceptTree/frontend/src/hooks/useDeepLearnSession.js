@@ -38,6 +38,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
   const noteSuggestionTimestampRef = useRef(null);
   const [noteId, setNoteId] = useState(null);
   const [isGeneratingNote, setIsGeneratingNote] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
   const sessionIdRef = useRef(null);
@@ -120,6 +121,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
         break;
       case 'node_completed':
         setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
+        setIsCompleted(true);
         break;
       case 'restart':
         restartSessionReceivedRef.current = true;
@@ -136,6 +138,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
         setNoteSuggestion(null);
         setNoteId(null);
         setIsGeneratingNote(false);
+        setIsCompleted(false);
         setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
         streamingMsgIdRef.current = null;
         deepLearnApi.initialize(event.new_session_id).then(res =>
@@ -253,6 +256,7 @@ export function useDeepLearnSession({ planId, nodeId }) {
       setNoteSuggestion(null);
       setNoteId(null);
       setIsGeneratingNote(false);
+      setIsCompleted(false);
       setUiFlags({ showCommands: false, showTestConfirm: null, showFailOptions: null });
       streamingMsgIdRef.current = null;
       setSession(prev => prev ? { ...prev, state: 'INITIALIZING' } : prev);
@@ -372,5 +376,6 @@ export function useDeepLearnSession({ planId, nodeId }) {
     dismissNoteSuggestion,
     noteId,
     isGeneratingNote,
+    isCompleted,
   };
 }
