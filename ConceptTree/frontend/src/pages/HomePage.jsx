@@ -447,7 +447,7 @@ const HomePage = () => {
             ) : null}
           </div>
         ) : (
-          <div className="group relative overflow-hidden rounded-[22px] border border-black/[0.12] bg-white/95 shadow-[0_14px_40px_rgba(15,15,15,0.07),0_2px_8px_rgba(15,15,15,0.04)] transition-[border-color,box-shadow,transform] duration-200 focus-within:border-[#0071e3]/45 focus-within:shadow-[0_0_0_4px_rgba(0,113,227,0.09),0_18px_48px_rgba(15,15,15,0.09)]">
+          <div className="group relative overflow-hidden rounded-[22px] border border-black/[0.12] bg-white/95 shadow-[0_14px_40px_rgba(15,15,15,0.07),0_2px_8px_rgba(15,15,15,0.04)] transition-[border-color,box-shadow,transform] duration-200 focus-within:border-black/40 focus-within:shadow-[0_0_0_4px_rgba(0,0,0,0.07),0_18px_48px_rgba(15,15,15,0.09)]">
             <textarea
               className="h-40 w-full resize-none bg-transparent px-6 pb-4 pt-6 text-base font-normal leading-7 text-[#1d1d1f] outline-none placeholder:text-[#9a9aa0] focus-visible:outline-none sm:h-44 sm:px-7 sm:pt-7 sm:text-lg"
               placeholder={t("home.goal.placeholder")}
@@ -472,7 +472,7 @@ const HomePage = () => {
                 disabled={!inputText.trim() || isAnalyzing || isGenerating}
                 size="lg"
                 icon={Sparkles}
-                className="shrink-0 rounded-full bg-[#0071e3] px-5 shadow-none hover:bg-[#0077ed] focus-visible:outline-[#0071e3]"
+                className="shrink-0 rounded-full bg-[#1d1d1f] px-5 shadow-none hover:bg-black focus-visible:outline-black"
               >
                 {isAnalyzing ? t("home.goal.analyzing") : t("home.goal.generate")}
               </Button>
