@@ -17,6 +17,7 @@ import { ChartBar, StatCard } from "../components/common";
 import MarkdownContent from "../components/common/MarkdownContent";
 import WorkspaceShell from "../components/common/WorkspaceShell";
 import { compactPlanTitle } from "../utils/planTitle";
+import { formatLastStudied } from "../utils/timeFormatting";
 import { useNoteContext } from "../contexts/NoteContext";
 import { usePlanContext } from "../contexts/PlanContext";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -399,7 +400,11 @@ const MyLearningPage = () => {
                               {compactPlanTitle(plan.title)}
                             </h3>
                             <p className="mt-1 text-xs text-zinc-400">
-                              {t("learning.plans.recent", { value: plan.lastAccess || t("home.justNow") })}
+                              {t("learning.plans.recent", {
+                                value:
+                                  formatLastStudied(plan.lastAccess, language) ||
+                                  t("home.justNow"),
+                              })}
                             </p>
                           </div>
                           <span className="rounded-md bg-[#f7f6f3] px-2.5 py-1 text-xs font-medium text-zinc-600">

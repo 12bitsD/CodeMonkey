@@ -27,6 +27,7 @@ import { aiApi, graphApi, plansApi } from "../services/api";
 import { calculateLayout } from "../utils/layoutEngine";
 import { getPlanReminder, getTopPlanReminder } from "../utils/planReminders";
 import { compactPlanTitle } from "../utils/planTitle";
+import { formatLastStudied } from "../utils/timeFormatting";
 
 const TODAY_RECOMMENDATION_CACHE_KEY = "concept_tree_today_recommendation";
 
@@ -636,7 +637,11 @@ const HomePage = () => {
                           {compactPlanTitle(plan.title)}
                         </h3>
                         <p className="text-xs font-medium tracking-wide text-zinc-400">
-                          {t("home.lastStudied", { value: plan.lastAccess || t("home.justNow") })}
+                          {t("home.lastStudied", {
+                            value:
+                              formatLastStudied(plan.lastAccess, language) ||
+                              t("home.justNow"),
+                          })}
                         </p>
                       </div>
 
