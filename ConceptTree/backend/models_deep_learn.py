@@ -72,6 +72,7 @@ class AssessmentOverallOutput(BaseModel):
 class CreateSessionRequest(BaseModel):
     node_id: str
     plan_id: str
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
 
 class CreateSessionData(BaseModel):
@@ -89,10 +90,12 @@ class CreateSessionData(BaseModel):
 
 class MessageRequest(BaseModel):
     content: str
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
 
 class CommandRequest(BaseModel):
     command: DeepLearnCommand
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
 
 class NoteGeneratorOutput(BaseModel):

@@ -6,6 +6,7 @@ import os
 
 from models_deep_learn import AssessmentOverallOutput
 from services.llm.client import get_llm_client
+from services.llm.language import apply_response_language
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,13 @@ def _load_system_prompt() -> str:
         return json.load(f)["system_prompt"]
 
 
-_FALLBACK = AssessmentOverallOutput(
-    passed=False, confidence=0.0, ready_for_test=False, reason="评估服务暂不可用"
-)
+def _fallback(language: str) -> AssessmentOverallOutput:
+    return AssessmentOverallOutput(
+        passed=False,
+        confidence=0.0,
+        ready_for_test=False,
+        reason="评估服务暂不可用" if language == "zh-CN" else "Assessment is temporarily unavailable.",
+    )
 
 
 class AssessmentOverallAgent:
@@ -40,8 +45,13 @@ class AssessmentOverallAgent:
         concepts_done: list[str],
         concepts_skipped: list[str],
         weak_points: list[str],
+        language: str = "zh-CN",
     ) -> AssessmentOverallOutput:
-        system_prompt = self._get_system_prompt()
+        system_prompt = apply_response_language(
+            self._get_system_prompt(),
+            language,
+            json_mode=True,
+        )
         user_prompt = (
             f"[场景标识] A（readiness — 判断是否准备好测试）\n"
             f"[节点] {node_name}\n"
@@ -57,15 +67,20 @@ class AssessmentOverallAgent:
             return AssessmentOverallOutput(**raw)
         except Exception as e:
             logger.error("AssessmentOverallAgent.run_readiness failed: %s", e)
-            return _FALLBACK
+            return _fallback(language)
 
     async def run_final_judge(
         self, *,
         node_name: str,
         test_qa_pairs: list[dict],
         weak_points: list[str],
+        language: str = "zh-CN",
     ) -> AssessmentOverallOutput:
-        system_prompt = self._get_system_prompt()
+        system_prompt = apply_response_language(
+            self._get_system_prompt(),
+            language,
+            json_mode=True,
+        )
         user_prompt = (
             f"[场景标识] B（test — 判断综合测试是否通过）\n"
             f"[节点] {node_name}\n"
@@ -80,4 +95,4 @@ class AssessmentOverallAgent:
             return AssessmentOverallOutput(**raw)
         except Exception as e:
             logger.error("AssessmentOverallAgent.run_final_judge failed: %s", e)
-            return _FALLBACK
+            return _fallback(language)

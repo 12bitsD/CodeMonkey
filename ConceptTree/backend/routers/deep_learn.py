@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from threading import Lock
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -81,6 +82,7 @@ async def create_session(
     session, node_meta = await _service.get_or_create_session(
         db=db, user_id=user_id, node_id=req.node_id, plan_id=req.plan_id,
     )
+    node_meta = await _service.localize_node_meta(node_meta, req.language)
     is_resumed = session.state != "INITIALIZING"
     data = CreateSessionData(
         session_id=session.id,
@@ -88,7 +90,7 @@ async def create_session(
         is_resumed=is_resumed,
         node_name=node_meta["node_name"],
         node_why=node_meta["node_why"],
-        what_list=session.what_list,
+        what_list=node_meta["what_list"],
         concepts_status=session.concepts_status,
         weak_points=session.weak_points,
         current_concept_index=session.current_concept_index,
@@ -118,6 +120,7 @@ async def initialize(
     session_id: str,
     http_request: Request,
     background_tasks: BackgroundTasks,
+    language: Literal["en-US", "zh-CN"] = "en-US",
     user_id: str = Depends(get_current_user_id),
 ):
     with get_db_context() as db:
@@ -130,9 +133,15 @@ async def initialize(
 
     with get_db_context() as db:
         node_meta = _service._fetch_node_meta(db, session.node_id)
+    node_meta = await _service.localize_node_meta(node_meta, language)
 
     async def gen():
-        async for event in _service.stream_initialize(session, node_meta, background_tasks=background_tasks):
+        async for event in _service.stream_initialize(
+            session,
+            node_meta,
+            background_tasks=background_tasks,
+            language=language,
+        ):
             if await http_request.is_disconnected():
                 return
             yield event
@@ -158,9 +167,16 @@ async def send_message(
 
     with get_db_context() as db:
         node_meta = _service._fetch_node_meta(db, session.node_id)
+    node_meta = await _service.localize_node_meta(node_meta, req.language)
 
     async def gen():
-        async for event in _service.stream_message(session, node_meta, req.content, background_tasks=background_tasks):
+        async for event in _service.stream_message(
+            session,
+            node_meta,
+            req.content,
+            background_tasks=background_tasks,
+            language=req.language,
+        ):
             if await http_request.is_disconnected():
                 return
             yield event
@@ -186,9 +202,16 @@ async def send_command(
 
     with get_db_context() as db:
         node_meta = _service._fetch_node_meta(db, session.node_id)
+    node_meta = await _service.localize_node_meta(node_meta, req.language)
 
     async def gen():
-        async for event in _service.stream_command(session, node_meta, req.command, background_tasks=background_tasks):
+        async for event in _service.stream_command(
+            session,
+            node_meta,
+            req.command,
+            background_tasks=background_tasks,
+            language=req.language,
+        ):
             if await http_request.is_disconnected():
                 return
             yield event

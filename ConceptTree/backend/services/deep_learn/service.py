@@ -43,6 +43,7 @@ from services.deep_learn.state_machine import (
     decide_on_user_message,
 )
 from services.llm.client import get_llm_client
+from services.llm.language import apply_response_language
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ _DEFINITION_PATTERNS = re.compile(
     r"(是指|是一种|指的是|定义为|称为|即|就是说|也就是).{5,80}[。！；\n]",
     re.UNICODE,
 )
+_CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def _sse(event_type: str, **data) -> str:
@@ -93,8 +95,14 @@ def _maybe_emit_note_suggestion(content: str) -> Optional[str]:
     return snippet if len(snippet) >= 10 else None
 
 
-async def _generate_test_questions(node_name: str, what_list: list[str], weak_points: list[str]) -> list[str]:
+async def _generate_test_questions(
+    node_name: str,
+    what_list: list[str],
+    weak_points: list[str],
+    language: str = "zh-CN",
+) -> list[str]:
     system = "你是出题专家。根据节点内容生成 3 道综合测试题，测试用户对整个节点的掌握程度。仅返回 JSON：{\"questions\": [\"题1\",\"题2\",\"题3\"]}"
+    system = apply_response_language(system, language, json_mode=True)
     weak_str = "、".join(weak_points) if weak_points else "无"
     user = (
         f"节点：{node_name}\n"
@@ -109,10 +117,16 @@ async def _generate_test_questions(node_name: str, what_list: list[str], weak_po
             return qs[:3]
     except Exception as e:
         logger.error("_generate_test_questions failed: %s", e)
+    if language == "zh-CN":
+        return [
+            f"请用自己的话解释 {what_list[0] if what_list else node_name} 的核心原理。",
+            f"举一个 {node_name} 在实际场景中的应用例子。",
+            f"列举学习 {node_name} 时常见的误区或陷阱。",
+        ]
     return [
-        f"请用自己的话解释 {what_list[0] if what_list else node_name} 的核心原理。",
-        f"举一个 {node_name} 在实际场景中的应用例子。",
-        f"列举学习 {node_name} 时常见的误区或陷阱。",
+        f"Explain the core principle of {what_list[0] if what_list else node_name} in your own words.",
+        f"Give one practical example of {node_name}.",
+        f"Identify common misconceptions or pitfalls when learning {node_name}.",
     ]
 
 
@@ -125,6 +139,70 @@ class DeepLearnService:
         self.memory_updater = MemoryUpdateService()
         self.image_trigger = ImageTriggerAgent()
         self.note_generator = NoteGeneratorAgent()
+        self._localized_node_cache: dict[str, dict] = {}
+
+    async def localize_node_meta(self, node_meta: dict, language: str) -> dict:
+        """Return display/agent metadata in the requested UI language.
+
+        Learning maps keep their original authored language in storage. This
+        translation layer lets an existing Chinese map render and teach in
+        English (and vice versa) without mutating the saved graph.
+        """
+        target_language = "zh-CN" if language == "zh-CN" else "en-US"
+        source = {
+            "node_name": str(node_meta.get("node_name") or ""),
+            "node_why": str(node_meta.get("node_why") or ""),
+            "what_list": [str(item) for item in (node_meta.get("what_list") or [])],
+        }
+        combined = " ".join([source["node_name"], source["node_why"], *source["what_list"]])
+        has_cjk = bool(_CJK_PATTERN.search(combined))
+        if (target_language == "en-US" and not has_cjk) or (target_language == "zh-CN" and has_cjk):
+            return source
+
+        cache_key = json.dumps(
+            {"language": target_language, "source": source},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        cached = self._localized_node_cache.get(cache_key)
+        if cached:
+            return dict(cached)
+
+        target_name = "natural English" if target_language == "en-US" else "Simplified Chinese"
+        system_prompt = (
+            f"Translate learning-map metadata into {target_name}. "
+            "Preserve technical meaning, formulas, symbols, library names, and list order. "
+            "Do not add explanations. Return only a JSON object with exactly these keys: "
+            "node_name (string), node_why (string), what_list (array of strings)."
+        )
+        user_prompt = json.dumps(source, ensure_ascii=False)
+        try:
+            translated = await get_llm_client().chat_json(
+                system_prompt,
+                user_prompt,
+                temperature=0.0,
+                max_tokens=1200,
+                max_retries=2,
+            )
+            translated_list = translated.get("what_list")
+            if (
+                not isinstance(translated.get("node_name"), str)
+                or not isinstance(translated.get("node_why"), str)
+                or not isinstance(translated_list, list)
+                or len(translated_list) != len(source["what_list"])
+                or not all(isinstance(item, str) and item.strip() for item in translated_list)
+            ):
+                raise ValueError("localized node metadata has an invalid shape")
+            result = {
+                "node_name": translated["node_name"].strip(),
+                "node_why": translated["node_why"].strip(),
+                "what_list": [item.strip() for item in translated_list],
+            }
+            self._localized_node_cache[cache_key] = result
+            return dict(result)
+        except Exception as error:
+            logger.warning("node metadata localization failed; using source text: %s", error)
+            return source
 
     async def get_or_create_session(
         self, *, db: DbSession, user_id: str, node_id: str, plan_id: str,
@@ -160,13 +238,20 @@ class DeepLearnService:
     async def stream_initialize(
         self, session: SessionState, node_meta: dict,
         background_tasks: Optional[BackgroundTasks] = None,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         try:
             if session.state != "INITIALIZING":
                 yield _sse("error", error={"code": "INVALID_STATE", "message": f"session state is {session.state}, not INITIALIZING"})
                 return
 
-            async for event in self._run_teach(session, node_meta, mode="normal", background_tasks=background_tasks):
+            teach_kwargs = {
+                "mode": "normal",
+                "background_tasks": background_tasks,
+            }
+            if language != "zh-CN":
+                teach_kwargs["language"] = language
+            async for event in self._run_teach(session, node_meta, **teach_kwargs):
                 yield event
         except Exception as e:
             logger.exception("stream_initialize error")
@@ -177,6 +262,7 @@ class DeepLearnService:
     async def stream_message(
         self, session: SessionState, node_meta: dict, content: str,
         background_tasks: Optional[BackgroundTasks] = None,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         try:
             decision = decide_on_user_message(
@@ -192,7 +278,7 @@ class DeepLearnService:
 
             if decision.action == "assess_per_question":
                 is_test = session.state == "TESTING"
-                async for event in self._run_assessment(session, node_meta, content, is_test, background_tasks=background_tasks):
+                async for event in self._run_assessment(session, node_meta, content, is_test, background_tasks=background_tasks, language=language):
                     yield event
             else:
                 yield _sse("error", error={"code": "INVALID_STATE", "message": f"cannot handle message in state {session.state}"})
@@ -206,6 +292,7 @@ class DeepLearnService:
     async def stream_command(
         self, session: SessionState, node_meta: dict, command: DeepLearnCommand,
         background_tasks: Optional[BackgroundTasks] = None,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         try:
             all_done = self._all_concepts_done_or_skipped(session)
@@ -250,11 +337,11 @@ class DeepLearnService:
                 yield _sse("concept_update", index=session.current_concept_index, status="current")
 
             if decision.action == "teach":
-                async for event in self._run_teach(session, node_meta, mode=decision.teach_mode, background_tasks=background_tasks):
+                async for event in self._run_teach(session, node_meta, mode=decision.teach_mode, background_tasks=background_tasks, language=language):
                     yield event
 
             elif decision.action == "check_readiness":
-                async for event in self._run_readiness(session, node_meta, background_tasks=background_tasks):
+                async for event in self._run_readiness(session, node_meta, background_tasks=background_tasks, language=language):
                     yield event
 
             elif decision.action == "show_test_confirm":
@@ -262,12 +349,16 @@ class DeepLearnService:
                     update_session(db, session.id, state="CONFIRMING_TEST")
                 yield _sse("state_change", **{"from": session.state, "to": "CONFIRMING_TEST"})
                 yield _sse("test_confirm_prompt",
-                           message="你已完成所有概念的学习！准备好进行综合测试了吗？",
+                           message=(
+                               "你已完成所有概念的学习！准备好进行综合测试了吗？"
+                               if language == "zh-CN"
+                               else "You have completed every concept. Ready for the comprehensive quiz?"
+                           ),
                            commands=["confirm_test", "not_ready"])
                 session.state = "CONFIRMING_TEST"
 
             elif decision.action == "generate_test_questions":
-                async for event in self._run_generate_test(session, node_meta):
+                async for event in self._run_generate_test(session, node_meta, language=language):
                     yield event
 
             elif decision.action in ("wait_user",):
@@ -291,6 +382,11 @@ class DeepLearnService:
                 return False
         return True
 
+    @staticmethod
+    def _display_concepts(session: SessionState, node_meta: dict) -> list[str]:
+        localized = node_meta.get("what_list") or []
+        return localized if len(localized) == len(session.what_list) else session.what_list
+
     def _count_images_in_turns(self, session: SessionState) -> int:
         return sum(
             1 for m in session.recent_turns
@@ -300,6 +396,7 @@ class DeepLearnService:
     async def _run_teach(
         self, session: SessionState, node_meta: dict, mode: TeachingMode,
         background_tasks: Optional[BackgroundTasks] = None,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         prev_state = session.state
         with get_db_context() as db:
@@ -308,7 +405,7 @@ class DeepLearnService:
         session.state = "TEACHING"
 
         idx = session.current_concept_index
-        concepts = session.what_list
+        concepts = self._display_concepts(session, node_meta)
         current_concept = concepts[idx] if idx < len(concepts) else ""
 
         # Build memory context
@@ -334,6 +431,7 @@ class DeepLearnService:
                     recent_turns=session.recent_turns[-8:],
                     mode=mode,
                     memory_context=memory_context,
+                    language=language,
             ):
                 if item.get("type") == "content":
                     text = item.get("text", "")
@@ -435,6 +533,7 @@ class DeepLearnService:
     async def _run_assessment(
         self, session: SessionState, node_meta: dict, user_answer: str, is_test: bool,
         background_tasks: Optional[BackgroundTasks] = None,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         prev_state = session.state
         new_state = "EVALUATING_TEST" if is_test else "EVALUATING"
@@ -444,7 +543,7 @@ class DeepLearnService:
         session.state = new_state
 
         idx = session.current_concept_index
-        concepts = session.what_list
+        concepts = self._display_concepts(session, node_meta)
         current_concept = concepts[idx] if idx < len(concepts) else ""
 
         if is_test:
@@ -460,6 +559,7 @@ class DeepLearnService:
                 user_answer=user_answer,
                 prev_wrong_count=session.wrong_count_current,
                 weak_points=session.weak_points,
+                language=language,
             )
         except Exception as e:
             logger.error("AssessmentPerQuestionAgent raised: %s", e)
@@ -516,7 +616,7 @@ class DeepLearnService:
                                    weak_points=new_weak,
                                    difficulty_level=new_diff)
                 session.weak_points = new_weak
-                async for event in self._run_final_judge(session, node_meta, background_tasks=background_tasks):
+                async for event in self._run_final_judge(session, node_meta, background_tasks=background_tasks, language=language):
                     yield event
         else:
             session.wrong_count_current = result.wrong_count
@@ -552,7 +652,7 @@ class DeepLearnService:
                 is_last_concept = idx == len(concepts) - 1
                 if is_last_concept and self._all_concepts_done_or_skipped(session):
                     async for event in self._run_readiness(
-                        session, node_meta, background_tasks=background_tasks,
+                        session, node_meta, background_tasks=background_tasks, language=language,
                     ):
                         yield event
                 else:
@@ -584,7 +684,7 @@ class DeepLearnService:
                 session.weak_points = new_weak
                 session.difficulty_level = new_diff
                 yield _sse("concept_update", index=idx, status="failed")
-                async for event in self._run_teach(session, node_meta, mode="probe_stuck", background_tasks=background_tasks):
+                async for event in self._run_teach(session, node_meta, mode="probe_stuck", background_tasks=background_tasks, language=language):
                     yield event
 
             else:
@@ -609,6 +709,7 @@ class DeepLearnService:
     async def _run_readiness(
         self, session: SessionState, node_meta: dict,
         background_tasks: Optional[BackgroundTasks] = None,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         prev_state = session.state
         with get_db_context() as db:
@@ -616,7 +717,7 @@ class DeepLearnService:
         yield _sse("state_change", **{"from": prev_state, "to": "AI_ASSESSING_READINESS"})
         session.state = "AI_ASSESSING_READINESS"
 
-        concepts = session.what_list
+        concepts = self._display_concepts(session, node_meta)
         done = [concepts[i] for i in range(len(concepts)) if session.concepts_status.get(str(i)) == "done"]
         skipped = [concepts[i] for i in range(len(concepts)) if session.concepts_status.get(str(i)) == "skipped"]
 
@@ -626,6 +727,7 @@ class DeepLearnService:
                 concepts_done=done,
                 concepts_skipped=skipped,
                 weak_points=session.weak_points,
+                language=language,
             )
         except Exception as e:
             logger.error("run_readiness raised: %s", e)
@@ -640,14 +742,19 @@ class DeepLearnService:
             yield _sse("state_change", **{"from": "AI_ASSESSING_READINESS", "to": "CONFIRMING_TEST"})
             session.state = "CONFIRMING_TEST"
             yield _sse("test_confirm_prompt",
-                       message=f"综合评估：{result.reason} 准备好进行综合测试了吗？",
+                       message=(
+                           f"综合评估：{result.reason} 准备好进行综合测试了吗？"
+                           if language == "zh-CN"
+                           else f"Readiness check: {result.reason} Ready for the comprehensive quiz?"
+                       ),
                        commands=["confirm_test", "not_ready"])
         else:
-            async for event in self._run_teach(session, node_meta, mode="review_weak", background_tasks=background_tasks):
+            async for event in self._run_teach(session, node_meta, mode="review_weak", background_tasks=background_tasks, language=language):
                 yield event
 
     async def _run_generate_test(
         self, session: SessionState, node_meta: dict,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         prev_state = session.state
         with get_db_context() as db:
@@ -656,7 +763,7 @@ class DeepLearnService:
         session.state = "TESTING"
 
         questions = await _generate_test_questions(
-            node_meta["node_name"], session.what_list, session.weak_points
+            node_meta["node_name"], self._display_concepts(session, node_meta), session.weak_points, language
         )
         session.test_questions = questions
         session.test_current_index = 0
@@ -671,12 +778,14 @@ class DeepLearnService:
     async def _run_final_judge(
         self, session: SessionState, node_meta: dict,
         background_tasks: Optional[BackgroundTasks] = None,
+        language: str = "zh-CN",
     ) -> AsyncGenerator[str, None]:
         try:
             result = await self.assessment_overall.run_final_judge(
                 node_name=node_meta["node_name"],
                 test_qa_pairs=session.test_results,
                 weak_points=session.weak_points,
+                language=language,
             )
         except Exception as e:
             logger.error("run_final_judge raised: %s", e)
@@ -686,9 +795,10 @@ class DeepLearnService:
         decision = decide_on_final_judge(result.passed)
 
         # Determine concepts covered (all that are "done")
+        display_concepts = self._display_concepts(session, node_meta)
         concepts_covered = [
-            session.what_list[i]
-            for i in range(len(session.what_list))
+            display_concepts[i]
+            for i in range(len(display_concepts))
             if session.concepts_status.get(str(i)) == "done"
         ]
 
@@ -703,10 +813,12 @@ class DeepLearnService:
             # Generate the completion note (failure is non-fatal)
             note_id: Optional[str] = None
             try:
+                localized_session = session.model_copy(update={"what_list": display_concepts})
                 note_output = await self.note_generator.generate(
-                    session=session,
+                    session=localized_session,
                     node_name=node_meta.get("node_name", ""),
                     node_why=node_meta.get("node_why", ""),
+                    language=language,
                 )
                 with get_db_context() as db:
                     note_id = save_completion_note(
@@ -755,12 +867,20 @@ class DeepLearnService:
                 update_session(db, session.id, state="CHOOSING_AFTER_FAIL")
             yield _sse("state_change", **{"from": session.state, "to": "CHOOSING_AFTER_FAIL"})
             session.state = "CHOOSING_AFTER_FAIL"
-            weak_str = "、".join(result.weak_areas) if result.weak_areas else "部分概念"
+            weak_str = (
+                "、".join(result.weak_areas) if result.weak_areas else "部分概念"
+            ) if language == "zh-CN" else (
+                ", ".join(result.weak_areas) if result.weak_areas else "some concepts"
+            )
             yield _sse("fail_options",
-                       message=f"综合评估未通过。{result.reason} 薄弱点：{weak_str}",
+                       message=(
+                           f"综合评估未通过。{result.reason} 薄弱点：{weak_str}"
+                           if language == "zh-CN"
+                           else f"The comprehensive assessment was not passed. {result.reason} Review: {weak_str}."
+                       ),
                        options=[
-                           {"command": "restart", "label": "🔄 重新开始"},
-                           {"command": "not_ready", "label": "📚 针对弱点复习"},
+                           {"command": "restart", "label": "🔄 重新开始" if language == "zh-CN" else "🔄 Start over"},
+                           {"command": "not_ready", "label": "📚 针对弱点复习" if language == "zh-CN" else "📚 Review weak areas"},
                        ])
             # Memory: test failed
             self.memory_updater.fire(

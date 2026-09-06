@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, Literal
 import asyncio
 import json
 
@@ -29,6 +29,7 @@ GRAPH_GENERATION_TIMEOUT_SECONDS = max(
 class ParseGoalRequest(BaseModel):
     input: str
     userBackground: Optional[UserBackgroundInput] = None
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
     @field_validator("input")
     @classmethod
@@ -45,6 +46,7 @@ class GenerateGraphRequest(BaseModel):
     interpretation: str
     userBackground: Optional[UserBackgroundInput] = None
     learning_purpose: str = "apply"  # F1: explore / apply / master
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
 
 class ParseGoalResponseWrapper(BaseModel):
@@ -68,7 +70,10 @@ async def parse_goal(
     """AI解析学习目标"""
     ai_service = get_ai_service()
     user_bg = request.userBackground.model_dump() if request.userBackground else None
-    result = await ai_service.parse_goal(request.input, user_background=user_bg)
+    parse_kwargs = {"user_background": user_bg}
+    if "language" in request.model_fields_set:
+        parse_kwargs["language"] = request.language
+    result = await ai_service.parse_goal(request.input, **parse_kwargs)
 
     if not result.success:
         raise HTTPException(
@@ -91,13 +96,16 @@ async def _stream_graph_nodes(
     user_bg = request.userBackground.model_dump() if request.userBackground else None
 
     try:
+        generation_kwargs = {
+            "interpretation": request.interpretation,
+            "original_input": request.input,
+            "user_background": user_bg,
+            "learning_purpose": request.learning_purpose,
+        }
+        if "language" in request.model_fields_set:
+            generation_kwargs["language"] = request.language
         result = await asyncio.wait_for(
-            ai_service.generate_graph(
-                interpretation=request.interpretation,
-                original_input=request.input,
-                user_background=user_bg,
-                learning_purpose=request.learning_purpose,
-            ),
+            ai_service.generate_graph(**generation_kwargs),
             timeout=GRAPH_GENERATION_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -172,13 +180,17 @@ async def generate_graph_v2(
     ai_service = get_ai_service()
     user_bg = request.userBackground.model_dump() if request.userBackground else None
 
+    generation_kwargs = {
+        "interpretation": request.interpretation,
+        "original_input": request.input,
+        "user_background": user_bg,
+        "learning_purpose": request.learning_purpose,
+    }
+    if "language" in request.model_fields_set:
+        generation_kwargs["language"] = request.language
+
     return StreamingResponse(
-        ai_service.generate_graph_v2_stream(
-            interpretation=request.interpretation,
-            original_input=request.input,
-            user_background=user_bg,
-            learning_purpose=request.learning_purpose,
-        ),
+        ai_service.generate_graph_v2_stream(**generation_kwargs),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -191,6 +203,7 @@ class ClarifyGoalRequest(BaseModel):
     originalGoal: str
     newGoal: str
     planId: Optional[str] = None
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
     @field_validator("newGoal")
     @classmethod
@@ -241,6 +254,7 @@ async def clarify_goal(
         original_goal=request.originalGoal,
         new_goal=request.newGoal,
         existing_nodes=existing_nodes,
+        language=request.language,
     )
     if not result.success:
         raise HTTPException(
@@ -256,7 +270,8 @@ async def clarify_goal(
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
-def _deterministic_recommend_next(nodes, edges) -> dict:
+def _deterministic_recommend_next(nodes, edges, language: str = "en-US") -> dict:
+    is_chinese = language == "zh-CN"
     def row_get(row, key, default=None):
         if hasattr(row, "get"):
             return row.get(key, default)
@@ -278,7 +293,7 @@ def _deterministic_recommend_next(nodes, edges) -> dict:
     if not node_list:
         return {
             "recommended_node_id": None,
-            "reason": "当前计划还没有可推荐的节点。",
+            "reason": "当前计划还没有可推荐的节点。" if is_chinese else "This plan does not have a concept to recommend yet.",
             "recommendation_source": "local",
         }
 
@@ -298,7 +313,11 @@ def _deterministic_recommend_next(nodes, edges) -> dict:
     if not candidates:
         return {
             "recommended_node_id": None,
-            "reason": "当前计划没有未学习节点，可以复盘或归档计划。",
+            "reason": (
+                "当前计划没有未学习节点，可以复盘或归档计划。"
+                if is_chinese
+                else "There are no unlearned concepts left. You can review or archive this plan."
+            ),
             "recommendation_source": "local",
         }
 
@@ -308,9 +327,17 @@ def _deterministic_recommend_next(nodes, edges) -> dict:
 
     selected = sorted(candidates, key=sort_key)[0]
     if ready_nodes:
-        reason = "基于本地依赖关系推荐：这个节点的前置节点已经完成或不阻塞当前学习。"
+        reason = (
+            "基于本地依赖关系推荐：这个节点的前置节点已经完成或不阻塞当前学习。"
+            if is_chinese
+            else "Recommended from the dependency map: its prerequisites are complete or do not block your next step."
+        )
     else:
-        reason = "基于本地规则推荐：当前没有完全就绪节点，先从未学习节点中选择一个继续推进。"
+        reason = (
+            "基于本地规则推荐：当前没有完全就绪节点，先从未学习节点中选择一个继续推进。"
+            if is_chinese
+            else "Recommended by the local fallback: no concept is fully ready, so this is the best unlearned concept to continue with."
+        )
 
     return {
         "recommended_node_id": selected["id"],
@@ -331,7 +358,7 @@ async def explain_topic(
     """
     node_id = request.nodeId
     topic_index = request.topicIndex
-    cache_key = str(topic_index)
+    cache_key = f"{topic_index}:{request.language}"
 
     # ── 1. 同步完成 ownership check + cache read ──
     node_id_exists = False
@@ -388,6 +415,7 @@ async def explain_topic(
                     node_name=node_name,
                     plan_title=plan_title,
                     why=why,
+                    language=request.language,
                 ):
                     if await http_request.is_disconnected():
                         return
@@ -444,6 +472,7 @@ async def _stream_chat(
             node_name=node_name,
             plan_title=plan_title,
             enable_web_search=request.enableWebSearch,
+            language=request.language,
         )
 
         async for chunk in ai_service.stream_chat_session(session):
@@ -481,6 +510,7 @@ async def chat_endpoint(
 
 class RecommendNextRequest(BaseModel):
     planId: str
+    language: Literal["en-US", "zh-CN"] = "en-US"
 
 
 class RecommendNextResponseWrapper(BaseModel):
@@ -550,7 +580,7 @@ async def recommend_next(
         ],
         "target_node_id": plan["target_node_id"],
     }
-    local_recommendation = _deterministic_recommend_next(nodes, edges)
+    local_recommendation = _deterministic_recommend_next(nodes, edges, request.language)
 
     user_profile = {}
     if profile_row:
@@ -576,6 +606,7 @@ async def recommend_next(
                 user_profile=user_profile,
                 learning_history=history,
                 learning_goal=plan["title"],
+                language=request.language,
             ),
             timeout=8,
         )

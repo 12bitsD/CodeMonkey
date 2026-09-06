@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus, Save, Trash2, X } from 'lucide-react';
 import MarkdownContent from '../common/MarkdownContent';
 import { useNoteContext } from '../../contexts/NoteContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 function noteBelongsToNode(note, planId, nodeId) {
   if (!note || note.planId !== planId || !nodeId) return false;
@@ -12,9 +13,9 @@ function noteBelongsToNode(note, planId, nodeId) {
   return candidates.has(note.nodeId);
 }
 
-function getNoteTitle(note) {
+function getNoteTitle(note, fallback = 'Untitled note') {
   const firstLine = (note?.content || '').split('\n').find(line => line.trim());
-  return firstLine?.replace(/^#+\s*/, '').trim() || '未命名笔记';
+  return firstLine?.replace(/^#+\s*/, '').trim() || fallback;
 }
 
 export default function NotesModal({ open, onClose, planId, nodeId, initialContent = '', selectedNoteId = null }) {
@@ -32,6 +33,7 @@ export default function NotesModal({ open, onClose, planId, nodeId, initialConte
 }
 
 function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selectedNoteId = null }) {
+  const { t } = useLanguage();
   const { allNotes, actions: noteActions } = useNoteContext();
   const nodeNotes = useMemo(
     () => allNotes.filter(note => noteBelongsToNode(note, planId, nodeId)),
@@ -133,19 +135,19 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
       onClick={onClose}
     >
       <div
-        className="flex h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="flex h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-black/[0.12] bg-white shadow-[var(--shadow-float)]"
         onClick={event => event.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-900">笔记</h3>
-            <p className="mt-0.5 text-xs text-zinc-400">当前节点共 {nodeNotes.length} 条笔记</p>
+            <h3 className="text-sm font-semibold text-zinc-900">{t('deep.notes')}</h3>
+            <p className="mt-0.5 text-xs text-zinc-400">{t('deep.note.count', { count: nodeNotes.length })}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-            aria-label="关闭笔记"
+            aria-label={t('deep.note.close')}
           >
             <X size={18} />
           </button>
@@ -159,12 +161,12 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                 onClick={openNewNote}
                 className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                   isCreating
-                    ? 'border-amber-200 bg-amber-50 text-amber-900'
-                    : 'border-zinc-200 bg-white text-zinc-700 hover:border-amber-200 hover:text-amber-800'
+                    ? 'border-black/[0.14] bg-black/[0.05] text-zinc-900'
+                    : 'border-zinc-200 bg-white text-zinc-700 hover:border-black/[0.16] hover:text-zinc-900'
                 }`}
               >
                 <Plus size={15} />
-                新建笔记
+                {t('deep.note.new')}
               </button>
             </div>
 
@@ -177,14 +179,14 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                     onClick={() => openExistingNote(note)}
                     className={`w-full rounded-xl border p-3 text-left transition-colors ${
                       editingNoteId === note.id
-                        ? 'border-amber-200 bg-white text-zinc-900 shadow-sm'
+                        ? 'border-black/[0.14] bg-white text-zinc-900 shadow-sm'
                         : 'border-transparent bg-white/70 text-zinc-600 hover:border-zinc-200 hover:bg-white'
                     }`}
                   >
                     <div className="flex items-start gap-2">
                       <FileText size={14} className="mt-0.5 shrink-0 text-amber-600" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold">{getNoteTitle(note)}</p>
+                        <p className="truncate text-xs font-semibold">{getNoteTitle(note, t('deep.note.untitled'))}</p>
                         <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-zinc-400">
                           {(note.content || '').replace(/\s+/g, ' ').slice(0, 90)}
                         </p>
@@ -195,7 +197,7 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                 ))
               ) : (
                 <div className="rounded-xl border border-dashed border-zinc-200 bg-white p-4 text-center text-xs leading-5 text-zinc-400">
-                  这个节点还没有笔记。
+                  {t('deep.note.empty')}
                 </div>
               )}
             </div>
@@ -205,11 +207,11 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
             <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-zinc-900">
-                  {isCreating ? '新建笔记' : getNoteTitle(selectedNote)}
+                  {isCreating ? t('deep.note.new') : getNoteTitle(selectedNote, t('deep.note.untitled'))}
                 </p>
-                <p className="mt-0.5 text-xs text-zinc-400">左侧编辑，右侧实时预览</p>
+                <p className="mt-0.5 text-xs text-zinc-400">{t('deep.note.editorHelp')}</p>
               </div>
-              {savedToast && <span className="text-xs text-emerald-600">已保存</span>}
+              {savedToast && <span className="text-xs text-emerald-600">{t('deep.note.saved')}</span>}
             </div>
 
             <div className="flex min-h-0 flex-1">
@@ -217,10 +219,10 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                 className="min-w-0 flex-1 resize-none border-r border-zinc-100 p-4 font-mono text-sm leading-6 text-zinc-800 outline-none placeholder:text-zinc-300"
                 value={content}
                 onChange={event => setContent(event.target.value)}
-                placeholder="支持 Markdown 语法..."
+                placeholder={t('deep.note.placeholder')}
               />
               <div className="min-w-0 flex-1 overflow-y-auto bg-zinc-50 p-4">
-                <MarkdownContent content={content || '_预览区_'} />
+                <MarkdownContent content={content || `_${t('deep.note.preview')}_`} />
               </div>
             </div>
 
@@ -233,7 +235,7 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                   className="mr-auto flex items-center gap-1.5 rounded-lg border border-red-100 px-3 py-1.5 text-sm text-red-500 transition-colors hover:bg-red-50 disabled:opacity-40"
                 >
                   <Trash2 size={14} />
-                  删除
+                  {t('deep.note.deleteAction')}
                 </button>
               )}
               <button
@@ -241,16 +243,16 @@ function OpenNotesModal({ onClose, planId, nodeId, initialContent = '', selected
                 onClick={onClose}
                 className="rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
               >
-                关闭
+                {t('common.close')}
               </button>
               <button
                 type="button"
                 onClick={handleSave}
                 disabled={saving || !content.trim()}
-                className="flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-sm text-white transition-colors hover:bg-zinc-700 disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-md bg-[#202020] px-4 py-1.5 text-sm font-medium text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98] disabled:opacity-40"
               >
                 <Save size={14} />
-                {saving ? '保存中...' : '保存'}
+                {saving ? t('common.saving') : t('common.save')}
               </button>
             </footer>
           </main>

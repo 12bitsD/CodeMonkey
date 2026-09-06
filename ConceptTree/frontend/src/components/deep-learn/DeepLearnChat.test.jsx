@@ -33,7 +33,7 @@ describe("DeepLearnChat", () => {
   });
 
   it("uses a full assistant bubble while waiting for a response", () => {
-    const { container } = render(
+    render(
       <DeepLearnChat
         {...baseProps}
         isStreaming
@@ -74,5 +74,23 @@ describe("DeepLearnChat", () => {
     fireEvent.click(commandButtons[0]);
 
     expect(onSendCommand).toHaveBeenCalledWith("confirm_test");
+  });
+  it("contains long teaching content without shifting the composer", () => {
+    render(
+      <DeepLearnChat
+        {...baseProps}
+        isStreaming={false}
+        messages={[{
+          id: "long-answer",
+          role: "assistant",
+          kind: "text",
+          content: "error=".repeat(120),
+        }]}
+      />,
+    );
+
+    expect(screen.getByTestId("deep-learn-chat")).toHaveClass("min-w-0", "overflow-hidden");
+    expect(screen.getByTestId("deep-learn-scroll-area")).toHaveClass("min-w-0", "overflow-x-hidden");
+    expect(screen.getByTestId("deep-learn-composer")).toHaveClass("min-w-0");
   });
 });

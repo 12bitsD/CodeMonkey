@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Maximize2, X } from 'lucide-react';
 import MermaidDiagram from './MermaidDiagram';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function PinnedImages({ pinned = [], onUnpin }) {
+  const { t } = useLanguage();
   const [previewImage, setPreviewImage] = useState(null);
 
   useEffect(() => {
@@ -36,13 +38,13 @@ export default function PinnedImages({ pinned = [], onUnpin }) {
         />
       );
     }
-    return <div className="p-6 text-center text-zinc-400 text-sm">图片加载失败</div>;
+    return <div className="p-6 text-center text-zinc-400 text-sm">{t('deep.image.loadFailed')}</div>;
   };
 
   return (
     <>
       <div className="px-4 pb-4 space-y-3 border-t border-zinc-100 pt-3">
-        <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">钉图区</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">{t('deep.image.pinned')}</p>
         {pinned.map(img => (
           <div key={img.id} className="relative bg-zinc-50 rounded-xl overflow-hidden border border-zinc-200">
             <div
@@ -64,7 +66,7 @@ export default function PinnedImages({ pinned = [], onUnpin }) {
             </div>
             <button
               type="button"
-              aria-label="取消钉图"
+              aria-label={t('deep.image.unpin')}
               onClick={(event) => {
                 event.stopPropagation();
                 onUnpin(img.id);
@@ -89,7 +91,7 @@ export default function PinnedImages({ pinned = [], onUnpin }) {
           >
             <button
               type="button"
-              aria-label="关闭大图"
+              aria-label={t('deep.image.closePreview')}
               onClick={closePreview}
               className="absolute right-3 top-3 z-10 rounded-full bg-white/90 p-2 text-zinc-700 shadow hover:bg-white"
             >

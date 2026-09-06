@@ -32,6 +32,8 @@ import { Button, Modal } from "../components/ui";
 import { InfoSection } from "../components/common";
 import ChatMarkdownMessage from "../components/chat/ChatMarkdownMessage";
 import MarkdownContent from "../components/common/MarkdownContent";
+import LanguageToggle from "../components/common/LanguageToggle";
+import LocalizedDateInput from "../components/common/LocalizedDateInput";
 import { MasteryChecklist } from "../components/node/MasteryChecklist";
 import MasteryQuizModal from "../components/node/MasteryQuizModal";
 import { ResourceList } from "../components/node/ResourceList";
@@ -40,6 +42,7 @@ import { useGraphContext } from "../contexts/GraphContext";
 import { useNoteContext } from "../contexts/NoteContext";
 import { usePlanContext } from "../contexts/PlanContext";
 import { useToast } from "../contexts/ToastContext";
+import { useLanguage } from "../contexts/LanguageContext";
 import { graphApi, aiApi } from "../services/api";
 import { toggleNodeStatus, isAllComplete } from "../utils/graphUtils";
 import {
@@ -62,11 +65,11 @@ import {
   generateMasteryQuiz,
 } from "../utils/masteryQuiz";
 
-const PLAN_FREQUENCY_OPTIONS = [
-  { value: "flexible", label: "灵活安排" },
-  { value: "daily", label: "每天学习" },
-  { value: "weekly", label: "每周学习" },
-  { value: "custom", label: "自定义频率" },
+const getPlanFrequencyOptions = (t) => [
+  { value: "flexible", label: t("frequency.flexible") },
+  { value: "daily", label: t("frequency.daily") },
+  { value: "weekly", label: t("frequency.weekly") },
+  { value: "custom", label: t("frequency.customLabel") },
 ];
 
 const createPlanSettingsState = (plan) => ({
@@ -82,24 +85,24 @@ const createPlanSettingsState = (plan) => ({
     "Asia/Shanghai",
 });
 
-const getPlanFrequencyLabel = (frequency, daysPerWeek) => {
+const getPlanFrequencyLabel = (frequency, daysPerWeek, t) => {
   switch (frequency) {
     case "daily":
-      return "每天学习";
+      return t("frequency.daily");
     case "weekly":
-      return "每周复盘";
+      return t("frequency.weekly");
     case "custom":
-      return `每周 ${daysPerWeek || 3} 次`;
+      return t("frequency.custom", { count: daysPerWeek || 3 });
     default:
-      return "灵活安排";
+      return t("frequency.flexible");
   }
 };
 
-const formatPlanDateLabel = (value) => {
+const formatPlanDateLabel = (value, language) => {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+  return date.toLocaleDateString(language === "zh-CN" ? "zh-CN" : "en-US", { month: "short", day: "numeric" });
 };
 
 const getLocalDateInputValue = (value = new Date()) => {
@@ -140,6 +143,7 @@ function buildOrthogonalEdgePath(from, to) {
 const GraphPage = () => {
   const { planId } = useParams();
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
   const [searchParams] = useSearchParams();
   const containerRef = useRef(null);
   const draggingPosRef = useRef({ id: null, x: 0, y: 0 });
@@ -173,6 +177,7 @@ const GraphPage = () => {
   const [ghostNodeIds, setGhostNodeIds] = useState(new Set());
   const [masteryProgress, setMasteryProgress] = useState({});
   const [masteryQuiz, setMasteryQuiz] = useState(null);
+  const planFrequencyOptions = useMemo(() => getPlanFrequencyOptions(t), [t]);
 
   useEffect(() => {
     setPlanSettings(createPlanSettingsState(plan));
@@ -249,9 +254,9 @@ const GraphPage = () => {
       } catch (err) {
         console.error("Failed to load graph", err);
         if (graphSnapshot?.nodes?.length) {
-          toast.error("图谱加载失败，已显示本地缓存");
+          toast.error(t("graph.toast.loadCache"));
         } else {
-          toast.error("图谱加载失败，请稍后重试");
+          toast.error(t("graph.toast.loadFailed"));
         }
       } finally {
         setLoading(false);
@@ -259,7 +264,7 @@ const GraphPage = () => {
     };
 
     loadGraph();
-  }, [graphActions, planId, setEdges, setNodes, toast]);
+  }, [graphActions, planId, setEdges, setNodes, t, toast]);
 
   // Auto-center the canvas once nodes and the container are ready.
   useEffect(() => {
@@ -287,7 +292,7 @@ const GraphPage = () => {
     if (!planId || loading) return;
     const abortController = new AbortController();
     aiApi
-      .recommendNext(planId, { signal: abortController.signal })
+      .recommendNext(planId, { signal: abortController.signal, language })
       .then((data) => {
         if (abortController.signal.aborted) return;
         if (data?.recommended_node_id) {
@@ -300,7 +305,7 @@ const GraphPage = () => {
         }
       });
     return () => abortController.abort();
-  }, [planId, loading]);
+  }, [language, planId, loading]);
 
   const [showGoalClarification, setShowGoalClarification] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState("");
@@ -513,13 +518,13 @@ const GraphPage = () => {
     : 0;
   const searchMoreResourcesLabel = selectedNode
     ? resourceSearchLoading[selectedNode.id]
-      ? "搜索中..."
+      ? t("graph.resource.searching")
       : selectedNodeResourceFeedback?.added > 0
-        ? `已补充 ${selectedNodeResourceFeedback.added} 条资源`
+        ? t("graph.resource.added", { count: selectedNodeResourceFeedback.added })
         : selectedNodeExpandedResourceCount > 0
-          ? `已扩展 ${selectedNodeExpandedResourceCount} 条资源`
-          : "搜索更多资源"
-    : "搜索更多资源";
+          ? t("graph.resource.expanded", { count: selectedNodeExpandedResourceCount })
+          : t("graph.resource.more")
+    : t("graph.resource.more");
 
   const handleChatResizeStart = (event) => {
     event.preventDefault();
@@ -583,10 +588,10 @@ const GraphPage = () => {
       try {
         if (editingNoteId) {
           await noteActions.updateNote(editingNoteId, noteContent);
-          toast.success("笔记已更新");
+          toast.success(t("graph.toast.noteUpdated"));
         } else {
           await noteActions.addNote(planId, selectedNodeId, noteContent);
-          toast.success("笔记已保存");
+          toast.success(t("graph.toast.noteSaved"));
         }
       } catch {
         return;
@@ -616,7 +621,7 @@ const GraphPage = () => {
   const handleSaveExplainNote = async (topicText, topicIndex) => {
     if (!selectedNode) return;
 
-    const explainKey = `${selectedNode.id}_${topicIndex}`;
+    const explainKey = `${selectedNode.id}_${topicIndex}_${language}`;
     if (savingExplainNotes[explainKey]) return;
     const content = explainStates[explainKey]?.content || "";
 
@@ -674,15 +679,15 @@ const GraphPage = () => {
       }));
 
       if (resourcesAdded > 0) {
-        toast.success(`已补充 ${resourcesAdded} 条资源`);
+        toast.success(t("graph.resource.added", { count: resourcesAdded }));
       } else {
-        toast.info("暂未找到新的高质量资源");
+        toast.info(t("graph.toast.noResources"));
       }
     } catch (error) {
       toast.error(
         error?.message?.includes("写入缓存失败")
-          ? error.message
-          : "资源搜索失败，请重试",
+          ? t("graph.toast.resourceFailed")
+          : t("graph.toast.resourceFailed"),
       );
     } finally {
       setResourceSearchLoading((prev) => ({ ...prev, [selectedNode.id]: false }));
@@ -747,10 +752,10 @@ const GraphPage = () => {
     if (!newGoalInput.trim() || !plan) return;
     setIsClarifying(true);
     try {
-      const result = await aiApi.clarifyGoal(plan.title, newGoalInput, planId);
+      const result = await aiApi.clarifyGoal(plan.title, newGoalInput, planId, language);
       setClarifyResult(result);
     } catch (err) {
-      toast.error("分析失败，请重试");
+      toast.error(t("graph.toast.analyzeFailed"));
     } finally {
       setIsClarifying(false);
     }
@@ -791,9 +796,9 @@ const GraphPage = () => {
           edges: data.edges || [],
         });
       }
-      toast.success("目标已更新");
+      toast.success(t("graph.toast.goalUpdated"));
     } catch (err) {
-      toast.error("应用修改失败，请重试");
+      toast.error(t("graph.toast.goalFailed"));
     }
   };
 
@@ -811,7 +816,7 @@ const GraphPage = () => {
       if (previousStatus) {
         setNodeStatus(nodeId, previousStatus);
       }
-      toast.error("节点状态保存失败，已恢复原状态");
+      toast.error(t("graph.toast.statusFailed"));
     }
   };
 
@@ -822,7 +827,7 @@ const GraphPage = () => {
     if (!nodeDeadlineChanged) return;
 
     if (nodeDeadlineDraft && nodeDeadlineDraft < minNodeDeadlineDate) {
-      toast.error("节点截止日期不能早于今天");
+      toast.error(t("graph.toast.deadlinePast"));
       return;
     }
 
@@ -847,9 +852,9 @@ const GraphPage = () => {
       setNodeDeadlineDraft(
         result?.targetEndDate ? String(result.targetEndDate).slice(0, 10) : "",
       );
-      toast.success(nextTargetEndDate ? "节点截止日期已更新" : "节点截止日期已清除");
+      toast.success(nextTargetEndDate ? t("graph.toast.deadlineUpdated") : t("graph.toast.deadlineCleared"));
     } catch (err) {
-      toast.error("节点截止日期保存失败，请重试");
+      toast.error(t("graph.toast.deadlineFailed"));
     } finally {
       setNodeDeadlineSaving((prev) => ({ ...prev, [nodeId]: false }));
     }
@@ -887,6 +892,7 @@ const GraphPage = () => {
       questions: generateMasteryQuiz({
         nodeName: selectedNode.name,
         standard,
+        language,
       }),
     });
   };
@@ -902,7 +908,7 @@ const GraphPage = () => {
       },
     };
     persistMasteryProgress(nextProgress);
-    toast.success("小测通过，掌握标准已打勾");
+    toast.success(t("graph.toast.quizPassed"));
   };
 
   const openDateInputPicker = (event) => {
@@ -926,9 +932,9 @@ const GraphPage = () => {
       await actions.updatePlan(planId, { title: titleToSave });
       setSavedAt(new Date());
       setIsDirty(false);
-      toast.success("计划已保存");
+      toast.success(t("graph.toast.planSaved"));
     } catch {
-      toast.error("保存失败，请重试");
+      toast.error(t("graph.toast.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -956,9 +962,9 @@ const GraphPage = () => {
           : null,
       });
       setShowPlanSettings(false);
-      toast.success("学习计划设置已更新");
+      toast.success(t("graph.toast.settingsUpdated"));
     } catch (error) {
-      toast.error("更新计划设置失败");
+      toast.error(t("graph.toast.settingsFailed"));
     } finally {
       setIsUpdatingPlanSettings(false);
     }
@@ -970,10 +976,10 @@ const GraphPage = () => {
     try {
       if (plan.status === "paused") {
         await actions.resumePlan(planId);
-        toast.success("计划已恢复");
+        toast.success(t("graph.toast.resumed"));
       } else {
         await actions.pausePlan(planId);
-        toast.success("计划已暂停");
+        toast.success(t("graph.toast.paused"));
       }
     } catch (error) {
       // Toast handled in context.
@@ -986,28 +992,28 @@ const GraphPage = () => {
     if (!planId || isSharingPlan) return;
     setIsSharingPlan(true);
     const shareUrl = `${window.location.origin}/graph/${planId}`;
-    const shareTitle = planTitle || plan?.title || "学习计划";
+    const shareTitle = planTitle || plan?.title || t("home.plans");
     try {
       if (navigator.share) {
         await navigator.share({
           title: shareTitle,
-          text: `查看我的学习计划：${shareTitle}`,
+          text: t("graph.shareText", { name: shareTitle }),
           url: shareUrl,
         });
-        toast.success("分享面板已打开");
+        toast.success(t("graph.toast.shareOpened"));
         return;
       }
 
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
-        toast.success("计划链接已复制");
+        toast.success(t("graph.toast.linkCopied"));
         return;
       }
 
-      toast.error("当前环境暂不支持分享，请手动复制地址栏链接");
+      toast.error(t("graph.toast.shareUnsupported"));
     } catch (error) {
       if (error?.name !== "AbortError") {
-        toast.error("分享失败，请重试");
+        toast.error(t("graph.toast.shareFailed"));
       }
     } finally {
       setIsSharingPlan(false);
@@ -1017,8 +1023,8 @@ const GraphPage = () => {
   // F7: click a what-item -> stream AI explanation
   const handleExplainTopic = async (topicText, topicIndex) => {
     if (!selectedNode) return;
-    const key = `${selectedNode.id}_${topicIndex}`;
-    const requestKey = `explain:${planId}:${selectedNode.id}:${topicIndex}`;
+    const key = `${selectedNode.id}_${topicIndex}_${language}`;
+    const requestKey = `explain:${planId}:${selectedNode.id}:${topicIndex}:${language}`;
     const nodeId = selectedNode.id;
     const current = explainStates[key];
 
@@ -1057,7 +1063,7 @@ const GraphPage = () => {
             [key]: { loading: false, content: accumulated, expanded: true },
           }));
         },
-        { signal: request.signal },
+        { signal: request.signal, language },
       );
       if (
         request.signal.aborted ||
@@ -1070,7 +1076,7 @@ const GraphPage = () => {
         ...prev,
         [key]: {
           loading: false,
-          content: prev[key]?.content || "内容生成为空，请重试。",
+          content: prev[key]?.content || t("graph.emptyContent"),
           expanded: true,
         },
       }));
@@ -1108,7 +1114,7 @@ const GraphPage = () => {
       console.error("[explainTopic] error:", err);
       setExplainStates((prev) => ({
         ...prev,
-        [key]: { loading: false, content: "解释生成失败，请重试。", expanded: true },
+        [key]: { loading: false, content: t("graph.explainFailed"), expanded: true },
       }));
     } finally {
       aiRequestRegistryRef.current.finish(requestKey, request.requestId);
@@ -1138,7 +1144,7 @@ const GraphPage = () => {
     setChatInput("");
     setChatLoading(true);
 
-    const requestKey = `chat:${planId}:${selectedNode.id}`;
+    const requestKey = `chat:${planId}:${selectedNode.id}:${language}`;
     const request = aiRequestRegistryRef.current.begin(requestKey);
 
     try {
@@ -1176,6 +1182,7 @@ const GraphPage = () => {
             scheduleChatMessageFlush();
           },
           signal: request.signal,
+          language,
         },
       );
       if (
@@ -1188,7 +1195,7 @@ const GraphPage = () => {
       if (!chatStreamStateRef.current.content) {
         chatStreamStateRef.current = {
           ...chatStreamStateRef.current,
-          content: "内容生成为空，请重试。",
+          content: t("graph.emptyContent"),
         };
       }
 
@@ -1198,7 +1205,7 @@ const GraphPage = () => {
       if (!aiRequestRegistryRef.current.isCurrent(requestKey, request.requestId)) return;
       chatStreamStateRef.current = {
         ...chatStreamStateRef.current,
-        content: "回复失败，请重试。",
+        content: t("graph.replyFailed"),
         searchStatus:
           chatStreamStateRef.current.searchStatus === "searching"
             ? "fallback"
@@ -1228,7 +1235,7 @@ const GraphPage = () => {
 
     graphApi.updateNodePositions(planId, positions).catch((err) => {
       console.error("Failed to save node positions", err);
-      toast.error("节点位置同步失败，稍后会以当前画布为准");
+      toast.error(t("graph.toast.positionFailed"));
     });
   };
 
@@ -1292,7 +1299,7 @@ const GraphPage = () => {
         )
         .catch((err) => {
           console.error("Failed to save relayout", err);
-          toast.error("路径布局已更新，位置同步稍后会重试");
+          toast.error(t("graph.toast.layoutRetry"));
         });
     }
 
@@ -1308,23 +1315,23 @@ const GraphPage = () => {
 
   if (!plan && !loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#FAFAFA]">
+      <div className="flex h-screen items-center justify-center bg-[var(--color-canvas)]">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-zinc-900 mb-2">
-            未找到学习计划
+            {t("graph.notFound")}
           </h2>
-          <Button onClick={() => navigate("/")}>返回首页</Button>
+          <Button onClick={() => navigate("/")}>{t("graph.home")}</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#F4F4F5] relative overflow-hidden">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-[var(--color-canvas)]">
       {/* Top Navigation */}
       <div className="absolute top-0 left-0 right-0 z-20 px-6 py-4 pointer-events-none">
         <div className="max-w-screen-xl mx-auto flex justify-between items-start">
-          <div className="bg-white/90 backdrop-blur-md px-5 py-3 rounded-2xl shadow-sm border border-zinc-200/50 pointer-events-auto flex items-center gap-4 transition-all hover:shadow-md">
+          <div className="apple-toolbar pointer-events-auto flex items-center gap-4 rounded-lg px-4 py-3 sm:px-5">
             <button
               onClick={handleNavigateBack}
               className="text-zinc-400 hover:text-zinc-900 transition-colors"
@@ -1334,12 +1341,12 @@ const GraphPage = () => {
             <div className="h-4 w-px bg-zinc-200" />
             <div>
               <h1 className="text-sm font-semibold text-zinc-800">
-                {planTitle || plan?.title || "加载中..."}
+                {planTitle || plan?.title || t("graph.loading")}
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <div className="h-1 w-16 bg-zinc-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-teal-600 rounded-full transition-all duration-500"
+                    className="h-full rounded-full bg-[#202020] transition-[width] duration-500"
                     style={{
                       width:
                         totalCount > 0
@@ -1349,61 +1356,61 @@ const GraphPage = () => {
                   />
                 </div>
                 <span className="text-[10px] text-zinc-400 font-medium tracking-wide">
-                  {learnedCount}/{totalCount} 已掌握
+                  {t("graph.mastered", { completed: learnedCount, total: totalCount })}
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-medium text-zinc-500">
                   <CalendarDays size={11} />
-                  {getPlanFrequencyLabel(plan?.studyFrequency, plan?.studyDaysPerWeek)}
+                  {getPlanFrequencyLabel(plan?.studyFrequency, plan?.studyDaysPerWeek, t)}
                 </span>
                 {plan?.targetEndDate ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700">
-                    截止 {formatPlanDateLabel(plan.targetEndDate)}
+                    {t("graph.due", { date: formatPlanDateLabel(plan.targetEndDate, language) })}
                   </span>
                 ) : null}
                 {plan?.reminderEnabled ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-1 text-[10px] font-medium text-teal-700">
                     <Bell size={11} />
-                    {plan?.reminderTime || "已开启提醒"}
+                    {plan?.reminderTime || t("graph.reminderOn")}
                   </span>
                 ) : null}
                 {plan?.status === "paused" ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white">
-                    已暂停
+                    {t("status.paused")}
                   </span>
                 ) : null}
                 {plan?.status === "archived" ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white">
-                    已归档
+                    {t("status.archived")}
                   </span>
                 ) : null}
               </div>
             </div>
           </div>
 
-          <div className="bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-sm border border-zinc-200/50 pointer-events-auto flex gap-1 items-center">
+          <div className="apple-toolbar pointer-events-auto flex items-center gap-1 rounded-lg p-2">
+            <LanguageToggle className="mr-1 hidden xl:inline-flex" />
             {savedAt && !isDirty ? (
               <span className="text-[10px] text-zinc-400 px-2">
-                已保存于{" "}
-                {savedAt.toLocaleTimeString("zh-CN", {
+                {t("graph.savedAt", { time: savedAt.toLocaleTimeString(language === "zh-CN" ? "zh-CN" : "en-US", {
                   hour: "2-digit",
                   minute: "2-digit",
-                })}
+                }) })}
               </span>
             ) : isDirty ? (
               <button
                 onClick={handleSavePlan}
                 disabled={isSaving}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 rounded-xl hover:bg-zinc-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                className="flex items-center gap-1.5 rounded-md bg-[#202020] px-3 py-1.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98] disabled:opacity-50"
               >
                 <Save size={12} />
-                {isSaving ? "保存中..." : "保存计划"}
+                {isSaving ? t("common.saving") : t("graph.savePlan")}
               </button>
             ) : null}
             <button
               className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all"
-              title="计划设置"
+              title={t("graph.settings")}
               onClick={() => setShowPlanSettings(true)}
             >
               <SlidersHorizontal size={18} strokeWidth={1.5} />
@@ -1415,7 +1422,7 @@ const GraphPage = () => {
                     ? "bg-zinc-900 text-white hover:bg-zinc-700"
                     : "text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50"
                 }`}
-                title={plan?.status === "paused" ? "恢复计划" : "暂停计划"}
+                title={plan?.status === "paused" ? t("graph.resume") : t("graph.pause")}
                 onClick={handlePauseOrResumePlan}
                 disabled={isTogglingPlanStatus}
               >
@@ -1434,7 +1441,7 @@ const GraphPage = () => {
                   ? "bg-zinc-900 text-white"
                   : "text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50"
               }`}
-              title="分享"
+              title={t("graph.share")}
               onClick={handleSharePlan}
               disabled={isSharingPlan}
             >
@@ -1446,7 +1453,7 @@ const GraphPage = () => {
             </button>
             <button
               className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl transition-all"
-              title="修改目标"
+              title={t("graph.editGoal")}
               onClick={() => {
                 setNewGoalInput("");
                 setClarifyResult(null);
@@ -1602,7 +1609,7 @@ const GraphPage = () => {
               >
                 {scale < 0.6 ? (
                   isGhost ? (
-                    <div className="h-2.5 w-2.5 animate-spin rounded-full border border-zinc-200 border-t-blue-400" />
+                    <div className="h-2.5 w-2.5 animate-spin rounded-full border border-zinc-200 border-t-zinc-700" />
                   ) : isLearned ? (
                     <div className="w-2 h-2 bg-emerald-400 rounded-full" />
                   ) : (
@@ -1611,7 +1618,7 @@ const GraphPage = () => {
                 ) : (
                   <div className="flex items-center gap-3">
                     {isGhost ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-200 border-t-blue-400" />
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-700" />
                     ) : isLearned ? (
                       <CheckCircle2
                         size={16}
@@ -1647,7 +1654,7 @@ const GraphPage = () => {
             <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-zinc-100 rounded-full px-6 py-3 flex items-center gap-3 z-10">
               <span className="text-xl">🎉</span>
               <span className="text-sm font-semibold text-zinc-800">
-                学习完成！
+                {t("graph.complete")}
               </span>
             </div>
           );
@@ -1676,7 +1683,7 @@ const GraphPage = () => {
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                推荐下一步
+                {t("graph.next")}
               </span>
               <span className="text-sm font-semibold text-zinc-800">
                 {recommendedNode.name}
@@ -1711,7 +1718,7 @@ const GraphPage = () => {
         </div>
         <button
           onClick={handleRelayoutGraph}
-          title="按学习路径整理布局"
+          title={t("graph.relayout")}
           className="bg-white/90 backdrop-blur p-4 rounded-2xl shadow-sm border border-zinc-200/50 text-zinc-500 hover:text-zinc-900 transition-colors"
         >
           <Sparkles size={18} strokeWidth={1.5} />
@@ -1737,28 +1744,28 @@ const GraphPage = () => {
 
       {/* Node Detail Drawer */}
       <div
-        className={`absolute top-4 right-4 bottom-4 w-[400px] bg-white/95 backdrop-blur-2xl shadow-[0_0_50px_rgba(0,0,0,0.05)] rounded-3xl border border-zinc-100 transform transition-transform duration-500 cubic-bezier(0.16, 1, 0.3, 1) flex flex-col z-30 ${selectedNodeId ? "translate-x-0" : "translate-x-[calc(100%+2rem)]"}`}
+        className={`absolute bottom-3 right-3 top-3 z-30 flex w-[420px] max-w-[calc(100%-1.5rem)] transform flex-col rounded-[18px] border border-black/[0.1] bg-white/95 shadow-[0_16px_48px_rgba(15,15,15,0.13),0_2px_8px_rgba(15,15,15,0.05)] backdrop-blur-xl transition-transform duration-200 ease-[var(--ease-out-apple)] ${selectedNodeId ? "translate-x-0" : "translate-x-[calc(100%+2rem)]"}`}
       >
         {selectedNode && (
           <>
-            <div className="px-8 py-8 border-b border-zinc-50 flex justify-between items-start">
+            <div className="flex items-start justify-between border-b border-black/[0.07] px-6 py-5">
               <div>
-                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2 block">
-                    知识节点
+                  <span className="mb-1.5 block text-[0.65625rem] font-semibold uppercase tracking-[0.075em] text-[#8f8e8b]">
+                    {t("graph.node")}
                   </span>
-                <h2 className="text-2xl font-semibold text-zinc-900 leading-tight">
+                <h2 className="text-xl font-semibold leading-tight tracking-[-0.018em] text-[#202020]">
                   {selectedNode.name}
                 </h2>
               </div>
               <button
                 onClick={() => setSelectedNodeId(null)}
-                className="p-2 -mr-2 text-zinc-300 hover:text-zinc-600 transition-colors rounded-full hover:bg-zinc-50"
+                className="-mr-1 flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.05] hover:text-zinc-700 active:scale-[0.96]"
               >
-                <X size={24} strokeWidth={1.5} />
+                <X size={17} strokeWidth={1.8} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10 custom-scrollbar">
+            <div className="custom-scrollbar flex-1 space-y-7 overflow-y-auto px-6 py-5">
               {/* Actions */}
               <div className="flex gap-3">
                 {selectedNode.status === "learned" ? (
@@ -1769,7 +1776,7 @@ const GraphPage = () => {
                       handleNodeStatusChange(selectedNode.id, "unlearned")
                     }
                   >
-                    <Check size={16} className="mr-2" /> 已学习
+                    <Check size={16} className="mr-2" /> {t("graph.learned")}
                   </Button>
                 ) : (
                   <Button
@@ -1779,7 +1786,7 @@ const GraphPage = () => {
                       handleNodeStatusChange(selectedNode.id, "learned")
                     }
                   >
-                    标记已学
+                    {t("graph.markLearned")}
                   </Button>
                 )}
                 <Button
@@ -1804,30 +1811,31 @@ const GraphPage = () => {
               {selectedNode.what?.length > 0 && (
                 <Button
                   variant="secondary"
-                  className="w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  className="w-full border-black/[0.12] bg-[#f7f6f3] text-zinc-800 hover:bg-black/[0.06]"
                   onClick={() => navigate(`/deep-learn/${planId}/${selectedNode.id}`)}
                 >
-                  <Sparkles size={16} className="mr-2" /> 深入学习
+                  <Sparkles size={16} className="mr-2" /> {t("graph.deepLearn")}
                 </Button>
               )}
 
-              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4">
+              <div className="rounded-xl border border-black/[0.07] bg-[#fbfbfa] p-4">
                 <label className="flex items-center justify-between gap-4">
                   <span className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-                    <CalendarDays size={14} /> 节点截止日期
+                    <CalendarDays size={14} /> {t("graph.nodeDeadline")}
                   </span>
                   {nodeDeadlineSaving[selectedNode.id] ? (
                     <span className="flex items-center gap-1 text-[11px] text-teal-500">
-                      <Loader size={12} className="animate-spin" /> 保存中
+                      <Loader size={12} className="animate-spin" /> {t("graph.deadlineSaving")}
                     </span>
                   ) : null}
                 </label>
                 <div className="mt-3 flex gap-2">
-                  <input
-                    type="date"
+                  <LocalizedDateInput
+                    language={language}
+                    wrapperClassName="min-w-0 flex-1"
                     min={minNodeDeadlineDate}
                     inputMode="none"
-                    className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
                     value={nodeDeadlineDraft}
                     onChange={(event) => setNodeDeadlineDraft(event.target.value)}
                     onBeforeInput={(event) => event.preventDefault()}
@@ -1836,7 +1844,7 @@ const GraphPage = () => {
                     onDrop={(event) => event.preventDefault()}
                     onFocus={openDateInputPicker}
                     onClick={openDateInputPicker}
-                    title="请通过日历选择今天或之后的日期"
+                    title={t("graph.deadlineHint")}
                   />
                   {nodeDeadlineDraft ? (
                     <button
@@ -1845,7 +1853,7 @@ const GraphPage = () => {
                       disabled={Boolean(nodeDeadlineSaving[selectedNode.id])}
                       className="rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
                     >
-                      清除
+                      {t("graph.clear")}
                     </button>
                   ) : null}
                   {nodeDeadlineChanged ? (
@@ -1855,7 +1863,7 @@ const GraphPage = () => {
                       disabled={Boolean(nodeDeadlineSaving[selectedNode.id])}
                       className="rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
                     >
-                      取消
+                      {t("common.cancel")}
                     </button>
                   ) : null}
                   <button
@@ -1868,27 +1876,27 @@ const GraphPage = () => {
                     }
                     className="rounded-xl bg-zinc-900 px-4 text-xs font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-30"
                   >
-                    {nodeDeadlineSaving[selectedNode.id] ? "保存中" : "保存"}
+                    {nodeDeadlineSaving[selectedNode.id] ? t("common.saving") : t("common.save")}
                   </button>
                 </div>
                 {nodeDeadlineDraft && nodeDeadlineDraft < minNodeDeadlineDate ? (
                   <p className="mt-2 text-xs text-red-500">
-                    只能选择今天或之后的日期。
+                    {t("graph.dateFuture")}
                   </p>
                 ) : selectedNode.targetEndDate ? (
                   <p className="mt-2 text-xs text-zinc-400">
-                    当前截止日期：{formatPlanDateLabel(selectedNode.targetEndDate)}
+                    {t("graph.due", { date: formatPlanDateLabel(selectedNode.targetEndDate, language) })}
                   </p>
                 ) : (
                   <p className="mt-2 text-xs text-zinc-400">
-                    选择日期后点击保存才会生效。
+                    {t("graph.dateSaveHelp")}
                   </p>
                 )}
               </div>
 
               <div className="space-y-6">
                 {selectedNode.why && (
-                  <InfoSection icon={Target} title="为什么学">
+                  <InfoSection icon={Target} title={t("graph.why")}>
                     {selectedNode.why}
                     {edges
                       .filter((e) => e.from === selectedNode.id)
@@ -1902,7 +1910,7 @@ const GraphPage = () => {
                             className="mt-2 flex items-center gap-1 text-xs text-teal-600 hover:text-teal-800 transition-colors"
                           >
                             <ChevronRight size={12} />
-                            用于：{target.name}
+                            {t("graph.usedFor", { name: target.name })}
                           </button>
                         );
                       })}
@@ -1911,24 +1919,28 @@ const GraphPage = () => {
 
                 {selectedNode.what?.length > 0 && (
                   <section>
-                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <BookOpen size={14} /> 核心内容
-                      <span className="text-[10px] font-normal text-teal-500 ml-1">点击主题获取 AI 解释</span>
-                    </h4>
-                    <ul className="space-y-3">
+                    <div className="mb-3 flex items-start justify-between gap-4">
+                      <h4 className="flex shrink-0 items-center gap-2 text-[0.65625rem] font-semibold uppercase leading-4 tracking-[0.075em] text-[#8f8e8b]">
+                        <BookOpen size={13} strokeWidth={1.8} /> {t("graph.coreContent")}
+                      </h4>
+                      <p className="max-w-[12rem] text-right text-[0.625rem] uppercase leading-4 tracking-[0.06em] text-[#8f8e8b]">
+                        {t("graph.explainHint")}
+                      </p>
+                    </div>
+                    <ul className="space-y-2">
                       {selectedNode.what.map((item, i) => {
-                        const key = `${selectedNode.id}_${i}`;
+                        const key = `${selectedNode.id}_${i}_${language}`;
                         const state = explainStates[key];
                         const isSavingExplainNote = Boolean(savingExplainNotes[key]);
                         const isExplainSaved = Boolean(savedExplainNotes[key]);
                         return (
-                          <li key={i} className="text-sm text-zinc-600">
+                          <li key={i} className="text-[0.8125rem] text-[#5f5e5b]">
                             <button
                               className="flex items-start gap-3 w-full text-left group hover:text-teal-700 transition-colors"
                               onClick={() => handleExplainTopic(item, i)}
                             >
                               <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 mt-2 group-hover:bg-teal-500 transition-colors flex-shrink-0" />
-                              <span className="leading-relaxed flex-1">{item}</span>
+                              <span className="flex-1 leading-[1.55]">{item}</span>
                               {state?.loading ? (
                                 <Loader size={12} className="mt-1.5 text-teal-400 animate-spin flex-shrink-0" />
                               ) : state?.content ? (
@@ -1944,11 +1956,11 @@ const GraphPage = () => {
                               <div className="ml-4 mt-3 rounded-2xl border border-teal-100/90 bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-4 shadow-[0_12px_32px_rgba(20,184,166,0.08)]">
                                 <div className="mb-3 flex items-center justify-between gap-3">
                                   <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-teal-500">
-                                    AI 解释
+                                    {t("graph.aiExplanation")}
                                   </span>
                                   <button
                                     type="button"
-                                    aria-label={`保存主题“${item}”到笔记`}
+                                    aria-label={t("graph.saveTopic", { name: item })}
                                     onClick={() => handleSaveExplainNote(item, i)}
                                     disabled={isSavingExplainNote}
                                     className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-teal-700 transition-colors hover:border-teal-300 hover:text-teal-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1959,10 +1971,10 @@ const GraphPage = () => {
                                       <Save size={12} />
                                     )}
                                     {isSavingExplainNote
-                                      ? "保存中..."
+                                      ? t("common.saving")
                                       : isExplainSaved
-                                        ? "已保存"
-                                        : "保存到笔记"}
+                                        ? t("graph.saved")
+                                        : t("graph.saveToNotes")}
                                   </button>
                                 </div>
                                 <MarkdownContent content={state.content} />
@@ -1970,7 +1982,7 @@ const GraphPage = () => {
                             )}
                             {state?.loading && (
                               <div className="ml-4 mt-2 p-3 bg-zinc-50 border border-zinc-100 rounded-xl text-xs text-zinc-400 animate-pulse">
-                                AI 正在生成解释...
+                                {t("graph.generatingExplanation")}
                               </div>
                             )}
                           </li>
@@ -1992,7 +2004,7 @@ const GraphPage = () => {
                 )}
 
                 {selectedNode.prompt && (
-                  <InfoSection icon={Sparkles} title="学习 Prompt">
+                  <InfoSection icon={Sparkles} title={t("graph.prompt")}>
                     <div className="relative group">
                       <p className="text-sm font-mono bg-zinc-100/50 p-3 rounded-lg text-zinc-600">
                         {selectedNode.prompt}
@@ -2024,7 +2036,7 @@ const GraphPage = () => {
                   {selectedNodeExpandedResourceCount > 0 && !resourceSearchLoading[selectedNode.id] && (
                     <span className="mt-1 block text-[11px] text-zinc-400">
                       {hasExpandedResources(selectedNode.resourceSearchCache)
-                        ? "刷新页面后也会保留这些扩展资源"
+                        ? t("graph.resourcesPersist")
                         : ""}
                     </span>
                   )}
@@ -2033,14 +2045,14 @@ const GraphPage = () => {
                 {/* Notes */}
                 <section>
                   <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                      <FileText size={14} /> 笔记
+                    <h4 className="flex items-center gap-2 text-[0.65625rem] font-semibold uppercase leading-4 tracking-[0.075em] text-[#8f8e8b]">
+                      <FileText size={13} strokeWidth={1.8} /> {t("graph.notes")}
                     </h4>
                     <button
                       onClick={openNewNoteEditor}
                       className="text-xs font-medium text-teal-600 hover:text-teal-800 transition-colors"
                     >
-                      + 添加
+                      + {t("graph.add")}
                     </button>
                   </div>
                   <div className="space-y-3">
@@ -2061,13 +2073,13 @@ const GraphPage = () => {
                                 noteActions.deleteNote(note.id).catch(() => {});
                               }}
                               className="p-0.5 text-zinc-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                              title="删除笔记"
+                              title={t("graph.deleteNote")}
                             >
                               <X size={12} />
                             </button>
                           </div>
                           <div className="mb-2 text-[10px] font-medium text-zinc-400">
-                            点击即可编辑
+                            {t("graph.editNoteHint")}
                           </div>
                           <MarkdownContent
                             content={note.content}
@@ -2080,7 +2092,7 @@ const GraphPage = () => {
                         onClick={openNewNoteEditor}
                         className="border border-dashed border-zinc-200 rounded-xl p-6 text-center text-zinc-400 text-sm hover:bg-zinc-50 hover:border-zinc-300 cursor-pointer transition-all"
                       >
-                        这里还没有内容，记下你的思考吧。
+                        {t("graph.notesEmpty")}
                       </div>
                     )}
                   </div>
@@ -2108,7 +2120,7 @@ const GraphPage = () => {
                 ? "bg-zinc-900 text-white shadow-zinc-900/20"
                 : "bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-900"
             }`}
-            title="AI 学习助手"
+            title={t("graph.assistant")}
           >
             {chatOpen ? <X size={18} strokeWidth={1.5} /> : <MessageCircle size={18} strokeWidth={1.5} />}
           </button>
@@ -2130,7 +2142,7 @@ const GraphPage = () => {
               className={`absolute right-3 top-3 z-10 flex h-5 w-5 cursor-nesw-resize items-center justify-center rounded-full border border-zinc-200 bg-white/90 text-zinc-400 shadow-sm transition-colors ${
                 isChatResizing ? "border-teal-300 text-teal-500" : "hover:border-zinc-300 hover:text-zinc-600"
               }`}
-              title="拖动调整助手窗口大小"
+              title={t("graph.resizeAssistant")}
             >
               <span className="pointer-events-none text-[10px] leading-none">⋰</span>
             </button>
@@ -2140,7 +2152,7 @@ const GraphPage = () => {
                 <Sparkles size={13} fill="currentColor" />
               </div>
               <div>
-                <p className="text-xs font-bold text-zinc-800">AI 学习助手</p>
+                <p className="text-xs font-bold text-zinc-800">{t("graph.assistant")}</p>
                 <p className="text-[10px] text-zinc-400 truncate max-w-[180px]">{selectedNode.name}</p>
               </div>
               <button
@@ -2150,16 +2162,16 @@ const GraphPage = () => {
                 className="ml-auto rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-[10px] font-medium text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSavingChatSummary
-                  ? "保存中..."
+                  ? t("common.saving")
                   : chatSummarySaved
-                    ? "已保存"
-                    : "总结并保存"}
+                    ? t("graph.saved")
+                    : t("graph.summarize")}
               </button>
               <button
                 onClick={() => setChatMessages([])}
                 className="text-[10px] text-zinc-300 hover:text-zinc-500 transition-colors"
               >
-                清空
+                {t("graph.clearChat")}
               </button>
             </div>
 
@@ -2171,7 +2183,7 @@ const GraphPage = () => {
               {chatMessages.length === 0 && (
                 <div className="text-center text-xs text-zinc-300 pt-8">
                   <MessageCircle size={24} className="mx-auto mb-2 opacity-30" />
-                  <p>有什么关于“{selectedNode.name}”的问题？</p>
+                  <p>{t("graph.askAbout", { name: selectedNode.name })}</p>
                 </div>
               )}
               {chatMessages.map((msg, i) => (
@@ -2209,13 +2221,13 @@ const GraphPage = () => {
                     chatWebSearchEnabled ? "bg-teal-400" : "bg-zinc-300"
                   }`}
                 />
-                联网搜索
+                {t("graph.webSearch")}
               </button>
               <div className="flex gap-2">
                 <input
                   type="text"
                   className="flex-1 rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-xs outline-none transition-colors focus:border-zinc-300"
-                  placeholder="问一个问题..."
+                  placeholder={t("graph.askPlaceholder")}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleChatSend()}
@@ -2244,25 +2256,25 @@ const GraphPage = () => {
       <Modal
         isOpen={showGoalClarification}
         onClose={() => setShowGoalClarification(false)}
-        title="修改学习目标"
+        title={t("graph.goal.editTitle")}
         footer={
           <>
             <Button
               variant="ghost"
               onClick={() => setShowGoalClarification(false)}
             >
-              取消
+              {t("common.cancel")}
             </Button>
             {!clarifyResult ? (
               <Button
                 onClick={handleClarifyGoal}
                 disabled={isClarifying || !newGoalInput.trim()}
               >
-                {isClarifying ? "分析中..." : "分析变更"}
+                {isClarifying ? t("graph.goal.analyzing") : t("graph.goal.analyze")}
               </Button>
             ) : (
               <Button onClick={handleApplyClarify}>
-                {clarifyResult.isLargeChange ? "新建计划" : "应用修改"}
+                {clarifyResult.isLargeChange ? t("graph.goal.createNew") : t("graph.goal.apply")}
               </Button>
             )}
           </>
@@ -2270,16 +2282,16 @@ const GraphPage = () => {
       >
         <div className="space-y-4">
           <div>
-            <p className="text-xs text-zinc-400 mb-2">当前目标</p>
+            <p className="mb-2 text-xs text-zinc-400">{t("graph.goal.current")}</p>
             <p className="text-sm text-zinc-600 bg-zinc-50 px-3 py-2 rounded-lg">
               {plan?.title}
             </p>
           </div>
           <div>
-            <p className="text-xs text-zinc-400 mb-2">新目标</p>
+            <p className="mb-2 text-xs text-zinc-400">{t("graph.goal.new")}</p>
             <textarea
               className="w-full h-24 p-3 text-sm border border-zinc-200 rounded-lg resize-none outline-none focus:border-zinc-400 transition-colors"
-              placeholder="输入修改后的学习目标..."
+              placeholder={t("graph.goal.placeholder")}
               value={newGoalInput}
               onChange={(e) => {
                 setNewGoalInput(e.target.value);
@@ -2293,8 +2305,8 @@ const GraphPage = () => {
             >
               <p className="text-sm font-medium mb-1">
                 {clarifyResult.isLargeChange
-                  ? "目标变化较大，建议新建计划"
-                  : "小幅调整，将更新现有图谱"}
+                  ? t("graph.goal.large")
+                  : t("graph.goal.small")}
               </p>
               <p className="text-xs text-zinc-500">{clarifyResult.reason}</p>
             </div>
@@ -2305,14 +2317,14 @@ const GraphPage = () => {
       <Modal
         isOpen={showPlanSettings}
         onClose={() => setShowPlanSettings(false)}
-        title="学习计划设置"
+        title={t("graph.settings")}
         footer={
           <>
             <Button variant="ghost" onClick={() => setShowPlanSettings(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleSavePlanSettings} disabled={isUpdatingPlanSettings}>
-              {isUpdatingPlanSettings ? "保存中..." : "保存设置"}
+              {isUpdatingPlanSettings ? t("common.saving") : t("graph.settings.save")}
             </Button>
           </>
         }
@@ -2320,18 +2332,16 @@ const GraphPage = () => {
         <div className="space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-xs font-medium text-zinc-500">开始日期</span>
-              <input
-                type="date"
+              <span className="text-xs font-medium text-zinc-500">{t("graph.settings.start")}</span>
+              <LocalizedDateInput
                 className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
                 value={planSettings.startDate}
                 onChange={(e) => handlePlanSettingChange("startDate", e.target.value)}
               />
             </label>
             <label className="space-y-2">
-              <span className="text-xs font-medium text-zinc-500">目标完成日期</span>
-              <input
-                type="date"
+              <span className="text-xs font-medium text-zinc-500">{t("graph.settings.target")}</span>
+              <LocalizedDateInput
                 className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
                 value={planSettings.targetEndDate}
                 onChange={(e) =>
@@ -2343,7 +2353,7 @@ const GraphPage = () => {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
             <label className="space-y-2">
-              <span className="text-xs font-medium text-zinc-500">学习频率</span>
+              <span className="text-xs font-medium text-zinc-500">{t("graph.settings.frequency")}</span>
               <select
                 className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
                 value={planSettings.studyFrequency}
@@ -2351,7 +2361,7 @@ const GraphPage = () => {
                   handlePlanSettingChange("studyFrequency", e.target.value)
                 }
               >
-                {PLAN_FREQUENCY_OPTIONS.map((option) => (
+                {planFrequencyOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -2360,7 +2370,7 @@ const GraphPage = () => {
             </label>
 
             <label className="space-y-2">
-              <span className="text-xs font-medium text-zinc-500">每周次数</span>
+              <span className="text-xs font-medium text-zinc-500">{t("graph.settings.days")}</span>
               <input
                 type="number"
                 min="1"
@@ -2377,8 +2387,8 @@ const GraphPage = () => {
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4">
             <label className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-zinc-800">学习提醒</p>
-                <p className="text-xs text-zinc-500">先用站内节奏管理，后续再接系统提醒。</p>
+                <p className="text-sm font-medium text-zinc-800">{t("graph.settings.reminders")}</p>
+                <p className="text-xs text-zinc-500">{t("graph.settings.remindersHelp")}</p>
               </div>
               <button
                 type="button"
@@ -2405,7 +2415,7 @@ const GraphPage = () => {
             {planSettings.reminderEnabled ? (
               <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="space-y-2">
-                  <span className="text-xs font-medium text-zinc-500">提醒时间</span>
+                  <span className="text-xs font-medium text-zinc-500">{t("graph.settings.time")}</span>
                   <input
                     type="time"
                     className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
@@ -2416,7 +2426,7 @@ const GraphPage = () => {
                   />
                 </label>
                 <label className="space-y-2">
-                  <span className="text-xs font-medium text-zinc-500">时区</span>
+                  <span className="text-xs font-medium text-zinc-500">{t("graph.settings.timezone")}</span>
                   <input
                     type="text"
                     className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none transition-colors focus:border-zinc-400"
@@ -2440,12 +2450,12 @@ const GraphPage = () => {
           setEditingNoteId(null);
           setNoteContent("");
         }}
-        title={editingNoteId ? "编辑笔记" : "新笔记"}
-        footer={<Button onClick={handleSaveNote}>{editingNoteId ? "保存修改" : "保存笔记"}</Button>}
+        title={editingNoteId ? t("graph.note.edit") : t("graph.note.new")}
+        footer={<Button onClick={handleSaveNote}>{editingNoteId ? t("graph.note.saveChanges") : t("graph.note.save")}</Button>}
       >
         <textarea
           className="w-full h-64 p-4 bg-zinc-50 border border-zinc-100 rounded-xl outline-none resize-none focus:bg-white focus:border-zinc-300 transition-colors font-mono text-sm leading-relaxed"
-          placeholder="支持 Markdown 格式..."
+          placeholder={t("graph.note.placeholder")}
           value={noteContent}
           onChange={(e) => setNoteContent(e.target.value)}
           autoFocus
@@ -2455,7 +2465,7 @@ const GraphPage = () => {
       <Modal
         isOpen={showLeaveConfirm}
         onClose={() => setShowLeaveConfirm(false)}
-        title="保存学习计划？"
+        title={t("graph.leave.title")}
         footer={
           <div className="flex gap-3 w-full">
             <Button
@@ -2466,14 +2476,14 @@ const GraphPage = () => {
                 navigate("/");
               }}
             >
-              不保存
+              {t("graph.leave.noSave")}
             </Button>
             <Button
               variant="secondary"
               className="flex-1"
               onClick={() => setShowLeaveConfirm(false)}
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               className="flex-1"
@@ -2483,12 +2493,12 @@ const GraphPage = () => {
                 navigate("/");
               }}
             >
-              保存
+              {t("common.save")}
             </Button>
           </div>
         }
       >
-        <p className="text-sm text-zinc-500">保存后可在首页继续学习。</p>
+        <p className="text-sm text-zinc-500">{t("graph.leave.help")}</p>
       </Modal>
     </div>
   );

@@ -10,6 +10,8 @@ import NotesButton from '../components/deep-learn/NotesButton';
 import NotesModal from '../components/deep-learn/NotesModal';
 import NotesSuggestionToast from '../components/deep-learn/NotesSuggestionToast';
 import MarkdownContent from '../components/common/MarkdownContent';
+import LanguageToggle from '../components/common/LanguageToggle';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const MIN_LEFT_WIDTH = 220;
 const MAX_LEFT_WIDTH = 420;
@@ -32,9 +34,9 @@ function noteBelongsToNode(note, planId, nodeId) {
   return candidates.has(note.nodeId);
 }
 
-function getNoteTitle(note) {
+function getNoteTitle(note, fallback = 'Untitled note') {
   const firstLine = (note?.content || '').split('\n').find(line => line.trim());
-  return firstLine?.replace(/^#+\s*/, '').trim() || '未命名笔记';
+  return firstLine?.replace(/^#+\s*/, '').trim() || fallback;
 }
 
 function getNoteSnippet(note) {
@@ -46,20 +48,24 @@ function getNoteSnippet(note) {
 }
 
 function Header({ nodeName, onBack, onRestart, noteHref, isGeneratingNote }) {
+  const { t } = useLanguage();
   return (
-    <div className="flex items-center gap-3 px-6 py-3 border-b border-zinc-200 bg-white shrink-0">
+    <div className="apple-toolbar z-30 flex shrink-0 items-center gap-2 border-x-0 border-t-0 px-3 py-2.5 sm:gap-3 sm:px-4">
       <button
         type="button"
-        aria-label="返回图谱"
+        aria-label={t('deep.backToMap')}
         onClick={onBack}
-        className="p-1.5 rounded-lg hover:bg-zinc-100 transition-colors"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-600 transition-[background-color,transform] duration-150 hover:bg-black/[0.06] active:scale-[0.96]"
       >
         <ArrowLeft className="w-4 h-4 text-zinc-600" />
       </button>
-      <span className="font-semibold text-zinc-900 flex-1 truncate">{nodeName || '深入学习'}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-400">{t('deep.title')}</p>
+        <span className="block truncate text-sm font-semibold text-zinc-900">{nodeName || t('deep.title')}</span>
+      </div>
       {isGeneratingNote && (
-        <span className="flex items-center gap-1.5 text-xs text-zinc-400 animate-pulse px-2 py-1.5">
-          正在生成笔记...
+        <span className="flex animate-pulse items-center gap-1.5 px-2 py-1.5 text-xs text-zinc-400">
+          {t('deep.note.generating')}
         </span>
       )}
       {noteHref && !isGeneratingNote && (
@@ -67,35 +73,37 @@ function Header({ nodeName, onBack, onRestart, noteHref, isGeneratingNote }) {
           href={noteHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-1.5 rounded-lg transition-colors"
+          className="flex min-h-8 items-center gap-1.5 rounded-md border border-black/[0.12] bg-white px-3 py-1.5 text-xs font-medium text-[#37352f] transition-[background-color,transform] duration-150 hover:bg-[#f7f6f3] active:scale-[0.98]"
         >
-          完成笔记 ↗
+          {t('deep.note.complete')}
         </a>
       )}
       <button
         type="button"
-        aria-label="重新开始"
+        aria-label={t('deep.restart')}
         onClick={onRestart}
         disabled={!onRestart}
-        className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-700 disabled:text-zinc-300 disabled:hover:bg-transparent px-2 py-1.5 rounded-lg hover:bg-zinc-100 transition-colors"
+        className="flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.05] hover:text-zinc-700 active:scale-[0.98] disabled:text-zinc-300 disabled:hover:bg-transparent"
       >
         <RotateCcw className="w-3.5 h-3.5" />
-        重新开始
+        <span className="hidden sm:inline">{t('deep.restart')}</span>
       </button>
+      <LanguageToggle className="hidden md:inline-flex" />
     </div>
   );
 }
 
 function RestartConfirmDialog({ open, onCancel, onConfirm }) {
+  const { t } = useLanguage();
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl">
+      <div className="w-full max-w-sm rounded-xl border border-black/[0.12] bg-white p-6 shadow-[var(--shadow-float)]">
         <div className="mb-4">
-          <h2 className="text-base font-semibold text-zinc-900">确认重新开始？</h2>
+          <h2 className="text-base font-semibold text-zinc-900">{t('deep.restartTitle')}</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-500">
-            当前深度学习进度会被清空，并从第一个概念重新生成讲解。
+            {t('deep.restartHelp')}
           </p>
         </div>
         <div className="flex justify-end gap-2">
@@ -104,14 +112,14 @@ function RestartConfirmDialog({ open, onCancel, onConfirm }) {
             onClick={onCancel}
             className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-50"
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white transition-colors hover:bg-zinc-700"
+            className="rounded-md bg-[#202020] px-4 py-2 text-sm font-medium text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98]"
           >
-            确认重新开始
+            {t('deep.restartConfirm')}
           </button>
         </div>
       </div>
@@ -128,30 +136,31 @@ function FullScreenLoader({ text }) {
 }
 
 function InitializationPanel({ nodeName }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-1 items-center justify-center px-6">
-      <div className="w-full max-w-xl rounded-2xl border border-teal-100 bg-white px-6 py-5 shadow-sm">
+      <div className="apple-card w-full max-w-xl rounded-xl px-6 py-6">
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-teal-500" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f7f6f3] text-[#202020]">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#202020]" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-zinc-900">正在准备第一次深度学习</p>
-            <p className="text-xs text-zinc-500">{nodeName || '当前知识点'} 的会话只会初始化一次，之后会自动恢复进度。</p>
+            <p className="text-sm font-semibold text-zinc-900">{t('deep.initializing.title')}</p>
+            <p className="text-xs text-zinc-500">{t('deep.initializing.subtitle', { name: nodeName || t('deep.currentConcept') })}</p>
           </div>
         </div>
         <div className="space-y-3 text-sm text-zinc-600">
           <div className="flex items-center gap-3">
             <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
-            <span>读取节点概念列表和学习目标</span>
+            <span>{t('deep.initializing.concepts')}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
-            <span>校准当前概念的教学深度</span>
+            <span>{t('deep.initializing.depth')}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="h-1.5 w-1.5 rounded-full bg-zinc-300" />
-            <span>生成第一段讲解和诊断问题</span>
+            <span>{t('deep.initializing.lesson')}</span>
           </div>
         </div>
       </div>
@@ -168,6 +177,7 @@ function ErrorBanner({ message }) {
 }
 
 function SidebarNoteList({ notes, selectedNoteId, onSelectNote, onDeleteNote }) {
+  const { t } = useLanguage();
   if (!notes.length) return null;
 
   return (
@@ -190,7 +200,7 @@ function SidebarNoteList({ notes, selectedNoteId, onSelectNote, onDeleteNote }) 
               <div className="flex items-start gap-2">
                 <FileText size={14} className="mt-0.5 shrink-0 text-amber-600" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold">{getNoteTitle(note)}</p>
+                  <p className="truncate text-xs font-semibold">{getNoteTitle(note, t('deep.note.untitled'))}</p>
                   <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-zinc-400">
                     {getNoteSnippet(note).slice(0, 72)}
                   </p>
@@ -201,7 +211,7 @@ function SidebarNoteList({ notes, selectedNoteId, onSelectNote, onDeleteNote }) 
             <button
               type="button"
               onClick={() => onDeleteNote(note.id)}
-              aria-label={`删除笔记 ${getNoteTitle(note)}`}
+              aria-label={t('deep.note.deleteNamed', { name: getNoteTitle(note, t('deep.note.untitled')) })}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 focus:opacity-100"
             >
               <Trash2 size={13} />
@@ -214,21 +224,22 @@ function SidebarNoteList({ notes, selectedNoteId, onSelectNote, onDeleteNote }) 
 }
 
 function NoteReaderPanel({ note, onEdit, onDelete, onClose }) {
+  const { t } = useLanguage();
   return (
     <aside
-      aria-label="笔记阅读区"
-      className="flex h-full min-h-0 w-full flex-col border-l border-zinc-200 bg-white text-zinc-900 shadow-[-8px_0_24px_rgba(15,23,42,0.04)]"
+      aria-label={t('deep.note.reader')}
+      className="flex h-full min-h-0 w-full flex-col border-l border-black/[0.07] bg-[#fbfbfa] text-zinc-900"
     >
       <header className="flex min-h-12 items-center gap-2 border-b border-zinc-100 px-4 py-3">
         <FileText size={16} className="shrink-0 text-amber-600" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-zinc-900">{getNoteTitle(note)}</p>
-          <p className="mt-0.5 text-[11px] text-zinc-400">{note.date || note.createdAt || '笔记'}</p>
+          <p className="truncate text-sm font-semibold text-zinc-900">{getNoteTitle(note, t('deep.note.untitled'))}</p>
+          <p className="mt-0.5 text-[11px] text-zinc-400">{note.date || note.createdAt || t('deep.note.label')}</p>
         </div>
         <button
           type="button"
           onClick={onEdit}
-          aria-label="编辑笔记"
+          aria-label={t('deep.note.edit')}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-amber-50 hover:text-amber-700"
         >
           <Pencil size={15} />
@@ -236,7 +247,7 @@ function NoteReaderPanel({ note, onEdit, onDelete, onClose }) {
         <button
           type="button"
           onClick={onDelete}
-          aria-label="删除笔记"
+          aria-label={t('deep.note.delete')}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500"
         >
           <Trash2 size={15} />
@@ -244,13 +255,13 @@ function NoteReaderPanel({ note, onEdit, onDelete, onClose }) {
         <button
           type="button"
           onClick={onClose}
-          aria-label="关闭笔记阅读"
+          aria-label={t('deep.note.close')}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
         >
           <X size={16} />
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-50 px-5 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfbfa] px-5 py-5">
         <div className="rounded-xl border border-zinc-100 bg-white p-5">
           <MarkdownContent content={note.content || ''} />
         </div>
@@ -262,6 +273,7 @@ function NoteReaderPanel({ note, onEdit, onDelete, onClose }) {
 export default function DeepLearnPage() {
   const { planId, nodeId } = useParams();
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
   const { allNotes, actions: noteActions } = useNoteContext();
   const layoutRef = useRef(null);
   const resizeRef = useRef(null);
@@ -274,7 +286,7 @@ export default function DeepLearnPage() {
     isInitializing, isRestarting, canSendMessage, uiFlags, sendMessage, sendCommand, error,
     pinnedImages, pinImage, unpinImage, noteSuggestion, dismissNoteSuggestion,
     noteId, isGeneratingNote, isCompleted,
-  } = useDeepLearnSession({ planId, nodeId });
+  } = useDeepLearnSession({ planId, nodeId, language });
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesInitial, setNotesInitial] = useState('');
@@ -395,7 +407,7 @@ export default function DeepLearnPage() {
 
   if (!session) {
     return (
-      <div className="flex flex-col h-screen bg-[#FAFAFA] overflow-hidden">
+      <div className="flex h-screen flex-col overflow-hidden bg-[var(--color-canvas)]">
         <Header
           nodeName={null}
           onBack={() => navigate(`/graph/${planId}`)}
@@ -404,13 +416,13 @@ export default function DeepLearnPage() {
           isGeneratingNote={false}
         />
         {error && <ErrorBanner message={error} />}
-        <FullScreenLoader text={error ? "学习环境准备失败" : "正在准备学习环境..."} />
+        <FullScreenLoader text={error ? t('deep.failed') : t('deep.preparing')} />
       </div>
     );
   }
 
   return (
-    <div className="relative flex flex-col h-screen bg-[#FAFAFA] overflow-hidden">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-[var(--color-canvas)]">
       <Header
         nodeName={session.nodeName}
         onBack={() => navigate(`/graph/${planId}`)}
@@ -423,10 +435,10 @@ export default function DeepLearnPage() {
         onCancel={() => setRestartConfirmOpen(false)}
         onConfirm={handleConfirmRestart}
       />
-      <div ref={layoutRef} className="flex flex-1 overflow-hidden">
+      <div ref={layoutRef} className="mx-2 mb-2 mt-2 flex flex-1 overflow-hidden rounded-lg border border-black/[0.1] bg-white">
         <aside
-          aria-label="概念列表区域"
-          className="shrink-0 bg-white overflow-y-auto"
+          aria-label={t('deep.conceptsArea')}
+          className="shrink-0 overflow-y-auto bg-[#f7f6f3]"
           style={{ width: `${paneWidths.left}px` }}
         >
           <ConceptProgress
@@ -448,15 +460,15 @@ export default function DeepLearnPage() {
         </aside>
         <button
           type="button"
-          aria-label="调整概念列表和学习区宽度"
-          title="拖动调整宽度，双击重置布局"
+          aria-label={t('deep.resizeConcepts')}
+          title={t('deep.resizeHint')}
           onMouseDown={event => startResize('left', event)}
           onDoubleClick={resetPaneWidths}
-          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-zinc-200 bg-zinc-50 transition-colors hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-300"
+          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-black/[0.06] bg-white transition-colors hover:bg-black/[0.03] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-black/15"
         >
-          <span className="absolute left-1/2 top-1/2 h-10 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-300 transition-colors group-hover:bg-teal-400" />
+          <span className="absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-zinc-300 transition-colors group-hover:bg-zinc-500" />
         </button>
-        <main className="flex-1 overflow-hidden flex flex-col">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {error && <ErrorBanner message={error} />}
           {isInitializing && messages.length === 0 ? (
             <InitializationPanel nodeName={session.nodeName} />
@@ -476,16 +488,16 @@ export default function DeepLearnPage() {
         </main>
         <button
           type="button"
-          aria-label="调整学习区和侧边工作区宽度"
-          title="拖动调整宽度，双击重置布局"
+          aria-label={t('deep.resizeAssistant')}
+          title={t('deep.resizeHint')}
           onMouseDown={event => startResize('right', event)}
           onDoubleClick={resetPaneWidths}
-          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-zinc-200 bg-zinc-50 transition-colors hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-300"
+          className="group relative z-10 w-2 shrink-0 cursor-col-resize border-x border-black/[0.06] bg-white transition-colors hover:bg-black/[0.03] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-black/15"
         >
-          <span className="absolute left-1/2 top-1/2 h-10 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-300 transition-colors group-hover:bg-teal-400" />
+          <span className="absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-zinc-300 transition-colors group-hover:bg-zinc-500" />
         </button>
         <div
-          aria-label="侧边工作区容器"
+          aria-label={t('deep.sidebarContainer')}
           className="shrink-0"
           style={{ width: `${paneWidths.right}px` }}
         >

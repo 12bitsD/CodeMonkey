@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import ChatMarkdownMessage from '../chat/ChatMarkdownMessage';
 import { aiApi } from '../../services/api';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const MAX_MARKDOWN_FILE_SIZE = 256 * 1024;
 
@@ -37,17 +38,18 @@ function formatFileSize(size = 0) {
   return `${Math.round(size / 1024)} KB`;
 }
 
-function buildAttachedMarkdownPrompt(text, files) {
+function buildAttachedMarkdownPrompt(text, files, t) {
   if (!files.length) return text;
 
   const fileBlocks = files.map(file => (
     `### ${file.name}\n\n\`\`\`markdown\n${file.content}\n\`\`\``
   )).join('\n\n');
 
-  return `用户附加了以下 Markdown 文件作为上下文：\n\n${fileBlocks}\n\n用户请求：\n${text || '请先阅读这些 Markdown 文件，并基于文件内容回答我后续的问题。'}`;
+  return `${t('assistant.prompt.files')}\n\n${fileBlocks}\n\n${t('assistant.prompt.request')}\n${text || t('assistant.prompt.fallback')}`;
 }
 
 export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
+  const { language, t } = useLanguage();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -86,8 +88,8 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
     const filesForMessage = attachedFiles;
     const userMsg = {
       role: 'user',
-      content: buildAttachedMarkdownPrompt(text, filesForMessage),
-      displayContent: text || '已添加 Markdown 文件',
+      content: buildAttachedMarkdownPrompt(text, filesForMessage, t),
+      displayContent: text || t('assistant.addedFiles'),
       attachments: filesForMessage.map(({ name, size }) => ({ name, size })),
     };
     const nextMessages = [...messages, userMsg, { role: 'assistant', content: '' }];
@@ -102,17 +104,20 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
       await aiApi.chatStream(
         [...messages, userMsg],
         { nodeName, why: nodeWhy },
-        (chunk) => {
-          streamRef.current.content += chunk;
-          flushAssistant();
+        {
+          language,
+          onChunk: (chunk) => {
+            streamRef.current.content += chunk;
+            flushAssistant();
+          },
         },
       );
       if (!streamRef.current.content) {
-        streamRef.current.content = '暂时没有生成内容，请再试一次。';
+        streamRef.current.content = t('assistant.emptyResponse');
         flushAssistant();
       }
     } catch (_err) {
-      streamRef.current.content = '助手回复失败，请稍后重试。';
+      streamRef.current.content = t('assistant.failed');
       flushAssistant();
     } finally {
       setLoading(false);
@@ -133,13 +138,13 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
 
     const invalidFile = files.find(file => !isMarkdownFile(file));
     if (invalidFile) {
-      setFileError('目前只支持添加 .md 文件，PDF 会在后续版本支持。');
+      setFileError(t('assistant.fileType'));
       return;
     }
 
     const oversizedFile = files.find(file => file.size > MAX_MARKDOWN_FILE_SIZE);
     if (oversizedFile) {
-      setFileError(`Markdown 文件不能超过 ${formatFileSize(MAX_MARKDOWN_FILE_SIZE)}。`);
+      setFileError(t('assistant.fileSize', { size: formatFileSize(MAX_MARKDOWN_FILE_SIZE) }));
       return;
     }
 
@@ -152,7 +157,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
       setAttachedFiles(prev => [...prev, ...nextFiles]);
       setActiveTool('chat');
     } catch (_err) {
-      setFileError('读取 Markdown 文件失败，请重新选择。');
+      setFileError(t('assistant.fileRead'));
     }
   };
 
@@ -169,8 +174,8 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
 
   return (
     <aside
-      aria-label="侧边工作区"
-      className="flex h-full min-h-0 w-full flex-col border-l border-zinc-200 bg-white text-zinc-900 shadow-[-8px_0_24px_rgba(15,23,42,0.04)]"
+      aria-label={t('deep.sidebar')}
+      className="flex h-full min-h-0 w-full flex-col border-l border-black/[0.07] bg-white/70 text-zinc-900 backdrop-blur-xl"
     >
       <input
         ref={fileInputRef}
@@ -178,7 +183,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
         accept=".md,text/markdown"
         multiple
         className="hidden"
-        aria-label="添加 Markdown 文件"
+        aria-label={t('assistant.addMarkdown')}
         onChange={handleFileChange}
       />
       <div className="flex h-11 items-center gap-2 border-b border-zinc-100 px-3">
@@ -187,30 +192,30 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
           onClick={() => setActiveTool('chat')}
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
             activeTool === 'chat'
-              ? 'bg-zinc-900 text-white'
+              ? 'bg-white text-zinc-900 shadow-sm'
               : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900'
           }`}
         >
           <Sparkles size={13} />
-          侧边聊天
+          {t('assistant.chat')}
         </button>
         <button
           type="button"
           onClick={() => setActiveTool('browser')}
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
             activeTool === 'browser'
-              ? 'bg-zinc-900 text-white'
+              ? 'bg-white text-zinc-900 shadow-sm'
               : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900'
           }`}
         >
           <Globe2 size={13} />
-          浏览器
+          {t('assistant.browser')}
         </button>
         <button
           type="button"
           onClick={openFilePicker}
-          aria-label="添加 Markdown 文件"
-          title="添加 Markdown 文件"
+          aria-label={t('assistant.addMarkdown')}
+          title={t('assistant.addMarkdown')}
           className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
         >
           <Plus size={15} />
@@ -224,15 +229,15 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
               <Sparkles size={13} fill="currentColor" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-zinc-900">AI 学习助手</p>
-              <p className="truncate text-[10px] text-zinc-400">{nodeName || '当前知识点'}</p>
+              <p className="text-xs font-bold text-zinc-900">{t('assistant.title')}</p>
+              <p className="truncate text-[10px] text-zinc-400">{nodeName || t('assistant.currentConcept')}</p>
             </div>
             <button
               type="button"
               onClick={() => setMessages([])}
               className="ml-auto text-[11px] text-zinc-300 transition-colors hover:text-zinc-500"
             >
-              清空
+              {t('assistant.clear')}
             </button>
           </div>
 
@@ -240,13 +245,13 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
             {messages.length === 0 && (
               <div className="pt-12 text-center text-xs text-zinc-300">
                 <MessageCircle size={24} className="mx-auto mb-2 opacity-30" />
-                <p>问一个关于“{nodeName || '这个概念'}”的问题</p>
+                <p>{t('assistant.empty', { name: nodeName || t('assistant.thisConcept') })}</p>
               </div>
             )}
             {messages.map((msg, index) => (
               <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'user' ? (
-                  <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-zinc-900 px-3 py-2 text-xs leading-relaxed text-white">
+                  <div className="max-w-[85%] rounded-xl rounded-br-sm bg-[#202020] px-3 py-2 text-xs leading-relaxed text-white">
                     {msg.displayContent || msg.content}
                     {msg.attachments?.length > 0 && (
                       <div className="mt-2 space-y-1 border-t border-white/15 pt-2 text-[10px] text-zinc-300">
@@ -271,8 +276,8 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
             {messages.length > 0 && (
               <button
                 type="button"
-                aria-label="滚动到底部"
-                title="滚动到底部"
+                aria-label={t('assistant.scrollBottom')}
+                title={t('assistant.scrollBottom')}
                 onClick={scrollToBottom}
                 className="sticky bottom-2 ml-auto flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900"
               >
@@ -296,7 +301,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
                       type="button"
                       onClick={() => removeAttachedFile(index)}
                       className="shrink-0 rounded-md px-1 text-teal-500 transition-colors hover:bg-teal-100 hover:text-teal-800"
-                      aria-label={`移除 ${file.name}`}
+                      aria-label={t('assistant.removeFile', { name: file.name })}
                     >
                       ×
                     </button>
@@ -309,7 +314,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
                 )}
               </div>
             )}
-            <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 shadow-sm focus-within:border-teal-300 focus-within:ring-2 focus-within:ring-teal-100">
+            <div className="apple-input rounded-2xl px-3 py-2">
               <textarea
                 value={input}
                 onChange={e => setInput(e.target.value)}
@@ -320,7 +325,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
                   }
                 }}
                 disabled={loading}
-                placeholder="要求后续变更"
+                placeholder={t('assistant.placeholder')}
                 rows={3}
                 className="h-16 w-full resize-none bg-transparent text-xs text-zinc-900 outline-none placeholder:text-zinc-400 disabled:text-zinc-400"
               />
@@ -329,8 +334,8 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
                   type="button"
                   onClick={openFilePicker}
                   disabled={loading}
-                  aria-label="添加 Markdown 文件"
-                  title="添加 Markdown 文件"
+                  aria-label={t('assistant.addMarkdown')}
+                  title={t('assistant.addMarkdown')}
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
                 >
                   <Plus size={15} />
@@ -339,8 +344,8 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
                   type="button"
                   onClick={send}
                   disabled={(!input.trim() && attachedFiles.length === 0) || loading}
-                  aria-label="发送"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-700 disabled:bg-zinc-200 disabled:text-zinc-400"
+                  aria-label={t('deep.send')}
+                  className="flex h-8 w-8 items-center justify-center rounded-md bg-[#202020] text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.96] disabled:bg-zinc-200 disabled:text-zinc-400"
                 >
                   {loading ? <Loader size={12} className="animate-spin" /> : <Send size={13} />}
                 </button>
@@ -354,7 +359,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
             <button
               type="button"
               disabled
-              aria-label="浏览器后退"
+              aria-label={t('assistant.browser.back')}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-300"
             >
               <ArrowLeft size={14} />
@@ -362,7 +367,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
             <button
               type="button"
               disabled
-              aria-label="浏览器前进"
+              aria-label={t('assistant.browser.forward')}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-300"
             >
               <ArrowRight size={14} />
@@ -371,7 +376,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
               type="button"
               onClick={() => setBrowserKey(key => key + 1)}
               disabled={!browserUrl}
-              aria-label="刷新浏览器"
+              aria-label={t('assistant.browser.refresh')}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:text-zinc-200"
             >
               <RefreshCcw size={13} />
@@ -380,8 +385,8 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
               <input
                 value={browserInput}
                 onChange={event => setBrowserInput(event.target.value)}
-                placeholder="输入网址或 localhost:5173"
-                aria-label="浏览器地址"
+                placeholder={t('assistant.browser.placeholder')}
+                aria-label={t('assistant.browser.address')}
                 className="h-8 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs text-zinc-700 outline-none transition-colors placeholder:text-zinc-400 focus:border-teal-400 focus:bg-white"
               />
             </form>
@@ -391,14 +396,14 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
               disabled={!browserInput.trim()}
               className="h-8 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-zinc-700 disabled:bg-zinc-100 disabled:text-zinc-300"
             >
-              打开
+              {t('assistant.browser.open')}
             </button>
           </div>
 
           {browserUrl && (
             <div className="flex items-center gap-2 border-b border-zinc-100 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
               <span className="min-w-0 flex-1">
-                部分网站会拒绝在侧边栏内嵌显示，遇到“拒绝连接”时请新窗口打开。
+                {t('assistant.browser.embedWarning')}
               </span>
               <a
                 href={browserUrl}
@@ -407,7 +412,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
                 className="inline-flex shrink-0 items-center gap-1 rounded-md bg-white px-2 py-1 font-semibold text-amber-900 shadow-sm ring-1 ring-amber-200 transition-colors hover:bg-amber-100"
               >
                 <ExternalLink size={12} />
-                新窗口
+                {t('assistant.browser.newWindow')}
               </a>
             </div>
           )}
@@ -417,7 +422,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
               <iframe
                 key={browserKey}
                 src={browserUrl}
-                title="侧边浏览器"
+                title={t('assistant.browser.title')}
                 className="h-full w-full border-0 bg-white"
                 referrerPolicy="no-referrer"
               />
@@ -425,7 +430,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
               <div className="flex h-full items-center justify-center px-8 text-center text-xs text-zinc-400">
                 <div>
                   <Globe2 size={28} className="mx-auto mb-3 opacity-40" />
-                  <p>输入网址，在右侧打开参考页面</p>
+                  <p>{t('assistant.browser.empty')}</p>
                 </div>
               </div>
             )}

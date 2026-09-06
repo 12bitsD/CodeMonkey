@@ -26,10 +26,64 @@ function withAnswer(options, correctText, seed) {
   };
 }
 
-export function generateMasteryQuiz({ nodeName, standard }) {
-  const topic = nodeName || "当前知识点";
-  const check = standard || "这条掌握标准";
+export function generateMasteryQuiz({ nodeName, standard, language = "en-US" }) {
+  const isChinese = language === "zh-CN";
+  const topic = nodeName || (isChinese ? "当前知识点" : "this concept");
+  const check = standard || (isChinese ? "这条掌握标准" : "this mastery criterion");
   const seed = hashText(`${topic}:${check}`).length;
+
+  if (!isChinese) {
+    const q1Correct = `Complete and explain this independently: ${check}`;
+    const q1 = withAnswer(
+      [
+        q1Correct,
+        `Read material about “${topic}” once`,
+        "Recall a few keywords but not complete a practical task",
+        "Copy an existing answer and get the same result",
+      ],
+      q1Correct,
+      seed,
+    );
+    const q2Correct = "Identify the task requirements, complete the key steps independently, and explain each decision";
+    const q2 = withAnswer(
+      [
+        "Skip anything difficult without checking the result",
+        q2Correct,
+        "Memorize the definition without applying it",
+        "Accept any result that looks correct without explaining the process",
+      ],
+      q2Correct,
+      seed + 1,
+    );
+    const q3Correct = "Follow an example exactly but get stuck as soon as one condition changes";
+    const q3 = withAnswer(
+      [
+        "Identify key assumptions, common errors, and verification methods",
+        "Transfer the same method to a similar situation",
+        q3Correct,
+        "Explain the reason behind the criterion in your own words",
+      ],
+      q3Correct,
+      seed + 2,
+    );
+    return [
+      {
+        question: `Which behavior best demonstrates mastery of this criterion in “${topic}”?`,
+        explanation: "Mastery requires verifiable performance, not just exposure or recall.",
+        ...q1,
+      },
+      {
+        question: `What is the best approach when applying “${check}” to a real task?`,
+        explanation: "Real mastery means completing the key steps independently and explaining the reasoning.",
+        ...q2,
+      },
+      {
+        question: "Which situation shows that this mastery criterion has not yet been met?",
+        explanation: "Copying an example without adapting it does not demonstrate transferable understanding.",
+        ...q3,
+      },
+    ];
+  }
 
   const q1Correct = `能独立完成并解释：${check}`;
   const q1 = withAnswer(

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, RotateCcw, XCircle } from "lucide-react";
 import { Button, Modal } from "../ui";
 import { MASTERY_PASS_THRESHOLD } from "../../utils/masteryQuiz";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 export default function MasteryQuizModal({ quiz, onClose, onPassed }) {
+  const { t } = useLanguage();
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
 
@@ -49,26 +51,26 @@ export default function MasteryQuizModal({ quiz, onClose, onPassed }) {
     <Modal
       isOpen={Boolean(quiz)}
       onClose={onClose}
-      title="掌握标准小测"
+      title={t("quiz.title")}
       footer={
         submitted ? (
           <>
             <Button variant="ghost" onClick={onClose}>
-              关闭
+              {t("common.close")}
             </Button>
             {!passed && (
               <Button icon={RotateCcw} onClick={handleRetry}>
-                重新作答
+                {t("quiz.retry")}
               </Button>
             )}
           </>
         ) : (
           <>
             <Button variant="ghost" onClick={onClose}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleSubmit} disabled={!complete}>
-              提交小测
+              {t("quiz.submit")}
             </Button>
           </>
         )
@@ -77,13 +79,13 @@ export default function MasteryQuizModal({ quiz, onClose, onPassed }) {
       <div className="space-y-5">
         <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            测试标准
+            {t("quiz.standard")}
           </p>
           <p className="mt-2 text-sm leading-relaxed text-zinc-800">
             {quiz.standard}
           </p>
           <p className="mt-3 text-xs text-zinc-400">
-            共 3 题，答对 2 题及以上即通过。
+            {t("quiz.help")}
           </p>
         </div>
 
@@ -98,10 +100,10 @@ export default function MasteryQuizModal({ quiz, onClose, onPassed }) {
             {passed ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
             <div>
               <p className="text-sm font-semibold">
-                {passed ? "已通过" : "还差一点"}
+                {passed ? t("quiz.passed") : t("quiz.notYet")}
               </p>
               <p className="text-xs opacity-80">
-                本次答对 {score} / {quiz.questions.length} 题。
+                {t("quiz.score", { score, total: quiz.questions.length })}
               </p>
             </div>
           </div>

@@ -2,6 +2,160 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  font: 100%/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "Noto Sans SC", "Microsoft YaHei UI", Helvetica, Arial, sans-serif;
+  font-optical-sizing: auto;
+  --color-canvas: #fffdf8;
+  --color-sidebar: #f7f6f3;
+  --color-surface: #ffffff;
+  --color-surface-solid: #ffffff;
+  --color-label: #202020;
+  --color-label-secondary: #5f5e5b;
+  --color-label-tertiary: #8f8e8b;
+  --color-separator: rgba(55, 53, 47, 0.12);
+  --color-accent: #202020;
+  --color-accent-hover: #000000;
+  --shadow-card: 0 1px 2px rgba(15, 15, 15, 0.04);
+  --shadow-float: 0 16px 48px rgba(15, 15, 15, 0.14), 0 2px 8px rgba(15, 15, 15, 0.06);
+  --ease-out-apple: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html {
+  background: var(--color-canvas);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--color-canvas);
+  color: var(--color-label);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(32, 32, 32, 0.45);
+  outline-offset: 2px;
+}
+
+.apple-toolbar {
+  border: 1px solid rgba(55, 53, 47, 0.11);
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.apple-card {
+  border: 1px solid rgba(55, 53, 47, 0.12);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.apple-segmented {
+  border: 1px solid rgba(55, 53, 47, 0.1);
+  border-radius: 7px;
+  background: rgba(55, 53, 47, 0.045);
+  padding: 2px;
+}
+
+.apple-input {
+  border: 1px solid var(--color-separator);
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(15, 15, 15, 0.02);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.apple-input:focus-within,
+.apple-input:focus {
+  border-color: rgba(32, 32, 32, 0.45);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(32, 32, 32, 0.07);
+}
+
+.localized-date-input::-webkit-datetime-edit {
+  opacity: 0;
+}
+
+.localized-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.notion-page {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 1100px;
+  padding: 4.5rem clamp(1.25rem, 5vw, 5rem) 6rem;
+}
+
+.notion-section-label {
+  color: #8f8e8b;
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.notion-row {
+  border-bottom: 1px solid rgba(55, 53, 47, 0.1);
+  transition: background-color 150ms ease;
+}
+
+.notion-row:hover {
+  background: rgba(55, 53, 47, 0.035);
+}
+
+.notion-illustration {
+  mix-blend-mode: multiply;
+  filter: contrast(1.03);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-separator: rgba(0, 0, 0, 0.38);
+  }
+
+  .apple-card,
+  .apple-toolbar {
+    border-color: var(--color-separator);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .apple-card,
+  .apple-toolbar {
+    background: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
@@ -28,6 +182,7 @@
 
 .note-zhihu h1 {
   font-size: 1.75rem;
+  line-height: 1.18;
   font-weight: 700;
   margin-bottom: 0.75rem;
   margin-top: 2rem;
@@ -35,6 +190,7 @@
 
 .note-zhihu h2 {
   font-size: 1.375rem;
+  line-height: 1.3;
   font-weight: 600;
   margin-top: 2rem;
   margin-bottom: 0.5rem;
@@ -53,6 +209,7 @@
 
 .note-zhihu code {
   background: #f4f4f5;
+  color: #0f766e;
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.875em;
@@ -60,10 +217,17 @@
 
 .note-zhihu pre {
   background: #f4f4f5;
+  color: #27272a;
   padding: 1rem;
   border-radius: 8px;
   overflow-x: auto;
   margin: 1.25rem 0;
+}
+
+.note-zhihu pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
 }
 
 /* ── Print / PDF export ─────────────────────────────────────── */

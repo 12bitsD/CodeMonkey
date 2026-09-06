@@ -10,17 +10,19 @@ import CompletionNotePage from './pages/CompletionNotePage';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AppErrorBoundary from './components/common/AppErrorBoundary';
 import DataSyncStatusBanner from './components/common/DataSyncStatusBanner';
+import { LanguageProvider } from './contexts/LanguageContext';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <AppProvider>
-          <BrowserRouter>
-            <AppErrorBoundary>
-              <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans selection:bg-zinc-200 selection:text-zinc-900 antialiased overflow-hidden">
-                <DataSyncStatusBanner />
-                <Routes>
+    <LanguageProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <AppProvider>
+            <BrowserRouter>
+              <AppErrorBoundary>
+                <div className="min-h-screen overflow-hidden bg-[var(--color-canvas)] font-sans text-[var(--color-label)] selection:bg-zinc-200 selection:text-zinc-950 antialiased">
+                  <DataSyncStatusBanner />
+                  <Routes>
                   <Route path="/auth" element={<AuthPage />} />
                   <Route path="/" element={<HomePage />} />
                   <Route 
@@ -56,12 +58,13 @@ export default function App() {
                     }
                   />
                   <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </div>
-            </AppErrorBoundary>
-          </BrowserRouter>
-        </AppProvider>
-      </ToastProvider>
-    </AuthProvider>
+                  </Routes>
+                </div>
+              </AppErrorBoundary>
+            </BrowserRouter>
+          </AppProvider>
+        </ToastProvider>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }

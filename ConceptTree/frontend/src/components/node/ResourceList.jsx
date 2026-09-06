@@ -1,12 +1,14 @@
 import { ExternalLink } from "lucide-react";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 export function ResourceList({ resources }) {
+  const { t } = useLanguage();
   if (!resources?.length) return null;
 
   return (
     <section className="space-y-3">
-      <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-400">
-        <ExternalLink size={12} /> 推荐资源
+      <h4 className="flex items-center gap-2 text-[0.65625rem] font-semibold uppercase leading-4 tracking-[0.075em] text-[#8f8e8b]">
+        <ExternalLink size={12} strokeWidth={1.8} /> {t("node.resources")}
       </h4>
       <div className="space-y-2">
         {resources.map((resource, index) => (
@@ -24,7 +26,7 @@ export function ResourceList({ resources }) {
                 </div>
                 {resource.source === "web_search" && (
                   <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700">
-                    联网搜索
+                    {t("node.webSearch")}
                   </span>
                 )}
               </div>

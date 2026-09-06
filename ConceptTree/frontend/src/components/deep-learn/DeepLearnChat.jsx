@@ -5,6 +5,7 @@ import MarkdownContent from '../common/MarkdownContent';
 import CommandBar from './CommandBar';
 import DalleImage from './DalleImage';
 import MermaidDiagram from './MermaidDiagram';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 function AssessmentCard({ data }) {
   return (
@@ -18,9 +19,10 @@ function AssessmentCard({ data }) {
 }
 
 function QuestionsCard({ items }) {
+  const { t } = useLanguage();
   return (
     <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm shadow-sm">
-      <p className="font-medium text-zinc-500 mb-3">请回答以下问题：</p>
+      <p className="mb-3 font-medium text-zinc-500">{t('deep.answerPrompt')}</p>
       <ol className="list-decimal space-y-2 pl-5 text-zinc-700">
         {items.map((q, i) => (
           <li key={i} className="pl-1">
@@ -32,11 +34,11 @@ function QuestionsCard({ items }) {
   );
 }
 
-function getOutlineTitle(msg, index) {
-  if (msg.kind === 'questions') return `问题 ${index + 1}`;
-  if (msg.kind === 'assessment') return `评估反馈 ${index + 1}`;
-  if (msg.kind === 'mermaid') return `图表 ${index + 1}`;
-  if (msg.kind === 'dalle_image') return `图片 ${index + 1}`;
+function getOutlineTitle(msg, index, t) {
+  if (msg.kind === 'questions') return t('deep.outline.question', { count: index + 1 });
+  if (msg.kind === 'assessment') return t('deep.outline.feedback', { count: index + 1 });
+  if (msg.kind === 'mermaid') return t('deep.outline.diagram', { count: index + 1 });
+  if (msg.kind === 'dalle_image') return t('deep.outline.image', { count: index + 1 });
   if (msg.kind !== 'text') return null;
   const lines = String(msg.content || '')
     .split('\n')
@@ -60,6 +62,7 @@ export default function DeepLearnChat({
   onSendCommand,
   onPinImage,
 }) {
+  const { t } = useLanguage();
   const [input, setInput] = useState('');
   const [outlineOpen, setOutlineOpen] = useState(false);
   const scrollAreaRef = useRef(null);
@@ -72,9 +75,9 @@ export default function DeepLearnChat({
   }, [messages]);
 
   const outlineItems = useMemo(() => messages
-    .map((msg, index) => ({ id: msg.id, title: getOutlineTitle(msg, index) }))
+    .map((msg, index) => ({ id: msg.id, title: getOutlineTitle(msg, index, t) }))
     .filter(item => item.title)
-    .slice(-10), [messages]);
+    .slice(-10), [messages, t]);
 
   const scrollToMessage = (id) => {
     const scrollArea = scrollAreaRef.current;
@@ -107,12 +110,12 @@ export default function DeepLearnChat({
   );
 
   return (
-    <div className="relative flex flex-col h-full">
+    <div data-testid="deep-learn-chat" className="relative flex h-full min-w-0 flex-col overflow-hidden">
       {outlineItems.length > 0 && (
         <div className="absolute right-4 top-4 z-20">
           <button
             type="button"
-            aria-label="打开学习目录"
+            aria-label={t('deep.outline.open')}
             onClick={() => setOutlineOpen(open => !open)}
             className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900"
           >
@@ -134,12 +137,16 @@ export default function DeepLearnChat({
           )}
         </div>
       )}
-      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div
+        ref={scrollAreaRef}
+        data-testid="deep-learn-scroll-area"
+        className="min-h-0 min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6"
+      >
         {messages.map((msg) => {
           if (msg.role === 'user') {
             return (
-              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex justify-end">
-                <div className="max-w-[70%] bg-zinc-900 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm">
+              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex min-w-0 justify-end">
+                <div className="max-w-[70%] break-words rounded-xl rounded-tr-sm bg-[#202020] px-4 py-2.5 text-sm text-white [overflow-wrap:anywhere]">
                   {msg.content}
                 </div>
               </div>
@@ -147,8 +154,8 @@ export default function DeepLearnChat({
           }
           if (msg.kind === 'text') {
             return (
-              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex justify-start">
-                <div className="w-full max-w-[85%]">
+              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="flex min-w-0 max-w-full justify-start">
+                <div className="min-w-0 w-full max-w-[85%]">
                   <ChatMarkdownMessage
                     content={msg.content}
                     isPending={isStreaming && !msg.content}
@@ -163,9 +170,9 @@ export default function DeepLearnChat({
               <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="group relative max-w-[85%]">
                 <MermaidDiagram code={msg.content} />
                 <button
-                  onClick={() => onPinImage?.(msg.id, `mermaid:${msg.content}`, '流程图')}
+                  onClick={() => onPinImage?.(msg.id, `mermaid:${msg.content}`, t('deep.diagram'))}
                   className="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 hover:bg-white shadow opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="钉到左侧"
+                  title={t('deep.pin')}
                 >
                   <Pin size={14} />
                 </button>
@@ -203,10 +210,10 @@ export default function DeepLearnChat({
         })}
         {isStreaming && !hasPendingAssistant && (
           <div className="flex justify-start">
-            <div className="w-full max-w-[85%] rounded-[22px] rounded-bl-sm border border-teal-100/80 bg-gradient-to-br from-white via-teal-50/70 to-cyan-50/80 px-4 py-3 shadow-[0_10px_30px_rgba(20,184,166,0.08)]">
+            <div className="w-full max-w-[85%] rounded-xl rounded-bl-sm border border-black/[0.1] bg-[#fbfbfa] px-4 py-3">
               <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-teal-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
-                AI 回复
+                {t('deep.aiReply')}
               </div>
               <div className="space-y-2">
                 <div className="h-3 w-3/4 animate-pulse rounded-full bg-teal-100" />
@@ -218,10 +225,10 @@ export default function DeepLearnChat({
         )}
       </div>
 
-      <div className="border-t border-zinc-100 px-6 py-3 space-y-3 bg-white">
+      <div data-testid="deep-learn-composer" className="min-w-0 space-y-3 border-t border-black/[0.06] bg-white/75 px-4 py-3 backdrop-blur-xl sm:px-6">
         {showTestConfirm && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
-            <p className="text-blue-800 mb-2">{showTestConfirm.message}</p>
+          <div className="rounded-lg border border-black/[0.12] bg-[#f7f6f3] px-4 py-3 text-sm">
+            <p className="mb-2 text-zinc-800">{showTestConfirm.message}</p>
             <CommandBar commands={showTestConfirm.commands} onCommand={onSendCommand} />
           </div>
         )}
@@ -238,7 +245,7 @@ export default function DeepLearnChat({
         {showCommands && !showTestConfirm && !showFailOptions && (
           <CommandBar commands={['continue', 'expand', 'skip', 'reteach']} onCommand={onSendCommand} />
         )}
-        <div className="flex gap-2">
+        <div className="flex min-w-0 items-end gap-2">
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -246,18 +253,19 @@ export default function DeepLearnChat({
             disabled={isStreaming || !canSendMessage}
             placeholder={
               isStreaming
-                ? 'AI 正在思考...'
+                ? t('deep.input.thinking')
                 : canSendMessage
-                  ? '输入你的回答...'
-                  : '请选择下一步操作...'
+                  ? t('deep.input.answer')
+                  : t('deep.input.choose')
             }
             rows={2}
-            className="flex-1 resize-none rounded-xl border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:bg-zinc-50 disabled:text-zinc-400"
+            className="apple-input min-w-0 flex-1 resize-none rounded-xl px-3 py-2 text-sm outline-none disabled:bg-zinc-50 disabled:text-zinc-400"
           />
           <button
             onClick={handleSubmit}
             disabled={isStreaming || !canSendMessage || !input.trim()}
-            className="self-end p-2.5 rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:opacity-40 transition-colors"
+            className="self-end rounded-lg bg-[#202020] p-2.5 text-white transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.96] disabled:opacity-40"
+            aria-label={t('deep.send')}
           >
             <Send className="w-4 h-4" />
           </button>

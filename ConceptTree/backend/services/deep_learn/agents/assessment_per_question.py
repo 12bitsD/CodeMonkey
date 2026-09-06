@@ -8,6 +8,7 @@ from difflib import SequenceMatcher
 
 from models_deep_learn import AssessmentPerQuestionOutput
 from services.llm.client import get_llm_client
+from services.llm.language import apply_response_language
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +58,21 @@ class AssessmentPerQuestionAgent:
         user_answer: str,
         prev_wrong_count: int,
         weak_points: list[str],
+        language: str = "zh-CN",
     ) -> AssessmentPerQuestionOutput:
-        system_prompt = self._get_system_prompt()
+        system_prompt = apply_response_language(
+            self._get_system_prompt(),
+            language,
+            json_mode=True,
+        )
+        is_chinese = language == "zh-CN"
         if _looks_too_thin(user_answer):
             return AssessmentPerQuestionOutput(
                 is_correct=False,
                 quality_score=0.0,
-                explanation="回答太短，还看不出完整理解。",
-                feedback="请补充核心机制、你的判断依据，以及一个具体例子或推理过程。",
-                update_weak_points=["回答缺少推理证据"],
+                explanation="回答太短，还看不出完整理解。" if is_chinese else "The answer is too short to demonstrate a complete understanding.",
+                feedback="请补充核心机制、你的判断依据，以及一个具体例子或推理过程。" if is_chinese else "Add the core mechanism, the basis for your judgment, and one concrete example or reasoning path.",
+                update_weak_points=["回答缺少推理证据" if is_chinese else "Answer lacks supporting reasoning"],
                 difficulty_delta=0,
                 wrong_count=prev_wrong_count + 1,
             )
@@ -73,9 +80,9 @@ class AssessmentPerQuestionAgent:
             return AssessmentPerQuestionOutput(
                 is_correct=False,
                 quality_score=0.0,
-                explanation="这更像是在复述题目，还不能证明你已经理解。",
-                feedback="请用自己的话回答：给出核心原理、关键判断依据，并补一个具体例子或推理过程。",
-                update_weak_points=["机械复述题目"],
+                explanation="这更像是在复述题目，还不能证明你已经理解。" if is_chinese else "This mostly repeats the question and does not yet demonstrate understanding.",
+                feedback="请用自己的话回答：给出核心原理、关键判断依据，并补一个具体例子或推理过程。" if is_chinese else "Answer in your own words: state the core principle, explain the deciding evidence, and add one concrete example or reasoning path.",
+                update_weak_points=["机械复述题目" if is_chinese else "Repeated the question mechanically"],
                 difficulty_delta=0,
                 wrong_count=prev_wrong_count + 1,
             )
@@ -104,7 +111,7 @@ class AssessmentPerQuestionAgent:
             return AssessmentPerQuestionOutput(
                 is_correct=False,
                 quality_score=0.0,
-                explanation="评估暂不可用",
+                explanation="评估暂不可用" if is_chinese else "Assessment is temporarily unavailable.",
                 feedback="",
                 wrong_count=prev_wrong_count + 1,
             )

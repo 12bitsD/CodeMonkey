@@ -1,43 +1,82 @@
-const ANALYSIS_LOADING_TEXTS = [
-  "解析概念边界与学习意图",
-  "识别你的背景与目标重点",
-  "准备更清晰的学习澄清问题",
+import { useEffect, useState } from "react";
+import { Check, Loader2, Lock } from "lucide-react";
+import { useLanguage } from "../../contexts/LanguageContext";
+
+const ANALYSIS_STAGES = [
+  "loader.analysis.boundary",
+  "loader.analysis.background",
+  "loader.analysis.questions",
 ];
 
 export default function GoalAnalysisLoader({ step = 0 }) {
-  const message = ANALYSIS_LOADING_TEXTS[step % ANALYSIS_LOADING_TEXTS.length];
+  const { t } = useLanguage();
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const activeIndex = Math.min(Math.max(step, 0), ANALYSIS_STAGES.length - 1);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 500);
+    return () => window.clearInterval(interval);
+  }, []);
 
   return (
-    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top,rgba(94,234,212,0.16),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] px-8 text-center">
-      <div className="pointer-events-none absolute inset-0 opacity-70">
-        <div className="absolute left-1/2 top-[24%] h-32 w-32 -translate-x-1/2 rounded-full bg-teal-100/70 blur-2xl" />
-        <div className="absolute left-[32%] top-[34%] h-16 w-16 animate-pulse rounded-full border border-teal-200/70" />
-        <div className="absolute right-[34%] top-[36%] h-10 w-10 animate-pulse rounded-full border border-cyan-200/80 [animation-delay:180ms]" />
-        <div className="absolute left-[42%] top-[48%] h-24 w-24 animate-pulse rounded-full border border-zinc-200/80 [animation-delay:320ms]" />
-      </div>
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#fbfbfa] px-5 py-8 sm:px-8">
+      <div className="w-full max-w-xl rounded-xl border border-black/[0.1] bg-white p-5 shadow-[0_1px_2px_rgba(15,15,15,0.04)] sm:p-7">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <span className="inline-flex items-center gap-2 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[#6f6e6b]">
+            <span className="h-2 w-2 rounded-full bg-[#2383e2] shadow-[0_0_0_3px_rgba(35,131,226,0.1)]" />
+            {t("loader.status.running")}
+          </span>
+          <span className="tabular-nums text-xs text-[#8f8e8b]">
+            {t("loader.progress.elapsed", { count: elapsedSec })}
+          </span>
+        </div>
 
-      <div className="relative mb-8 flex h-24 w-24 items-center justify-center">
-        <div className="absolute inset-0 animate-ping rounded-full border border-teal-200/80" />
-        <div className="absolute inset-3 rounded-full border border-teal-300/70" />
-        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-teal-400 to-cyan-500 shadow-[0_0_30px_rgba(45,212,191,0.35)]" />
-      </div>
+        <h3 className="text-xl font-semibold leading-tight tracking-[-0.018em] text-[#202020] sm:text-[1.375rem]">
+          {t("loader.analysis.title")}
+        </h3>
+        <p className="mt-2 text-[0.8125rem] leading-5 text-[#6f6e6b]">
+          {t("loader.analysis.help")}
+        </p>
 
-      <span className="mb-4 rounded-full border border-teal-200 bg-white/80 px-4 py-1 text-[10px] font-semibold uppercase tracking-[0.28em] text-teal-600">
-        Goal Analysis
-      </span>
-      <h3 className="mb-3 text-2xl font-semibold tracking-tight text-zinc-900">
-        AI 正在理解你的学习目标
-      </h3>
-      <p className="mb-6 text-sm text-zinc-500">{message}</p>
+        <div className="mt-7 rounded-lg border border-black/[0.08] bg-[#fbfbfa] p-2">
+          <div className="mb-1 flex items-center justify-between px-2 py-1.5 text-[0.6875rem] font-medium text-[#8f8e8b]">
+            <span>{t("loader.progress.estimated")}</span>
+            <span className="tabular-nums">{activeIndex + 1}/{ANALYSIS_STAGES.length}</span>
+          </div>
+          <ol className="space-y-0.5">
+            {ANALYSIS_STAGES.map((messageKey, index) => {
+              const done = index < activeIndex;
+              const active = index === activeIndex;
+              return (
+                <li
+                  key={messageKey}
+                  className={`flex min-h-10 items-center gap-3 rounded-md px-2.5 py-2 text-[0.8125rem] ${
+                    active ? "bg-white text-[#202020] shadow-[0_1px_2px_rgba(15,15,15,0.05)]" : "text-[#8f8e8b]"
+                  }`}
+                >
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                    {done ? (
+                      <Check size={15} strokeWidth={2} className="text-[#448361]" />
+                    ) : active ? (
+                      <Loader2 size={15} strokeWidth={1.8} className="animate-spin text-[#2383e2]" />
+                    ) : (
+                      <span className="h-1.5 w-1.5 rounded-full bg-black/[0.14]" />
+                    )}
+                  </span>
+                  <span className={active ? "font-medium" : "font-normal"}>{t(messageKey)}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
 
-      <div className="w-full max-w-sm space-y-3">
-        {[0, 1, 2].map((line) => (
-          <div
-            key={line}
-            className="h-2.5 animate-pulse rounded-full bg-gradient-to-r from-teal-100 via-zinc-100 to-cyan-100"
-            style={{ width: `${100 - line * 12}%`, animationDelay: `${line * 140}ms` }}
-          />
-        ))}
+        <div className="mt-5 flex items-start gap-2.5 border-t border-black/[0.07] pt-4 text-xs leading-5 text-[#8f8e8b]">
+          <Lock size={14} strokeWidth={1.7} className="mt-0.5 shrink-0" />
+          <p>{t("loader.analysis.disclosure")}</p>
+        </div>
       </div>
     </div>
   );

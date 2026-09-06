@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import LanguageToggle from '../components/common/LanguageToggle';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import learningMapIllustration from '../assets/illustrations/learning-map.jpg';
+import learningMasterMark from '../assets/branding/learningmaster-mark.png';
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/';
+  const { t } = useLanguage();
   
   const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [email, setEmail] = useState('');
@@ -21,18 +26,18 @@ export default function AuthPage() {
     
     // 验证
     if (!email || !password) {
-      setError('请填写邮箱和密码');
+      setError(t('auth.error.required'));
       return;
     }
     
     if (password.length < 6) {
-      setError('密码长度至少6位');
+      setError(t('auth.error.password'));
       return;
     }
     
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      setError('邮箱格式不正确');
+      setError(t('auth.error.email'));
       return;
     }
     
@@ -46,45 +51,50 @@ export default function AuthPage() {
       if (result.success) {
         navigate(redirectTo);
       } else {
-        setError(result.error || '操作失败，请重试');
+        setError(result.error || t('auth.error.generic'));
       }
     } catch (err) {
-      setError('网络错误，请检查后端服务是否启动');
+      setError(t('auth.error.network'));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo 区域 */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-zinc-900 mb-2">ConceptTree</h1>
-          <p className="text-zinc-600">你的学习路径规划器</p>
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] p-5 sm:p-8">
+      <div className="grid w-full max-w-5xl items-center gap-12 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-20">
+        <div className="hidden lg:block">
+          <img src={learningMapIllustration} alt="" className="notion-illustration w-full" />
+        </div>
+      <div className="w-full max-w-md justify-self-center">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <button type="button" onClick={() => navigate('/')} className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-[0_4px_16px_rgba(15,15,15,0.08)] ring-1 ring-black/[0.08] transition-transform duration-150 active:scale-[0.97]" aria-label="LearningMaster home">
+            <img src={learningMasterMark} alt="" aria-hidden="true" className="h-full w-full object-contain" />
+          </button>
+          <h1 className="mb-2 text-3xl font-semibold tracking-[-0.04em] text-[var(--color-label)]">LearningMaster</h1>
+          <p className="text-[var(--color-label-secondary)]">{t('auth.subtitle')}</p>
+          <LanguageToggle className="mt-5" />
         </div>
 
-        {/* 登录/注册表单 */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          {/* 切换标签 */}
-        <div className="flex mb-8 bg-zinc-100/80 p-1.5 rounded-xl">
+        <div className="rounded-xl border border-black/[0.12] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)] sm:p-8">
+        <div className="apple-segmented mb-8 flex p-1">
           <button
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${mode === 'login' ? 'bg-white text-zinc-900 shadow-[0_2px_10px_rgba(0,0,0,0.05)]' : 'text-zinc-500 hover:text-zinc-900'}`}
+            className={`min-h-10 flex-1 rounded-[5px] py-2.5 text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ${mode === 'login' ? 'bg-white text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-zinc-500 hover:text-zinc-900'}`}
             onClick={() => {
               setMode('login');
               setError('');
             }}
           >
-            登录
+            {t('auth.login')}
           </button>
           <button
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${mode === 'register' ? 'bg-white text-zinc-900 shadow-[0_2px_10px_rgba(0,0,0,0.05)]' : 'text-zinc-500 hover:text-zinc-900'}`}
+            className={`min-h-10 flex-1 rounded-[5px] py-2.5 text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ${mode === 'register' ? 'bg-white text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-zinc-500 hover:text-zinc-900'}`}
             onClick={() => {
               setMode('register');
               setError('');
             }}
           >
-            注册
+            {t('auth.register')}
           </button>
         </div>
 
@@ -92,13 +102,13 @@ export default function AuthPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-2">
-                邮箱
+                {t('auth.email')}
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-zinc-200 focus:border-zinc-400 focus:outline-none transition-colors"
+                className="apple-input w-full rounded-lg px-4 py-3 outline-none"
                 placeholder="your@email.com"
                 disabled={isLoading}
               />
@@ -106,14 +116,14 @@ export default function AuthPage() {
 
             <div>
               <label className="block text-sm font-medium text-zinc-700 mb-2">
-                密码
+                {t('auth.password')}
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-zinc-200 focus:border-zinc-400 focus:outline-none transition-colors"
-                placeholder="至少6位"
+                className="apple-input w-full rounded-lg px-4 py-3 outline-none"
+                placeholder={t('auth.passwordHint')}
                 disabled={isLoading}
               />
             </div>
@@ -127,9 +137,9 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 bg-zinc-900 text-white font-medium rounded-xl shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:bg-zinc-800 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm mt-2"
+              className="mt-2 min-h-11 w-full rounded-lg bg-[#202020] py-3 text-sm font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.12)] transition-[background-color,transform] duration-150 hover:bg-black active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isLoading ? (mode === 'login' ? '登录中...' : '注册中...') : (mode === 'login' ? '登录' : '注册')}
+              {isLoading ? (mode === 'login' ? t('auth.loggingIn') : t('auth.registering')) : (mode === 'login' ? t('auth.login') : t('auth.register'))}
             </button>
           </form>
 
@@ -137,7 +147,7 @@ export default function AuthPage() {
           <div className="mt-6 text-center text-sm text-zinc-500">
             {mode === 'login' ? (
               <>
-                还没有账号？
+                {t('auth.noAccount')}
                 <button
                   className="text-zinc-900 font-medium hover:underline ml-1"
                   onClick={() => {
@@ -145,12 +155,12 @@ export default function AuthPage() {
                     setError('');
                   }}
                 >
-                  立即注册
+                  {t('auth.register')}
                 </button>
               </>
             ) : (
               <>
-                已有账号？
+                {t('auth.haveAccount')}
                 <button
                   className="text-zinc-900 font-medium hover:underline ml-1"
                   onClick={() => {
@@ -158,7 +168,7 @@ export default function AuthPage() {
                     setError('');
                   }}
                 >
-                  立即登录
+                  {t('auth.login')}
                 </button>
               </>
             )}
@@ -167,8 +177,9 @@ export default function AuthPage() {
 
         {/* 底部提示 */}
         <p className="text-center text-sm text-zinc-500 mt-6">
-          登录即表示同意我们的服务条款和隐私政策
+          {t('auth.agreement')}
         </p>
+      </div>
       </div>
     </div>
   );

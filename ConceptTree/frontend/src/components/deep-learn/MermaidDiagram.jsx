@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import mermaid from 'mermaid';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 mermaid.initialize({
   startOnLoad: false,
@@ -25,6 +26,7 @@ function removeLeakedMermaidErrors() {
 }
 
 export default function MermaidDiagram({ code }) {
+  const { t } = useLanguage();
   const ref = useRef(null);
   useEffect(() => {
     if (!ref.current || !code) return;
@@ -34,7 +36,7 @@ export default function MermaidDiagram({ code }) {
       if (!ref.current || cancelled) return;
       removeLeakedMermaidErrors();
       ref.current.replaceChildren();
-      ref.current.textContent = '[图表渲染失败]';
+      ref.current.textContent = t('deep.diagramFailed');
     };
 
     ref.current.replaceChildren();
@@ -58,6 +60,6 @@ export default function MermaidDiagram({ code }) {
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, t]);
   return <div ref={ref} className="my-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200 overflow-x-auto" />;
 }

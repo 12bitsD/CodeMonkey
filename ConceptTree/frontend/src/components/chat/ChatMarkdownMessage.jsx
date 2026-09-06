@@ -1,10 +1,5 @@
 import MarkdownContent from "../common/MarkdownContent";
-
-const SEARCH_STATUS_LABELS = {
-  searching: "正在联网搜索资料...",
-  fallback: "未获取到外部资料，已切换为普通回答。",
-  done: "参考资料已整理完成。",
-};
+import { useLanguage } from "../../contexts/LanguageContext";
 
 export default function ChatMarkdownMessage({
   content,
@@ -13,18 +8,20 @@ export default function ChatMarkdownMessage({
   searchStatus = null,
   className = "",
 }) {
+  const { t } = useLanguage();
+  const searchStatusLabel = searchStatus ? t(`deep.search.${searchStatus}`) : null;
   const showStatus =
-    searchStatus && SEARCH_STATUS_LABELS[searchStatus] && searchStatus !== "done";
+    searchStatus && searchStatusLabel !== `deep.search.${searchStatus}` && searchStatus !== "done";
 
   return (
     <div className={`max-w-[88%] rounded-[22px] rounded-bl-sm border border-teal-100/80 bg-gradient-to-br from-white via-teal-50/70 to-cyan-50/80 px-4 py-3 text-zinc-700 shadow-[0_10px_30px_rgba(20,184,166,0.08)] ${className}`.trim()}>
       <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-teal-500">
         <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
-        AI 回复
+        {t('deep.aiReply')}
       </div>
       {showStatus && (
         <div className="mb-3 rounded-2xl border border-teal-100 bg-white/80 px-3 py-2 text-[11px] text-teal-700">
-          {SEARCH_STATUS_LABELS[searchStatus]}
+          {searchStatusLabel}
         </div>
       )}
       {isPending ? (
@@ -39,7 +36,7 @@ export default function ChatMarkdownMessage({
       {sources.length > 0 && (
         <div className="mt-4 space-y-2 border-t border-teal-100/80 pt-3">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            参考来源
+            {t('deep.sources')}
           </div>
           {sources.map((source, index) => (
             <a

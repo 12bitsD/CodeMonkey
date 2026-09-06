@@ -3,27 +3,31 @@ import { useNavigate } from "react-router-dom";
 import {
   Archive,
   Bell,
-  BrainCircuit,
   CalendarDays,
   Edit3,
-  LogOut,
   MoreVertical,
   Pause,
   Play,
   Sparkles,
   Target,
-  User,
   ChevronRight,
 } from "lucide-react";
 import { Button, Modal } from "../components/ui";
 import GoalAnalysisLoader from "../components/loaders/GoalAnalysisLoader";
 import GraphGenerationLoader from "../components/loaders/GraphGenerationLoader";
+import LocalizedDateInput from "../components/common/LocalizedDateInput";
+import WorkspaceShell from "../components/common/WorkspaceShell";
+import learningMapIllustration from "../assets/illustrations/learning-map.jpg";
+import emptyPathIllustration from "../assets/illustrations/empty-path.jpg";
 import { useAuth } from "../contexts/AuthContext";
+import { useLanguage } from "../contexts/LanguageContext";
 import { usePlanContext } from "../contexts/PlanContext";
 import { useToast } from "../contexts/ToastContext";
 import { aiApi, graphApi, plansApi } from "../services/api";
 import { calculateLayout } from "../utils/layoutEngine";
 import { getPlanReminder, getTopPlanReminder } from "../utils/planReminders";
+import { compactPlanTitle } from "../utils/planTitle";
+import { formatLastStudied } from "../utils/timeFormatting";
 
 const TODAY_RECOMMENDATION_CACHE_KEY = "concept_tree_today_recommendation";
 
@@ -35,10 +39,11 @@ const getTodayCacheDate = () => {
   return `${year}-${month}-${day}`;
 };
 
-const buildRecommendationCacheKey = (plan, dateKey = getTodayCacheDate()) => {
+const buildRecommendationCacheKey = (plan, language = "en-US", dateKey = getTodayCacheDate()) => {
   if (!plan?.id) return null;
   return [
     dateKey,
+    ...(language === "zh-CN" ? [] : [language]),
     plan.id,
     plan.progress ?? 0,
     plan.total ?? 0,
@@ -71,37 +76,37 @@ const writeTodayRecommendationCache = (cacheKey, data) => {
   }
 };
 
-const PURPOSE_OPTIONS = [
-  { id: "explore", label: "了解领域", description: "更轻的认知入门图谱" },
-  { id: "apply", label: "项目实用", description: "围绕可上手和可实践展开" },
-  { id: "master", label: "系统掌握", description: "更完整、更深入的学习路径" },
+const getPurposeOptions = (t) => [
+  { id: "explore", label: t("home.purpose.explore"), description: t("home.purpose.exploreHelp") },
+  { id: "apply", label: t("home.purpose.apply"), description: t("home.purpose.applyHelp") },
+  { id: "master", label: t("home.purpose.master"), description: t("home.purpose.masterHelp") },
 ];
 
-const getFrequencyLabel = (frequency, daysPerWeek) => {
+const getFrequencyLabel = (frequency, daysPerWeek, t) => {
   switch (frequency) {
     case "daily":
-      return "每天学习";
+      return t("frequency.daily");
     case "weekly":
-      return "每周复盘";
+      return t("frequency.weekly");
     case "custom":
-      return `每周 ${daysPerWeek || 3} 次`;
+      return t("frequency.custom", { count: daysPerWeek || 3 });
     default:
-      return "灵活安排";
+      return t("frequency.flexible");
   }
 };
 
-const getPlanStatusLabel = (plan) => {
-  if (plan.status === "paused") return "已暂停";
-  if (plan.archivedReason === "completed") return "已完成";
-  if (plan.status === "archived") return "已归档";
-  return "进行中";
+const getPlanStatusLabel = (plan, t) => {
+  if (plan.status === "paused") return t("status.paused");
+  if (plan.archivedReason === "completed") return t("status.completed");
+  if (plan.status === "archived") return t("status.archived");
+  return t("status.active");
 };
 
-const formatPlanDate = (value) => {
+const formatPlanDate = (value, language) => {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString("zh-CN", {
+  return date.toLocaleDateString(language === "zh-CN" ? "zh-CN" : "en-US", {
     month: "numeric",
     day: "numeric",
   });
@@ -122,8 +127,31 @@ const getReminderTone = (level) => {
   }
 };
 
+const getReminderCopy = (reminder, plan, t) => {
+  const variables = {
+    name: plan?.title || "",
+    count:
+      reminder.level === "deadline"
+        ? Math.max(reminder.daysToDeadline || 0, 0)
+        : reminder.level === "overdue"
+          ? reminder.overdueDays
+          : reminder.intervalDays,
+  };
+  const headlineKey = `reminder.headline.${
+    reminder.level === "on_track" ? "onTrack" : reminder.level
+  }`;
+  let detailKey = `reminder.detail.${
+    reminder.level === "on_track" ? "onTrack" : reminder.level
+  }`;
+  if (reminder.level === "deadline" && reminder.daysToDeadline < 0) {
+    detailKey = "reminder.detail.deadlinePast";
+  }
+  return { headline: t(headlineKey, variables), detail: t(detailKey, variables) };
+};
+
 const HomePage = () => {
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
   const { userProfile, plans, actions } = usePlanContext();
   const { isAuthenticated, logout } = useAuth();
   const toast = useToast();
@@ -146,6 +174,7 @@ const HomePage = () => {
   const [deadlinePlan, setDeadlinePlan] = useState(null);
   const [deadlineInput, setDeadlineInput] = useState("");
   const [isSavingDeadline, setIsSavingDeadline] = useState(false);
+  const purposeOptions = useMemo(() => getPurposeOptions(t), [t]);
 
   const currentPlans = useMemo(
     () => plans.filter((plan) => plan.status === "active" || plan.status === "paused"),
@@ -155,11 +184,14 @@ const HomePage = () => {
   const topReminder = useMemo(() => getTopPlanReminder(currentPlans), [currentPlans]);
   const todayPlan = topReminder?.plan || currentPlans[0] || null;
   const todayReminder = topReminder?.reminder || (todayPlan ? getPlanReminder(todayPlan) : null);
+  const todayReminderCopy = todayReminder
+    ? getReminderCopy(todayReminder, todayPlan, t)
+    : null;
   const todayPlanId = todayPlan?.id || null;
   const todayPlanStatus = todayPlan?.status || null;
   const todayRecommendationCacheKey = useMemo(
-    () => buildRecommendationCacheKey(todayPlan),
-    [todayPlan],
+    () => buildRecommendationCacheKey(todayPlan, language),
+    [language, todayPlan],
   );
 
   useEffect(() => {
@@ -187,6 +219,7 @@ const HomePage = () => {
       try {
         const result = await aiApi.recommendNext(todayPlanId, {
           signal: abortController.signal,
+          language,
         });
         if (!cancelled) {
           setTodayRecommendation(result || null);
@@ -213,7 +246,7 @@ const HomePage = () => {
       clearTimeout(timeoutId);
       abortController.abort();
     };
-  }, [isAuthenticated, todayPlanId, todayPlanStatus, todayRecommendationCacheKey]);
+  }, [isAuthenticated, language, todayPlanId, todayPlanStatus, todayRecommendationCacheKey]);
 
   const openDeadlineModal = (plan) => {
     if (!plan) return;
@@ -249,10 +282,10 @@ const HomePage = () => {
       actions.setPlans((prev) =>
         prev.map((plan) => (plan.id === planId ? { ...plan, ...updated } : plan)),
       );
-      toast.success(nextTargetEndDate ? "截止日期已更新" : "截止日期已清除");
+      toast.success(nextTargetEndDate ? t("toast.deadlineUpdated") : t("toast.deadlineCleared"));
     } catch (error) {
       actions.setPlans(previousPlans);
-      toast.error("截止日期保存失败，已恢复原设置");
+      toast.error(t("toast.deadlineFailed"));
     }
   };
 
@@ -267,7 +300,7 @@ const HomePage = () => {
   const handleStartAnalysis = async () => {
     if (!inputText.trim()) return;
     if (!isAuthenticated) {
-      toast.info('请先登录后再使用 AI 生成功能');
+      toast.info(t("toast.signInForAi"));
       navigate('/auth?redirect=%2F');
       return;
     }
@@ -280,14 +313,14 @@ const HomePage = () => {
     }, 900);
 
     try {
-      const result = await aiApi.parseGoal(inputText, userProfile);
+      const result = await aiApi.parseGoal(inputText, userProfile, language);
       setParsedGoal(result);
       setShowConfirmModal(true);
     } catch (error) {
       if (error?.status === 401) {
-        await redirectToLogin("登录已过期，请重新登录");
+        await redirectToLogin(t("toast.sessionExpired"));
       } else {
-        toast.error("解析目标失败，请稍后重试");
+        toast.error(t("toast.parseFailed"));
       }
     } finally {
       clearInterval(interval);
@@ -302,17 +335,20 @@ const HomePage = () => {
     setStreamProgress(null);
 
     try {
-      const result = await graphApi.generate(
+      const onGenerationProgress = (evt) => {
+        if (evt.type === "node") {
+          setStreamProgress({ received: evt.received, total: evt.total || 0 });
+        }
+      };
+      const generationArgs = [
         inputText,
         confirmedInterpretation,
         userProfile,
         learningPurpose,
-        (evt) => {
-          if (evt.type === "node") {
-            setStreamProgress({ received: evt.received, total: evt.total || 0 });
-          }
-        },
-      );
+        onGenerationProgress,
+      ];
+      if (language !== "zh-CN") generationArgs.push(language);
+      const result = await graphApi.generate(...generationArgs);
 
       const positions = calculateLayout(
         result.nodes || [],
@@ -320,6 +356,7 @@ const HomePage = () => {
         result.targetNodeId,
       );
       const graphResult = {
+        title: parsedGoal?.title?.trim() || confirmedInterpretation,
         interpretation: confirmedInterpretation,
         targetNodeId: result.targetNodeId,
         edges: result.edges || [],
@@ -340,9 +377,9 @@ const HomePage = () => {
       setInputText("");
     } catch (error) {
       if (error?.status === 401) {
-        await redirectToLogin("登录已过期，请重新登录");
+        await redirectToLogin(t("toast.sessionExpired"));
       } else {
-        toast.error("生成图谱失败，请稍后重试");
+        toast.error(t("toast.graphFailed"));
       }
       setIsGenerating(false);
       setStreamProgress(null);
@@ -376,69 +413,44 @@ const HomePage = () => {
     setShowRenameModal(false);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate("/");
-  };
-
   return (
-    <div
-      className="relative mx-auto flex min-h-screen max-w-screen-xl flex-col px-6 py-10 md:px-12"
-      onClick={() => setActiveMenuPlanId(null)}
-    >
-      <header className="mb-20 flex items-center justify-between">
-        <div
-          className="group flex cursor-pointer items-center gap-3"
-          onClick={() => navigate("/")}
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-lg shadow-zinc-200 transition-transform group-hover:rotate-3 group-hover:scale-105">
-            <BrainCircuit size={20} strokeWidth={1.5} />
-          </div>
-          <span className="text-lg font-semibold tracking-tight text-zinc-900">
-            PathFinder
-          </span>
-        </div>
-
-        {!isAuthenticated ? (
-          <button
-            onClick={() => navigate("/auth")}
-            className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-800 hover:shadow-md active:translate-y-0"
+    <WorkspaceShell active="home">
+      <div className="notion-page" onClick={() => setActiveMenuPlanId(null)}>
+      <section
+        className={`mb-14 grid items-center gap-10 ${
+          language === "zh-CN"
+            ? "lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-10"
+            : "lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-16"
+        }`}
+      >
+        <div>
+          <p className="notion-section-label mb-3">
+            {t("home.eyebrow")}
+          </p>
+          <h1
+            className={`max-w-3xl text-[clamp(2.65rem,6vw,4.65rem)] font-bold leading-[1.02] tracking-[-0.05em] text-[#1d1d1f] ${
+              language === "zh-CN" ? "lg:whitespace-nowrap" : ""
+            }`}
           >
-            登录 / 注册
-          </button>
-        ) : (
-          <div className="flex items-center gap-2 rounded-full border border-zinc-100 bg-white p-1.5 shadow-sm">
-            <button
-              onClick={() => navigate("/my-learning")}
-              className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-zinc-600 transition-all duration-200 hover:bg-zinc-50 hover:text-zinc-900"
-            >
-              <User size={16} strokeWidth={2} />
-              我的学习
-            </button>
-            <div className="h-4 w-px bg-zinc-200" />
-            <button
-              onClick={handleLogout}
-              className="rounded-full p-2 text-zinc-400 transition-all duration-200 hover:bg-red-50 hover:text-red-600"
-              title="退出登录"
-            >
-              <LogOut size={16} strokeWidth={2} />
-            </button>
-          </div>
-        )}
-      </header>
-
-      <section className="mx-auto mb-20 flex w-full max-w-3xl flex-1 flex-col justify-center">
-        <div className="mb-12 space-y-4 text-center">
-          <h1 className="text-4xl font-light leading-tight tracking-tight text-zinc-900 md:text-5xl">
-            今天想<span className="font-medium">掌握</span>什么？
+            {t("home.title.before")}<span>{t("home.title.emphasis")}</span>{t("home.title.after")}
           </h1>
-          <p className="text-lg font-light text-zinc-400">
-            AI 驱动的学习路径规划器，会根据你的背景和目标生成更适合的图谱。
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--color-label-secondary)] sm:text-lg">
+            {t("home.subtitle")}
           </p>
         </div>
+        <img
+          src={learningMapIllustration}
+          alt=""
+          className={`notion-illustration mx-auto hidden w-full lg:block ${
+            language === "zh-CN" ? "max-w-[280px]" : "max-w-[330px]"
+          }`}
+        />
+      </section>
+
+      <section className="mb-20 w-full max-w-4xl">
 
         {isLoadingScene ? (
-          <div className="relative min-h-[430px] overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_8px_40px_rgba(0,0,0,0.04)]">
+          <div className="relative min-h-[500px] overflow-hidden rounded-xl border border-black/[0.1] bg-[#fbfbfa] sm:min-h-[460px]">
             {isAnalyzing ? <GoalAnalysisLoader step={analysisStep} /> : null}
             {isGenerating ? (
               <GraphGenerationLoader
@@ -448,49 +460,50 @@ const HomePage = () => {
             ) : null}
           </div>
         ) : (
-          <div className="group relative overflow-hidden rounded-3xl border border-zinc-100 bg-white p-2 shadow-[0_8px_40px_rgba(0,0,0,0.04)] transition-all duration-300 focus-within:border-zinc-200 focus-within:shadow-[0_12px_50px_rgba(0,0,0,0.06)]">
-          <textarea
-            className="h-40 w-full resize-none bg-transparent p-6 text-xl font-light leading-relaxed text-zinc-700 outline-none placeholder:text-zinc-300"
-            placeholder="例如：我想理解反向传播在神经网络训练中的作用，我有 Python 基础但数学一般..."
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            disabled={isAnalyzing || isGenerating}
-          />
+          <div className="group relative overflow-hidden rounded-[22px] border border-black/[0.12] bg-white/95 shadow-[0_14px_40px_rgba(15,15,15,0.07),0_2px_8px_rgba(15,15,15,0.04)] transition-[border-color,box-shadow,transform] duration-200 focus-within:border-black/40 focus-within:shadow-[0_0_0_4px_rgba(0,0,0,0.07),0_18px_48px_rgba(15,15,15,0.09)]">
+            <textarea
+              className="h-40 w-full resize-none bg-transparent px-6 pb-4 pt-6 text-base font-normal leading-7 text-[#1d1d1f] outline-none placeholder:text-[#9a9aa0] focus-visible:outline-none sm:h-44 sm:px-7 sm:pt-7 sm:text-lg"
+              placeholder={t("home.goal.placeholder")}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              disabled={isAnalyzing || isGenerating}
+            />
 
-          <div className="flex items-end justify-between px-6 pb-6">
-            <div className="flex max-w-[60%] items-center gap-3 overflow-hidden">
-              {userProfile?.abilities?.slice(0, 2).map((tag) => (
-                <span
-                  key={tag}
-                  className="whitespace-nowrap rounded-full border border-teal-100/50 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700"
-                >
-                  {tag}
-                </span>
-              ))}
+            <div className="flex min-h-[68px] items-center justify-between gap-4 border-t border-black/[0.06] bg-[#fbfbfd]/80 px-4 py-3 sm:px-5">
+              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                {userProfile?.abilities?.slice(0, 2).map((tag) => (
+                  <span
+                    key={tag}
+                    className="truncate rounded-full bg-black/[0.045] px-3 py-1.5 text-xs font-medium text-[#6e6e73]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <Button
+                onClick={handleStartAnalysis}
+                disabled={!inputText.trim() || isAnalyzing || isGenerating}
+                size="lg"
+                icon={Sparkles}
+                className="shrink-0 rounded-full bg-[#1d1d1f] px-5 shadow-none hover:bg-black focus-visible:outline-black"
+              >
+                {isAnalyzing ? t("home.goal.analyzing") : t("home.goal.generate")}
+              </Button>
             </div>
-            <Button
-              onClick={handleStartAnalysis}
-              disabled={!inputText.trim() || isAnalyzing || isGenerating}
-              size="md"
-              icon={Sparkles}
-            >
-              {isAnalyzing ? "分析中..." : "生成图谱"}
-            </Button>
-          </div>
           </div>
         )}
 
         {!inputText && !isLoadingScene ? (
-          <div className="mt-8 flex flex-wrap justify-center gap-4">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             {[
-              "理解反向传播算法",
-              "Python 数据分析入门",
-              "Transformer 架构详解",
+              t("home.suggestion.backprop"),
+              t("home.suggestion.python"),
+              t("home.suggestion.transformer"),
             ].map((text) => (
               <button
                 key={text}
                 onClick={() => setInputText(text)}
-                className="rounded-full border border-zinc-200 bg-white px-5 py-2.5 text-sm text-zinc-500 transition-all duration-200 hover:border-zinc-400 hover:text-zinc-900 hover:shadow-sm"
+                className="min-h-9 rounded-full border border-black/[0.09] bg-white/80 px-3.5 py-1.5 text-sm text-[#6e6e73] shadow-[0_1px_2px_rgba(15,15,15,0.025)] transition-[background-color,border-color,color,transform] duration-150 hover:border-black/[0.15] hover:bg-white hover:text-[#1d1d1f] active:scale-[0.98]"
               >
                 {text}
               </button>
@@ -500,17 +513,17 @@ const HomePage = () => {
       </section>
 
       {todayPlan && todayReminder ? (
-        <section className="mb-8 rounded-[2rem] border border-zinc-200 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-8 text-white shadow-[0_10px_40px_rgba(24,24,27,0.18)]">
+        <section className="relative mb-14 overflow-hidden rounded-xl border border-black/10 bg-[#202020] p-6 text-white shadow-[0_1px_2px_rgba(0,0,0,0.12)] sm:p-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0 flex-1 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-400">
-                今日提醒
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                {t("home.today")}
               </p>
               <h2 className="max-w-3xl text-2xl font-semibold leading-snug text-white md:text-[26px]">
-                {todayReminder.headline}
+                {todayReminderCopy?.headline}
               </h2>
               <p className="max-w-2xl text-sm leading-6 text-zinc-300">
-                {todayReminder.detail}
+                {todayReminderCopy?.detail}
               </p>
               <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-zinc-300">
                 <span
@@ -518,25 +531,26 @@ const HomePage = () => {
                     todayReminder.level,
                   )}`}
                 >
-                  {getPlanStatusLabel(todayPlan)}
+                  {getPlanStatusLabel(todayPlan, t)}
                 </span>
                 <span className="inline-flex h-6 items-center gap-1 rounded-full bg-white/10 px-3">
                   <CalendarDays size={12} />
                   {getFrequencyLabel(
                     todayPlan.studyFrequency,
                     todayPlan.studyDaysPerWeek,
+                    t,
                   )}
                 </span>
                 {todayPlan.reminderEnabled ? (
                   <span className="inline-flex h-6 items-center gap-1 rounded-full bg-white/10 px-3">
                     <Bell size={12} />
-                    {todayPlan.reminderTime || "提醒已开启"}
+                    {todayPlan.reminderTime || t("home.reminderOn")}
                   </span>
                 ) : null}
                 {todayPlan.targetEndDate ? (
                   <span className="inline-flex h-6 items-center gap-1 rounded-full bg-white/10 px-3">
                     <Target size={12} />
-                    截止 {formatPlanDate(todayPlan.targetEndDate)}
+                    {t("home.deadline", { date: formatPlanDate(todayPlan.targetEndDate, language) })}
                   </span>
                 ) : (
                   <button
@@ -545,7 +559,7 @@ const HomePage = () => {
                     className="inline-flex h-6 items-center gap-1 rounded-full bg-white/10 px-3 transition-colors hover:bg-white/15 hover:text-white"
                   >
                     <Target size={12} />
-                    设置截止日期
+                    {t("home.setDeadline")}
                   </button>
                 )}
               </div>
@@ -553,20 +567,20 @@ const HomePage = () => {
                 <div className="max-w-5xl rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-400">
                     {todayRecommendation.recommendation_source === "local"
-                      ? "本地规则推荐节点"
-                      : "AI 推荐节点"}
+                      ? t("home.recommendation.local")
+                      : t("home.recommendation.ai")}
                   </p>
                   <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold leading-6 text-white">
-                        AI 推荐你先推进下一个关键节点
+                        {t("home.recommendation.heading")}
                       </p>
                       <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-300">
-                        {todayRecommendation.reason || "这是当前最适合推进的下一步。"}
+                        {todayRecommendation.reason || t("home.recommendation.fallback")}
                       </p>
                       {todayRecommendation.recommendation_source === "local" ? (
                         <p className="mt-1 text-xs leading-5 text-zinc-500">
-                          AI 暂不可用，已用本地依赖和截止日期规则生成推荐。
+                          {t("home.recommendation.localHelp")}
                         </p>
                       ) : null}
                     </div>
@@ -577,32 +591,32 @@ const HomePage = () => {
                           `/graph/${todayPlan.id}?node=${todayRecommendation.recommended_node_id}`,
                         )
                       }
-                      className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-full bg-white px-5 text-sm font-medium leading-none text-zinc-900 transition-colors hover:bg-zinc-100 md:w-auto"
+                      className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold leading-none text-zinc-900 transition-[background-color,transform] duration-150 hover:bg-zinc-100 active:scale-[0.97] md:w-auto"
                     >
-                      去学习
+                      {t("home.goLearn")}
                     </button>
                   </div>
                 </div>
               ) : isLoadingRecommendation ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
-                  正在生成今日推荐节点...
+                  {t("home.recommendation.loading")}
                 </div>
               ) : null}
             </div>
             <div className="space-y-3 text-sm text-zinc-300 md:text-right">
               <p>
-                当前进度{" "}
+                {t("home.currentProgress")}{" "}
                 <span className="font-semibold text-white">
                   {todayPlan.progress}/{todayPlan.total || 0}
                 </span>
               </p>
               <p>
                 {todayReminder.lastStudyDaysAgo === null
-                  ? "还没有开始过这条计划"
-                  : `距离上次学习 ${todayReminder.lastStudyDaysAgo} 天`}
+                  ? t("home.neverStarted")
+                  : t("home.daysSince", { count: todayReminder.lastStudyDaysAgo })}
               </p>
-              <Button onClick={() => navigate(`/graph/${todayPlan.id}`)} size="sm">
-                继续学习
+              <Button variant="secondary" onClick={() => navigate(`/graph/${todayPlan.id}`)} size="sm">
+                {t("home.continue")}
               </Button>
             </div>
           </div>
@@ -611,13 +625,13 @@ const HomePage = () => {
 
       {currentPlans.length > 0 ? (
         <section>
-          <div className="mb-8 flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
-              学习计划
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="notion-section-label">
+              {t("home.plans")}
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="overflow-visible border-y border-black/[0.1]">
             {currentPlans.map((plan) => {
               const percent =
                 plan.total > 0 ? Math.round((plan.progress / plan.total) * 100) : 0;
@@ -626,29 +640,33 @@ const HomePage = () => {
                 <div
                   key={plan.id}
                   onClick={() => navigate(`/graph/${plan.id}`)}
-                  className="group relative cursor-pointer overflow-visible rounded-3xl border border-zinc-100 bg-white p-8 shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all hover:border-zinc-200 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)]"
+                  className="notion-row group relative cursor-pointer overflow-visible px-3 py-5 sm:px-4"
                 >
                   <div className="relative z-10 mb-6 flex items-start justify-between">
                     <div className="space-y-3">
                       <div>
-                        <h3 className="mb-1 text-lg font-medium text-zinc-900 transition-colors group-hover:text-teal-700">
-                          {plan.title}
+                        <h3 className="mb-1 text-base font-semibold text-zinc-900" title={plan.title}>
+                          {compactPlanTitle(plan.title)}
                         </h3>
                         <p className="text-xs font-medium tracking-wide text-zinc-400">
-                          上次学习: {plan.lastAccess || "刚刚"}
+                          {t("home.lastStudied", {
+                            value:
+                              formatLastStudied(plan.lastAccess, language) ||
+                              t("home.justNow"),
+                          })}
                         </p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
-                          {getPlanStatusLabel(plan)}
+                          {getPlanStatusLabel(plan, t)}
                         </span>
                         <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
-                          {getFrequencyLabel(plan.studyFrequency, plan.studyDaysPerWeek)}
+                          {getFrequencyLabel(plan.studyFrequency, plan.studyDaysPerWeek, t)}
                         </span>
                         {plan.targetEndDate ? (
                           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
-                            截止 {formatPlanDate(plan.targetEndDate)}
+                            {t("home.deadline", { date: formatPlanDate(plan.targetEndDate, language) })}
                           </span>
                         ) : (
                           <button
@@ -659,28 +677,28 @@ const HomePage = () => {
                             }}
                             className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-100"
                           >
-                            设置截止日期
+                            {t("home.setDeadline")}
                           </button>
                         )}
                         {reminder ? (
                           <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-medium text-teal-700">
                             {reminder.level === "overdue"
-                              ? "已拖延"
+                              ? t("reminder.overdue")
                               : reminder.level === "due"
-                                ? "今日应学"
+                                ? t("reminder.due")
                                 : reminder.level === "deadline"
-                                  ? "临近截止"
+                                  ? t("reminder.deadline")
                                   : reminder.level === "paused"
-                                    ? "已暂停提醒"
-                                    : "节奏正常"}
+                                    ? t("reminder.paused")
+                                    : t("reminder.normal")}
                           </span>
                         ) : null}
                         {todayRecommendation?.recommended_node_id &&
                         todayPlan?.id === plan.id ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2.5 py-1 text-[11px] font-medium text-white">
-                            今日推荐
+                            {t("home.plan.today")}
                             <ChevronRight size={12} />
-                            下一节点
+                            {t("home.plan.next")}
                           </span>
                         ) : null}
                       </div>
@@ -693,7 +711,7 @@ const HomePage = () => {
                             activeMenuPlanId === plan.id ? null : plan.id,
                           )
                         }
-                        className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-50 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-black/[0.06] hover:text-zinc-700 active:scale-[0.96]"
                       >
                         <MoreVertical size={16} />
                       </button>
@@ -703,7 +721,7 @@ const HomePage = () => {
                             onClick={() => openRenameModal(plan)}
                             className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-zinc-600 hover:bg-zinc-50"
                           >
-                            <Edit3 size={14} /> 重命名
+                            <Edit3 size={14} /> {t("home.plan.rename")}
                           </button>
                           <button
                             onClick={() => handlePauseToggle(plan)}
@@ -711,11 +729,11 @@ const HomePage = () => {
                           >
                             {plan.status === "paused" ? (
                               <>
-                                <Play size={14} /> 恢复
+                                <Play size={14} /> {t("home.plan.resume")}
                               </>
                             ) : (
                               <>
-                                <Pause size={14} /> 暂停
+                                <Pause size={14} /> {t("home.plan.pause")}
                               </>
                             )}
                           </button>
@@ -723,7 +741,7 @@ const HomePage = () => {
                             onClick={() => handleArchive(plan.id)}
                             className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-zinc-600 hover:bg-zinc-50"
                           >
-                            <Archive size={14} /> 归档
+                            <Archive size={14} /> {t("home.plan.archive")}
                           </button>
                         </div>
                       ) : null}
@@ -732,7 +750,7 @@ const HomePage = () => {
 
                   <div className="relative z-0">
                     <div className="mb-2 flex justify-between text-xs font-medium text-zinc-400">
-                      <span>进度</span>
+                      <span>{t("home.progress")}</span>
                       <span className="text-zinc-900">{percent}%</span>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100">
@@ -747,50 +765,63 @@ const HomePage = () => {
             })}
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="border-t border-black/[0.1] py-10">
+          <div className="flex flex-col items-center text-center">
+            <img
+              src={emptyPathIllustration}
+              alt=""
+              className="notion-illustration mb-4 w-full max-w-[260px]"
+            />
+            <h2 className="text-lg font-semibold text-[#202020]">{t("home.plans")}</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-[#6f6e6b]">{t("home.subtitle")}</p>
+          </div>
+        </section>
+      )}
 
       <Modal
         isOpen={showConfirmModal}
         onClose={() => setShowConfirmModal(false)}
-        title="确认学习目标"
+        title={t("home.goal.confirmTitle")}
+        className="max-w-2xl"
         footer={
           <>
             <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>
-              修改输入
+              {t("home.goal.edit")}
             </Button>
-            <Button onClick={handleConfirmGeneration}>确认生成</Button>
+            <Button onClick={handleConfirmGeneration}>{t("home.goal.confirm")}</Button>
           </>
         }
       >
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-6">
-            <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-zinc-400">
-              识别目标
+        <div className="space-y-5">
+          <div className="rounded-xl border border-black/[0.07] bg-[#fbfbfa] p-5">
+            <h4 className="mb-2 text-[0.65625rem] font-semibold uppercase tracking-[0.075em] text-[#8f8e8b]">
+              {t("home.goal.interpreted")}
             </h4>
-            <p className="text-xl font-light text-zinc-900">
+            <p className="text-[0.9375rem] font-normal leading-6 text-[#202020]">
               {parsedGoal?.interpretation}
             </p>
           </div>
 
           <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-zinc-400">
-              学习目的
+            <h4 className="text-[0.65625rem] font-semibold uppercase tracking-[0.075em] text-[#8f8e8b]">
+              {t("home.goal.purpose")}
             </h4>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              {PURPOSE_OPTIONS.map((option) => {
+            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+              {purposeOptions.map((option) => {
                 const selected = learningPurpose === option.id;
                 return (
                   <button
                     key={option.id}
                     type="button"
                     onClick={() => setLearningPurpose(option.id)}
-                    className={`rounded-2xl border p-4 text-left transition-all ${
+                    className={`rounded-xl border p-3.5 text-left transition-[background-color,border-color,color,transform,box-shadow] duration-150 active:scale-[0.98] ${
                       selected
-                        ? "border-zinc-900 bg-zinc-900 text-white shadow-lg shadow-zinc-200"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300"
+                        ? "border-[#202020] bg-[#202020] text-white shadow-[0_4px_12px_rgba(15,15,15,0.12)]"
+                        : "border-black/[0.1] bg-white text-[#5f5e5b] hover:border-black/25"
                     }`}
                   >
-                    <p className="text-sm font-semibold">{option.label}</p>
+                    <p className="text-[0.8125rem] font-semibold leading-5">{option.label}</p>
                     <p
                       className={`mt-2 text-xs leading-5 ${
                         selected ? "text-zinc-300" : "text-zinc-500"
@@ -813,7 +844,7 @@ const HomePage = () => {
           setDeadlinePlan(null);
           setDeadlineInput("");
         }}
-        title="设置截止日期"
+        title={t("home.deadline.title")}
         footer={
           <>
             <Button
@@ -824,20 +855,20 @@ const HomePage = () => {
               }}
               disabled={isSavingDeadline}
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button onClick={saveDeadline} disabled={isSavingDeadline}>
-              {isSavingDeadline ? "保存中..." : "保存日期"}
+              {isSavingDeadline ? t("common.saving") : t("home.deadline.save")}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
           <p className="text-sm leading-6 text-zinc-500">
-            为「{deadlinePlan?.title || "学习计划"}」设置目标完成日期，今日提醒会据此调整优先级。
+            {t("home.deadline.help", { name: deadlinePlan?.title || t("home.plans") })}
           </p>
-          <input
-            type="date"
+          <LocalizedDateInput
+            aria-label={t("home.deadline.title")}
             className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm outline-none transition-colors focus:border-zinc-400"
             value={deadlineInput}
             onChange={(event) => setDeadlineInput(event.target.value)}
@@ -848,7 +879,7 @@ const HomePage = () => {
               onClick={() => setDeadlineInput("")}
               className="text-xs font-medium text-zinc-400 transition-colors hover:text-zinc-700"
             >
-              清除截止日期
+              {t("home.deadline.clear")}
             </button>
           ) : null}
         </div>
@@ -857,14 +888,14 @@ const HomePage = () => {
       <Modal
         isOpen={showRenameModal}
         onClose={() => setShowRenameModal(false)}
-        title="重命名计划"
+        title={t("home.rename.title")}
         footer={
           <>
             <Button variant="ghost" onClick={() => setShowRenameModal(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button onClick={saveNewName} disabled={!newName.trim()}>
-              保存
+              {t("common.save")}
             </Button>
           </>
         }
@@ -874,11 +905,12 @@ const HomePage = () => {
           className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm outline-none transition-colors focus:border-zinc-400"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          placeholder="输入新的计划名称"
+          placeholder={t("home.rename.placeholder")}
           autoFocus
         />
       </Modal>
-    </div>
+      </div>
+    </WorkspaceShell>
   );
 };
 

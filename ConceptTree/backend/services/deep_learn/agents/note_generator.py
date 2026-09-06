@@ -7,6 +7,7 @@ from typing import Optional
 
 from models_deep_learn import NoteGeneratorOutput, SessionState
 from services.llm.client import get_llm_client
+from services.llm.language import apply_response_language
 from services.llm.providers import LLMMessage
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class NoteGeneratorAgent:
         session: SessionState,
         node_name: str,
         node_why: str,
+        language: str = "zh-CN",
     ) -> NoteGeneratorOutput:
         concepts_covered = [
             session.what_list[i]
@@ -71,6 +73,7 @@ class NoteGeneratorAgent:
         )
 
         model_params, sys_prompt = _load_system_prompt(node_name, node_why)
+        sys_prompt = apply_response_language(sys_prompt, language)
 
         messages = [
             LLMMessage(role="system", content=sys_prompt),
@@ -86,9 +89,9 @@ class NoteGeneratorAgent:
         content = response.content.strip() if response.content else ""
         if not content:
             content = (
-                f"# {node_name} 学习笔记\n\n"
-                f"本次深度学习已完成。\n\n"
-                f"覆盖概念：{', '.join(concepts_covered)}"
+                f"# {node_name} 学习笔记\n\n本次深度学习已完成。\n\n覆盖概念：{', '.join(concepts_covered)}"
+                if language == "zh-CN"
+                else f"# {node_name} Learning Notes\n\nThis Deep Learn session is complete.\n\nConcepts covered: {', '.join(concepts_covered)}"
             )
 
         return NoteGeneratorOutput(content=content)
