@@ -51,13 +51,13 @@ class Settings:
     )
 
     # LLM Configuration
-    LLM_PROVIDER: str = _get_env("LLM_PROVIDER", "mimo_token_plan_cn")
+    LLM_PROVIDER: str = _get_env("LLM_PROVIDER", "kimi")
     LLM_API_KEY: str = _get_env("LLM_API_KEY", "")
     LLM_BASE_URL: str = _get_env(
-        "LLM_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1"
+        "LLM_BASE_URL", "https://api.moonshot.cn/v1"
     )
-    LLM_MODEL: str = _get_env("LLM_MODEL", "mimo-v2.5-pro")
-    LLM_TIMEOUT: int = int(_get_env("LLM_TIMEOUT", "30"))
+    LLM_MODEL: str = _get_env("LLM_MODEL", "kimi-k3")
+    LLM_TIMEOUT: int = int(_get_env("LLM_TIMEOUT", "120"))
     LLM_MAX_RETRIES: int = int(_get_env("LLM_MAX_RETRIES", "2"))
     LLM_TEMPERATURE: float = float(_get_env("LLM_TEMPERATURE", "0.7"))
     LLM_REASONING_EFFORT: str = _get_env("LLM_REASONING_EFFORT", "low")
