@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Loader2, Radio } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 
 const STAGES = [
@@ -58,7 +58,7 @@ export default function GraphGenerationLoader({ readyCount = 0, totalCount = 0 }
           {isOvertime ? t("loader.graph.overtime") : t("loader.graph.help")}
         </p>
 
-        <div className="mt-7 grid gap-5 sm:grid-cols-[minmax(0,1fr)_10rem]">
+        <div className="mt-7">
           <ol className="space-y-0.5 rounded-lg border border-black/[0.08] bg-[#fbfbfa] p-2">
             {STAGES.map((stage, index) => {
               const done = index < activeIndex;
@@ -84,21 +84,6 @@ export default function GraphGenerationLoader({ readyCount = 0, totalCount = 0 }
               );
             })}
           </ol>
-
-          <div className="flex min-h-32 flex-col justify-between rounded-lg border border-black/[0.08] bg-white p-4">
-            <div className="flex items-center gap-2 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[#8f8e8b]">
-              <Radio size={13} strokeWidth={1.8} />
-              {t("loader.graph.live")}
-            </div>
-            <div>
-              <p className="tabular-nums text-2xl font-semibold tracking-[-0.025em] text-[#202020]">
-                {hasLiveCount ? `${readyCount}/${totalCount}` : "—"}
-              </p>
-              <p className="mt-1 text-xs leading-4 text-[#8f8e8b]">
-                {hasLiveCount ? t("loader.graph.conceptsReceived") : t("loader.graph.waiting")}
-              </p>
-            </div>
-          </div>
         </div>
 
         <div className="mt-5">

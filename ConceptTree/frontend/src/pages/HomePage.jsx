@@ -416,12 +416,22 @@ const HomePage = () => {
   return (
     <WorkspaceShell active="home">
       <div className="notion-page" onClick={() => setActiveMenuPlanId(null)}>
-      <section className="mb-14 grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-16">
+      <section
+        className={`mb-14 grid items-center gap-10 ${
+          language === "zh-CN"
+            ? "lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-10"
+            : "lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-16"
+        }`}
+      >
         <div>
           <p className="notion-section-label mb-3">
             {t("home.eyebrow")}
           </p>
-          <h1 className="max-w-3xl text-[clamp(2.65rem,6vw,4.65rem)] font-bold leading-[1.02] tracking-[-0.05em] text-[#1d1d1f]">
+          <h1
+            className={`max-w-3xl text-[clamp(2.65rem,6vw,4.65rem)] font-bold leading-[1.02] tracking-[-0.05em] text-[#1d1d1f] ${
+              language === "zh-CN" ? "lg:whitespace-nowrap" : ""
+            }`}
+          >
             {t("home.title.before")}<span>{t("home.title.emphasis")}</span>{t("home.title.after")}
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--color-label-secondary)] sm:text-lg">
@@ -431,7 +441,9 @@ const HomePage = () => {
         <img
           src={learningMapIllustration}
           alt=""
-          className="notion-illustration mx-auto hidden w-full max-w-[330px] lg:block"
+          className={`notion-illustration mx-auto hidden w-full lg:block ${
+            language === "zh-CN" ? "max-w-[280px]" : "max-w-[330px]"
+          }`}
         />
       </section>
 
