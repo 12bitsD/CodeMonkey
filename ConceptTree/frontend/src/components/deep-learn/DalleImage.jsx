@@ -3,14 +3,10 @@ import { useEffect, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function DalleImage({ id, url, reason, onPin, pending = false }) {
-  const { language, t } = useLanguage();
+  const { t } = useLanguage();
   const [timedOut, setTimedOut] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const reasonMatchesLanguage = reason && (
-    (language === 'en' && !/[\u3400-\u9fff]/.test(reason))
-    || (language === 'zh-CN' && /[\u3400-\u9fff]/.test(reason))
-  );
-  const diagramTopic = reasonMatchesLanguage ? reason : t('deep.image.fallbackTopic');
+  const diagramTopic = t('deep.image.fallbackTopic');
 
   useEffect(() => {
     setTimedOut(false);
