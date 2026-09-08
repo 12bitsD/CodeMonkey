@@ -9,6 +9,33 @@ vi.mock("./MermaidDiagram", () => ({
 import PinnedImages from "./PinnedImages.jsx";
 
 describe("PinnedImages", () => {
+  it("renders typed diagrams as interactive pinned visuals", () => {
+    render(
+      <PinnedImages
+        pinned={[{
+          id: "diagram-1",
+          kind: "diagram",
+          caption: "导数关系图",
+          content: {
+            version: 1,
+            title: "导数关系图",
+            layout: "flow",
+            nodes: [
+              { id: "a", title: "割线", summary: "平均变化", details: {} },
+              { id: "b", title: "切线", summary: "瞬时变化", role: "core", details: {} },
+            ],
+            edges: [{ source: "a", target: "b", relation: "prerequisite" }],
+          },
+        }]}
+        onUnpin={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("导数关系图")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: /切线：瞬时变化/ }));
+    expect(screen.getByRole("dialog", { name: "切线" })).toBeInTheDocument();
+  });
+
   it("opens pinned images in an enlarged preview", () => {
     render(
       <PinnedImages

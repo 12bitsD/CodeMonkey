@@ -95,6 +95,19 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
           role: 'assistant', kind: 'mermaid', content: event.code,
         }]);
         break;
+      case 'visual_diagram':
+        setMessages(prev => [...prev, {
+          id: event.id || Date.now() + Math.random(),
+          role: 'assistant', kind: 'diagram', content: event.spec, reason: event.reason,
+        }]);
+        break;
+      case 'illustration_offer':
+        setMessages(prev => [...prev, {
+          id: event.id || Date.now() + Math.random(),
+          role: 'assistant', kind: 'illustration_offer',
+          content: { caption: event.caption }, reason: event.reason,
+        }]);
+        break;
       case 'state_change':
         sessionStateRef.current = event.to;
         setSession(prev => prev ? { ...prev, state: event.to } : prev);
@@ -357,9 +370,13 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
     localStorage.setItem(pinnedStorageKey, JSON.stringify(pinnedImages));
   }, [pinnedImages, pinnedStorageKey]);
 
-  const pinImage = useCallback((id, url, caption) => {
+  const pinImage = useCallback((id, content, caption, kind = 'image') => {
     setPinnedImages(prev =>
-      prev.find(p => p.id === id) ? prev : [...prev, { id, url, caption }]
+      prev.find(p => p.id === id)
+        ? prev
+        : [...prev, kind === 'diagram'
+          ? { id, kind, content, caption }
+          : { id, kind: 'image', content, url: content, caption }]
     );
   }, []);
 

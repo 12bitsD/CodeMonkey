@@ -44,6 +44,7 @@ class SessionState(BaseModel):
 class TeachingOutput(BaseModel):
     content: str
     questions: list[str]
+    visual_hint: Literal["none", "relationship", "illustration"] = "none"
     needs_image: bool = False
     image_type: Optional[str] = None
     mermaid_code: Optional[str] = None

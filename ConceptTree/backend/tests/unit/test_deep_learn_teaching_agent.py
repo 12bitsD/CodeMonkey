@@ -61,3 +61,4 @@ async def test_teaching_agent_stream_run_emits_content_before_done(monkeypatch):
     assert events[1] == {"type": "content", "text": "句。第二句。"}
     assert events[-1]["type"] == "done"
     assert events[-1]["output"].questions == ["诊断题", "应用题", "变式题"]
+    assert events[-1]["output"].visual_hint == "none"

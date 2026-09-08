@@ -57,6 +57,9 @@ function Harness() {
       <span data-testid="commands">{uiFlags.showCommands ? "shown" : "hidden"}</span>
       <span data-testid="message">{messages.map((m) => m.content).join("")}</span>
       <span data-testid="kinds">{messages.map((m) => m.kind).join(",")}</span>
+      <span data-testid="diagram-titles">
+        {messages.filter((m) => m.kind === "diagram").map((m) => m.content.title).join(",")}
+      </span>
       <span data-testid="completed">
         {Object.values(conceptsStatus).filter((status) => ["done", "failed", "skipped"].includes(status)).length}
       </span>
@@ -134,6 +137,33 @@ describe("useDeepLearnSession", () => {
     timeoutSpy.mockRestore();
 
     expect(hasThirtySecondTimeout).toBe(false);
+  });
+
+  it("receives validated diagrams and illustration offers as typed messages", async () => {
+    initializeMock.mockResolvedValue(
+      sseResponse([
+        {
+          type: "visual_diagram",
+          id: "diagram-1",
+          spec: { version: 1, title: "导数关系图", layout: "flow", nodes: [], edges: [] },
+          reason: "关系结构",
+        },
+        {
+          type: "illustration_offer",
+          id: "offer-1",
+          caption: "生成空间演示图",
+          reason: "需要观察三维关系",
+        },
+        { type: "done" },
+      ]),
+    );
+
+    render(<Harness />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("kinds")).toHaveTextContent("diagram,illustration_offer");
+    });
+    expect(screen.getByTestId("diagram-titles")).toHaveTextContent("导数关系图");
   });
 
   it("does not send free-text messages while waiting for a command", async () => {

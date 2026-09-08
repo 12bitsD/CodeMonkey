@@ -13,3 +13,5 @@ def test_teaching_prompt_uses_required_learning_constraints():
     assert "工艺 + 效果双轨验收" in prompt
     assert "变式题" in prompt
     assert "仅返回合法 JSON" in prompt
+    assert '"visual_hint"' in prompt
+    assert "none|relationship|illustration" in prompt

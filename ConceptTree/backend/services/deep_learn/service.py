@@ -20,10 +20,9 @@ from models_deep_learn import (
 from models_memory import MemoryEvent
 from services.deep_learn.agents.assessment_overall import AssessmentOverallAgent
 from services.deep_learn.agents.assessment_per_question import AssessmentPerQuestionAgent
-from services.deep_learn.agents.image_trigger import ImageTriggerAgent
 from services.deep_learn.agents.note_generator import NoteGeneratorAgent
 from services.deep_learn.agents.teaching import TeachingAgent
-from services.deep_learn import image_storage
+from services.deep_learn.agents.visual_decision import VisualDecisionAgent
 from services.deep_learn.notes_repo import save_completion_note
 from services.deep_learn.memory.context_builder import MemoryContextBuilder
 from services.deep_learn.memory.update_service import MemoryUpdateService
@@ -137,7 +136,7 @@ class DeepLearnService:
         self.assessment_overall = AssessmentOverallAgent()
         self.memory_builder = MemoryContextBuilder()
         self.memory_updater = MemoryUpdateService()
-        self.image_trigger = ImageTriggerAgent()
+        self.visual_decision = VisualDecisionAgent()
         self.note_generator = NoteGeneratorAgent()
         self._localized_node_cache: dict[str, dict] = {}
 
@@ -387,12 +386,6 @@ class DeepLearnService:
         localized = node_meta.get("what_list") or []
         return localized if len(localized) == len(session.what_list) else session.what_list
 
-    def _count_images_in_turns(self, session: SessionState) -> int:
-        return sum(
-            1 for m in session.recent_turns
-            if m.get("kind") in ("mermaid", "dalle_image")
-        )
-
     async def _run_teach(
         self, session: SessionState, node_meta: dict, mode: TeachingMode,
         background_tasks: Optional[BackgroundTasks] = None,
@@ -452,45 +445,51 @@ class DeepLearnService:
                 yield _sse("chunk", text=chunk)
                 await asyncio.sleep(0)
 
-        # Image trigger (Phase 2)
-        image_turns: list[dict] = []
-        try:
-            prev_img_count = self._count_images_in_turns(session)
-            trigger = await self.image_trigger.decide(
-                teaching_content=output.content,
-                concept=current_concept,
-                node_name=node_meta["node_name"],
-                previous_image_count=prev_img_count,
-            )
-            if trigger.needs_image:
-                if trigger.image_type == "mermaid" and trigger.mermaid_code:
-                    yield _sse("image_mermaid", code=trigger.mermaid_code)
-                    image_turns.append({
+        visual_turns: list[dict] = []
+        if output.visual_hint != "none":
+            try:
+                decision = await self.visual_decision.decide(
+                    teaching_content=output.content,
+                    concept=current_concept,
+                    node_name=node_meta["node_name"],
+                    language=language,
+                )
+                if decision.visual_type == "diagram" and decision.diagram:
+                    diagram_id = str(uuid4())
+                    diagram = decision.diagram.model_dump(mode="json")
+                    yield _sse(
+                        "visual_diagram",
+                        id=diagram_id,
+                        spec=diagram,
+                        reason=decision.reason,
+                    )
+                    visual_turns.append({
+                        "id": diagram_id,
                         "role": "assistant",
-                        "kind": "mermaid",
-                        "content": trigger.mermaid_code,
-                        "reason": trigger.reason,
+                        "kind": "diagram",
+                        "content": diagram,
+                        "reason": decision.reason,
                     })
-                elif trigger.image_type == "dalle" and trigger.dalle_prompt:
-                    img_id = str(uuid4())
-                    yield _sse("image_dalle_pending", id=img_id, reason=trigger.reason)
-                    try:
-                        llm = get_llm_client()
-                        img_bytes = await llm.generate_image(prompt=trigger.dalle_prompt)
-                        url = await image_storage.upload_image(session.user_id, session.id, img_bytes)
-                        yield _sse("image_dalle_done", id=img_id, url=url)
-                        if url:
-                            image_turns.append({
-                                "role": "assistant",
-                                "kind": "dalle_image",
-                                "content": url,
-                                "reason": trigger.reason,
-                            })
-                    except Exception as img_err:
-                        logger.warning("dalle generation failed: %s", img_err)
-                        yield _sse("image_dalle_done", id=img_id, url="")
-        except Exception as e:
-            logger.warning("image_trigger failed (non-fatal): %s", e)
+                elif decision.visual_type == "illustration" and decision.illustration_prompt:
+                    offer_id = str(uuid4())
+                    yield _sse(
+                        "illustration_offer",
+                        id=offer_id,
+                        caption=decision.caption or "",
+                        reason=decision.reason,
+                    )
+                    visual_turns.append({
+                        "id": offer_id,
+                        "role": "assistant",
+                        "kind": "illustration_offer",
+                        "content": {
+                            "caption": decision.caption or "",
+                            "prompt": decision.illustration_prompt,
+                        },
+                        "reason": decision.reason,
+                    })
+            except Exception as error:
+                logger.warning("visual decision failed (non-fatal): %s", error)
 
         # Notes suggestion
         try:
@@ -507,7 +506,7 @@ class DeepLearnService:
                 "kind": "questions",
                 "content": output.questions,
             })
-        assistant_turns.extend(image_turns)
+        assistant_turns.extend(visual_turns)
         new_turns = (session.recent_turns + assistant_turns)[-8:]
         session.recent_turns = new_turns
 
