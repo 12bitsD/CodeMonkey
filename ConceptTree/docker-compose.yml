@@ -67,6 +67,8 @@ services:
       DEBUG: ${DEBUG:-false}
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - deep_learn_images:/app/static/deep_learn_images
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,3 +89,4 @@ services:
 
 volumes:
   postgres_data:
+  deep_learn_images:

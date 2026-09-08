@@ -1,6 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DalleImage from "./DalleImage.jsx";
 import { LanguageProvider } from "../../contexts/LanguageContext.jsx";
@@ -8,6 +8,25 @@ import { LanguageProvider } from "../../contexts/LanguageContext.jsx";
 describe("DalleImage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps showing the pending state during a normal 91-second generation", () => {
+    vi.useFakeTimers();
+
+    render(
+      <LanguageProvider>
+        <DalleImage id="image-pending" url="" reason="Learning concept" pending />
+      </LanguageProvider>,
+    );
+
+    act(() => vi.advanceTimersByTime(91000));
+
+    expect(screen.getByText("Creating image...")).toBeInTheDocument();
+    expect(screen.queryByText("Architecture diagram")).not.toBeInTheDocument();
   });
 
   it("falls back to a localized architecture diagram when image generation is unavailable", () => {

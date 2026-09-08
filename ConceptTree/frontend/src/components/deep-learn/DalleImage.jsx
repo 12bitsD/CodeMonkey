@@ -4,20 +4,14 @@ import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function DalleImage({ id, url, reason, onPin, pending = false }) {
   const { t } = useLanguage();
-  const [timedOut, setTimedOut] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const diagramTopic = t('deep.image.fallbackTopic');
 
   useEffect(() => {
-    setTimedOut(false);
     setLoadFailed(false);
-    if (pending) {
-      const timeoutId = setTimeout(() => setTimedOut(true), 30000);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [pending, url]);
+  }, [url]);
 
-  if (pending && !url && !timedOut) {
+  if (pending && !url) {
     return (
       <div className="my-3 p-6 bg-zinc-50 rounded-xl border border-dashed border-zinc-300 text-center text-sm text-zinc-500">
         {t('deep.image.generating')}
@@ -25,7 +19,7 @@ export default function DalleImage({ id, url, reason, onPin, pending = false }) 
     );
   }
 
-  if (!url || timedOut || loadFailed) {
+  if (!url || loadFailed) {
     return (
       <div className="my-3 overflow-hidden rounded-xl border border-black/[0.1] bg-[#fbfbfa] p-4">
         <div className="mb-3 flex items-center justify-between gap-3">

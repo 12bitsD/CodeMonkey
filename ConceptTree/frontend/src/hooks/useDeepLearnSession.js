@@ -166,14 +166,6 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
           role: 'assistant', kind: 'dalle_pending',
           content: null, reason: event.reason,
         }]);
-        // Auto-timeout: if no done within 30s, show failure
-        setTimeout(() => {
-          setMessages(prev => prev.map(m =>
-            m.kind === 'dalle_pending' && m.id === event.id
-              ? { ...m, kind: 'dalle_image', content: '' }
-              : m
-          ));
-        }, 30000);
         break;
       case 'image_dalle_done':
         setMessages(prev => prev.map(m =>

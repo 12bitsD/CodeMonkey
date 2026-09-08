@@ -116,6 +116,26 @@ describe("useDeepLearnSession", () => {
     expect(screen.getByTestId("message")).toHaveTextContent("");
   });
 
+  it("does not replace a pending image on a fixed 30-second timer", async () => {
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    initializeMock.mockResolvedValue(
+      sseResponse([
+        { type: "image_dalle_pending", id: "image-1", reason: "Learning concept" },
+        { type: "done" },
+      ]),
+    );
+
+    render(<Harness />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("kinds")).toHaveTextContent("dalle_pending");
+    });
+    const hasThirtySecondTimeout = timeoutSpy.mock.calls.some(([, delay]) => delay === 30000);
+    timeoutSpy.mockRestore();
+
+    expect(hasThirtySecondTimeout).toBe(false);
+  });
+
   it("does not send free-text messages while waiting for a command", async () => {
     createSessionMock.mockResolvedValue({
       data: {

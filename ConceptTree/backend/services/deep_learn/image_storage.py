@@ -22,8 +22,7 @@ def _save_local_image(user_id: str, session_id: str, image_bytes: bytes, file_ex
     target = _LOCAL_IMAGE_ROOT / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(image_bytes)
-    base_url = settings.BACKEND_PUBLIC_BASE_URL.rstrip("/")
-    return f"{base_url}/static/{_BUCKET}/{relative_path.as_posix()}"
+    return f"/static/{_BUCKET}/{relative_path.as_posix()}"
 
 
 async def upload_image(
