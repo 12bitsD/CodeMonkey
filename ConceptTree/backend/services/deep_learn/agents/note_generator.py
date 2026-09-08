@@ -37,7 +37,7 @@ def _summarize_turns(recent_turns: list[dict], max_turns: int = _MAX_TURNS_FOR_N
         role = turn.get("role", "unknown")
         kind = turn.get("kind", "text")
         content = turn.get("content", "")
-        if kind in ("mermaid", "dalle_image", "dalle_pending"):
+        if kind in ("mermaid", "diagram", "illustration_offer", "dalle_image", "dalle_pending"):
             continue  # skip image turns
         if isinstance(content, list):
             content = " / ".join(str(c) for c in content)

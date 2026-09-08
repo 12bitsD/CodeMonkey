@@ -21,17 +21,29 @@ def test_extract_json_string_value_decodes_partial_content():
     assert complete is True
 
 
-def test_recent_turn_formatter_preserves_legacy_mermaid_content_before_migration():
+def test_recent_turn_formatter_compacts_visual_payloads():
     formatted = _format_recent_turns([
         {
             "role": "assistant",
             "kind": "mermaid",
             "content": "graph LR\nA[概念]-->B[机制]",
         },
+        {
+            "role": "assistant",
+            "kind": "diagram",
+            "content": {
+                "version": 1,
+                "title": "导数关系",
+                "nodes": [{"id": "a"}, {"id": "b"}],
+                "edges": [{"source": "a", "target": "b"}],
+            },
+        },
     ])
 
-    assert "graph LR" in formatted
-    assert "A[概念]-->B[机制]" in formatted
+    assert "graph LR" not in formatted
+    assert "A[概念]-->B[机制]" not in formatted
+    assert "旧版知识关系图" in formatted
+    assert "知识关系图：导数关系，2 个节点" in formatted
 
 
 @pytest.mark.asyncio

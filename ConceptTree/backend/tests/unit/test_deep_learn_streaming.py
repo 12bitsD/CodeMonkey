@@ -253,7 +253,7 @@ async def test_run_teach_emits_and_persists_valid_diagram_spec(monkeypatch):
     async def fake_stream_run(**_kwargs):
         yield {
             "type": "done",
-            "output": TeachingOutput(content="关系讲解", questions=[], visual_hint="relationship"),
+            "output": TeachingOutput(content="关系讲解", questions=["先回答问题"], visual_hint="relationship"),
         }
 
     monkeypatch.setattr(service_module, "get_db_context", lambda: FakeDbContext())
@@ -272,6 +272,9 @@ async def test_run_teach_emits_and_persists_valid_diagram_spec(monkeypatch):
     )
 
     assert any('"type": "visual_diagram"' in event and '"title": "概念关系"' in event for event in events)
+    question_index = next(index for index, event in enumerate(events) if '"type": "questions"' in event)
+    diagram_index = next(index for index, event in enumerate(events) if '"type": "visual_diagram"' in event)
+    assert question_index < diagram_index
     diagram_turn = next(turn for turn in session.recent_turns if turn.get("kind") == "diagram")
     assert diagram_turn["content"]["version"] == 1
 

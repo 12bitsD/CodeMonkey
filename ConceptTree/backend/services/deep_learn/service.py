@@ -445,6 +445,10 @@ class DeepLearnService:
                 yield _sse("chunk", text=chunk)
                 await asyncio.sleep(0)
 
+        # Questions should be usable before the optional visual decision finishes.
+        if output.questions:
+            yield _sse("questions", items=output.questions)
+
         visual_turns: list[dict] = []
         if output.visual_hint != "none":
             try:
@@ -525,9 +529,6 @@ class DeepLearnService:
 
         yield _sse("state_change", **{"from": "TEACHING", "to": "QUESTIONING"})
         session.state = "QUESTIONING"
-
-        if output.questions:
-            yield _sse("questions", items=output.questions)
 
     async def _run_assessment(
         self, session: SessionState, node_meta: dict, user_answer: str, is_test: bool,
