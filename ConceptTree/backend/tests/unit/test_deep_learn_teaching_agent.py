@@ -4,6 +4,7 @@ import services.deep_learn.agents.teaching as teaching_module
 from services.deep_learn.agents.teaching import (
     TeachingAgent,
     _extract_json_string_value,
+    _format_recent_turns,
 )
 
 
@@ -18,6 +19,19 @@ def test_extract_json_string_value_decodes_partial_content():
     full, complete = _extract_json_string_value('{"content":"第一句\\n第二句","questions":[]}', "content")
     assert full == "第一句\n第二句"
     assert complete is True
+
+
+def test_recent_turn_formatter_preserves_legacy_mermaid_content_before_migration():
+    formatted = _format_recent_turns([
+        {
+            "role": "assistant",
+            "kind": "mermaid",
+            "content": "graph LR\nA[概念]-->B[机制]",
+        },
+    ])
+
+    assert "graph LR" in formatted
+    assert "A[概念]-->B[机制]" in formatted
 
 
 @pytest.mark.asyncio
