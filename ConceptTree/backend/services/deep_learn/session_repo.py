@@ -34,6 +34,7 @@ def _row_to_state(row: dict) -> SessionState:
         test_current_index=row["test_current_index"],
         test_results=row["test_results"] or [],
         status=row["status"],
+        conversation_summary=row.get("conversation_summary"),
     )
 
 
@@ -79,6 +80,42 @@ def update_session(db: DbSession, session_id: str, **fields) -> None:
     db.execute(
         f"UPDATE deep_learn_sessions SET {set_parts}, updated_at=NOW() WHERE id=?",
         values,
+    )
+    db.commit()
+
+
+def append_recent_turn(
+    db: DbSession,
+    session_id: str,
+    user_id: str,
+    turn: dict,
+    *,
+    mark_illustration_generated: bool = False,
+) -> None:
+    """Atomically append one turn while preserving the eight-turn session window."""
+    db.execute(
+        """
+        WITH appended AS (
+            SELECT id, COALESCE(recent_turns, '[]'::jsonb) || ? AS turns
+            FROM deep_learn_sessions
+            WHERE id=? AND user_id=?
+        )
+        UPDATE deep_learn_sessions AS sessions
+        SET recent_turns = (
+            SELECT COALESCE(jsonb_agg(entry.value ORDER BY entry.ordinality), '[]'::jsonb)
+            FROM jsonb_array_elements(appended.turns) WITH ORDINALITY AS entry(value, ordinality)
+            WHERE entry.ordinality > GREATEST(jsonb_array_length(appended.turns) - 8, 0)
+        ),
+        conversation_summary = CASE
+            WHEN ? AND COALESCE(conversation_summary, '') NOT LIKE '%[illustration_generated]%'
+            THEN CONCAT(COALESCE(conversation_summary, ''), '[illustration_generated]')
+            ELSE conversation_summary
+        END,
+        updated_at=NOW()
+        FROM appended
+        WHERE sessions.id=appended.id
+        """,
+        ([turn], session_id, user_id, mark_illustration_generated),
     )
     db.commit()
 

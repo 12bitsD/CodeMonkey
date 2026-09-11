@@ -23,10 +23,12 @@ from services.deep_learn.agents.assessment_per_question import AssessmentPerQues
 from services.deep_learn.agents.note_generator import NoteGeneratorAgent
 from services.deep_learn.agents.teaching import TeachingAgent
 from services.deep_learn.agents.visual_decision import VisualDecisionAgent
+from services.deep_learn import image_storage
 from services.deep_learn.notes_repo import save_completion_note
 from services.deep_learn.memory.context_builder import MemoryContextBuilder
 from services.deep_learn.memory.update_service import MemoryUpdateService
 from services.deep_learn.session_repo import (
+    append_recent_turn,
     abandon_session,
     create_session,
     get_active_session,
@@ -215,6 +217,69 @@ class DeepLearnService:
         what_list = node_meta.get("what_list", [])
         session = create_session(db, user_id=user_id, node_id=node_id, plan_id=plan_id, what_list=what_list)
         return session, node_meta
+
+    async def generate_illustration(self, session: SessionState, offer_id: str) -> dict:
+        existing = next(
+            (
+                turn for turn in session.recent_turns
+                if turn.get("kind") == "dalle_image"
+                and turn.get("source_offer_id") == offer_id
+            ),
+            None,
+        )
+        if existing:
+            return {
+                "id": existing.get("id"),
+                "url": existing.get("content"),
+                "source_offer_id": offer_id,
+            }
+
+        offer = next(
+            (
+                turn for turn in session.recent_turns
+                if turn.get("kind") == "illustration_offer" and turn.get("id") == offer_id
+            ),
+            None,
+        )
+        if not offer:
+            raise ValueError("illustration offer not found")
+        if (
+            any(turn.get("kind") == "dalle_image" for turn in session.recent_turns)
+            or "[illustration_generated]" in (session.conversation_summary or "")
+        ):
+            raise ValueError("illustration limit reached for this session")
+
+        offer_content = offer.get("content")
+        prompt = offer_content.get("prompt") if isinstance(offer_content, dict) else None
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("illustration offer has no valid prompt")
+
+        image_bytes = await get_llm_client().generate_image(prompt=prompt)
+        url = await image_storage.upload_image(session.user_id, session.id, image_bytes)
+        if not url:
+            raise RuntimeError("illustration storage returned no URL")
+
+        turn = {
+            "id": str(uuid4()),
+            "role": "assistant",
+            "kind": "dalle_image",
+            "content": url,
+            "reason": offer.get("reason", ""),
+            "source_offer_id": offer_id,
+        }
+        with get_db_context() as db:
+            append_recent_turn(
+                db,
+                session.id,
+                session.user_id,
+                turn,
+                mark_illustration_generated=True,
+            )
+        session.recent_turns = (session.recent_turns + [turn])[-8:]
+        session.conversation_summary = (
+            (session.conversation_summary or "") + "[illustration_generated]"
+        )
+        return {"id": turn["id"], "url": url, "source_offer_id": offer_id}
 
     def _fetch_node_meta(self, db: DbSession, node_id: str) -> dict:
         row = db.execute(

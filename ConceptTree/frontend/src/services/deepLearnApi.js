@@ -60,6 +60,16 @@ export const deepLearnApi = {
       }),
     },
   ),
+
+  generateIllustration: async (sessionId, offerId) => {
+    const res = await fetch(buildApiUrl(`/deep-learn/sessions/${sessionId}/illustrations`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ offer_id: offerId }),
+    });
+    if (!res.ok) throw new Error(`generateIllustration failed: ${res.status}`);
+    return res.json();
+  },
 };
 
 export const createNoteFromDeepLearn = async ({ planId, nodeId, content }) => {

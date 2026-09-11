@@ -12,6 +12,28 @@ const baseProps = {
 };
 
 describe("DeepLearnChat", () => {
+  it("requires a click before generating an offered illustration", () => {
+    const onGenerateIllustration = vi.fn();
+    render(
+      <DeepLearnChat
+        {...baseProps}
+        isStreaming={false}
+        messages={[{
+          id: "offer-1",
+          role: "assistant",
+          kind: "illustration_offer",
+          content: { caption: "生成三维坡面演示图" },
+          reason: "需要观察空间关系",
+        }]}
+        onGenerateIllustration={onGenerateIllustration}
+      />,
+    );
+
+    expect(screen.getByText("生成三维坡面演示图")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成演示图" }));
+    expect(onGenerateIllustration).toHaveBeenCalledWith("offer-1");
+  });
+
   it("renders and pins typed teaching diagrams", () => {
     const onPinImage = vi.fn();
     const diagram = {

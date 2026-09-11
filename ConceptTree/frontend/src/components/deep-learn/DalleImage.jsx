@@ -1,11 +1,10 @@
-import { Pin } from 'lucide-react';
+import { AlertCircle, Pin } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function DalleImage({ id, url, reason, onPin, pending = false }) {
   const { t } = useLanguage();
   const [loadFailed, setLoadFailed] = useState(false);
-  const diagramTopic = t('deep.image.fallbackTopic');
 
   useEffect(() => {
     setLoadFailed(false);
@@ -21,41 +20,9 @@ export default function DalleImage({ id, url, reason, onPin, pending = false }) 
 
   if (!url || loadFailed) {
     return (
-      <div className="my-3 overflow-hidden rounded-xl border border-black/[0.1] bg-[#fbfbfa] p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-            {t('deep.image.fallbackTitle')}
-          </p>
-          <span className="text-[11px] text-zinc-400">{t('deep.image.fallbackNote')}</span>
-        </div>
-        <svg
-          role="img"
-          aria-label={t('deep.image.fallbackAria', { name: diagramTopic })}
-          viewBox="0 0 720 210"
-          className="h-auto w-full"
-        >
-          <defs>
-            <marker id={`arrow-${id}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M0,0 L8,4 L0,8 Z" fill="#a1a1aa" />
-            </marker>
-          </defs>
-          <text x="360" y="24" textAnchor="middle" fill="#3f3f46" fontSize="13" fontWeight="600">
-            {diagramTopic}
-          </text>
-          <line x1="206" y1="116" x2="268" y2="116" stroke="#a1a1aa" strokeWidth="2" markerEnd={`url(#arrow-${id})`} />
-          <line x1="452" y1="116" x2="514" y2="116" stroke="#a1a1aa" strokeWidth="2" markerEnd={`url(#arrow-${id})`} />
-          {[
-            [32, t('deep.image.concept')],
-            [278, t('deep.image.mechanism')],
-            [524, t('deep.image.outcome')],
-          ].map(([x, label], index) => (
-            <g key={label}>
-              <rect x={x} y="72" width="164" height="88" rx="14" fill={index === 1 ? '#f0fdfa' : '#ffffff'} stroke={index === 1 ? '#5eead4' : '#d4d4d8'} />
-              <circle cx={x + 24} cy="94" r="5" fill={index === 1 ? '#14b8a6' : '#a1a1aa'} />
-              <text x={x + 82} y="122" textAnchor="middle" fill="#27272a" fontSize="14" fontWeight="600">{label}</text>
-            </g>
-          ))}
-        </svg>
+      <div role="status" className="my-3 flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <AlertCircle size={17} className="shrink-0" />
+        <span>{t('deep.image.failed')}</span>
       </div>
     );
   }

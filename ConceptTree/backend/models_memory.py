@@ -138,14 +138,6 @@ class ProceduralPattern(BaseModel):
     updated_at: str
 
 
-class ImageTriggerOutput(BaseModel):
-    needs_image: bool
-    image_type: Optional[Literal["mermaid", "dalle"]] = None
-    mermaid_code: Optional[str] = None
-    dalle_prompt: Optional[str] = None
-    reason: str
-
-
 class MemoryEvent(BaseModel):
     user_id: str
     session_id: str

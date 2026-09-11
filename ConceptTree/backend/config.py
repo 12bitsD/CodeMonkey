@@ -63,7 +63,7 @@ class Settings:
     LLM_REASONING_EFFORT: str = _get_env("LLM_REASONING_EFFORT", "low")
 
     # Image generation provider. Keep separate from the chat LLM so OpenRouter
-    # credits/config can be used only when image_type == "dalle".
+    # credits/config are used only after the learner confirms an illustration offer.
     IMAGE_PROVIDER: str = _get_env("IMAGE_PROVIDER", "openrouter")
     IMAGE_API_KEY: str = _get_env("IMAGE_API_KEY", _get_env("OPENROUTER_API_KEY", ""))
     IMAGE_BASE_URL: str = _get_env("IMAGE_BASE_URL", "https://openrouter.ai/api/v1")

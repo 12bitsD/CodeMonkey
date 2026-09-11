@@ -60,4 +60,21 @@ describe("TeachingDiagram", () => {
     fireEvent.click(screen.getByRole("button", { name: "重置图表" }));
     expect(canvas.style.transform).toContain("scale(1)");
   });
+
+  it("draws connectors between node boundaries so arrowheads stay visible", () => {
+    const { container } = render(<TeachingDiagram spec={diagram} />);
+
+    expect(container.querySelector('path[marker-end]')?.getAttribute('d'))
+      .toBe('M 208 240 L 692 240');
+  });
+
+  it("allows compact pinned diagrams to fit narrow panels", () => {
+    render(<TeachingDiagram spec={diagram} compact />);
+    const canvas = screen.getByTestId("teaching-diagram-canvas");
+    const zoomOut = screen.getByRole("button", { name: "缩小图表" });
+
+    for (let index = 0; index < 10; index += 1) fireEvent.click(zoomOut);
+
+    expect(canvas.style.transform).toContain("scale(0.32)");
+  });
 });

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Maximize2, X } from 'lucide-react';
-import MermaidDiagram from './MermaidDiagram';
 import TeachingDiagram from './TeachingDiagram';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -25,13 +24,6 @@ export default function PinnedImages({ pinned = [], onUnpin }) {
   const renderPinnedContent = (img, enlarged = false) => {
     if (img.kind === 'diagram' && img.content) {
       return <TeachingDiagram spec={img.content} compact={!enlarged} />;
-    }
-    if (img.url?.startsWith('mermaid:')) {
-      return (
-        <div className={enlarged ? 'min-w-[720px]' : 'p-2'}>
-          <MermaidDiagram code={img.url.slice(8)} />
-        </div>
-      );
     }
     const imageUrl = img.kind === 'image' ? img.content : img.url;
     if (imageUrl) {

@@ -10,6 +10,7 @@ import {
 } from './diagram/layoutDiagram';
 
 const MIN_SCALE = 0.6;
+const COMPACT_MIN_SCALE = 0.32;
 const MAX_SCALE = 1.8;
 const SCALE_STEP = 0.15;
 
@@ -31,7 +32,25 @@ const edgeStyle = {
   related: { dash: '5 6', curve: false, both: false },
 };
 
-const clampScale = value => Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(value.toFixed(2))));
+const clampScale = (value, minimum = MIN_SCALE) => (
+  Math.min(MAX_SCALE, Math.max(minimum, Number(value.toFixed(2))))
+);
+
+function edgeAnchors(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (dx === 0 && dy === 0) return { from, to };
+  const boundaryRatio = 1 / Math.max(
+    Math.abs(dx) / (DIAGRAM_NODE_WIDTH / 2),
+    Math.abs(dy) / (DIAGRAM_NODE_HEIGHT / 2),
+  );
+  const insetX = dx * boundaryRatio;
+  const insetY = dy * boundaryRatio;
+  return {
+    from: { x: from.x + insetX, y: from.y + insetY },
+    to: { x: to.x - insetX, y: to.y - insetY },
+  };
+}
 
 function edgePath(from, to, style) {
   if (style.curve) {
@@ -77,8 +96,10 @@ export default function TeachingDiagram({ spec, compact = false }) {
     );
   }
 
+  const minimumScale = compact ? COMPACT_MIN_SCALE : MIN_SCALE;
   const updateScale = next => setScale(current => clampScale(
     typeof next === 'function' ? next(current) : next,
+    minimumScale,
   ));
 
   const fitDiagram = () => {
@@ -170,12 +191,13 @@ export default function TeachingDiagram({ spec, compact = false }) {
               const to = positionById[edge.target];
               const style = edgeStyle[edge.relation] || edgeStyle.related;
               if (!from || !to) return null;
+              const anchors = edgeAnchors(from, to);
               const labelX = (from.x + to.x) / 2;
               const labelY = (from.y + to.y) / 2 - 9;
               return (
                 <g key={`${edge.source}-${edge.target}-${index}`}>
                   <path
-                    d={edgePath(from, to, style)}
+                    d={edgePath(anchors.from, anchors.to, style)}
                     fill="none"
                     stroke="#a1a1aa"
                     strokeWidth="2"
@@ -243,4 +265,3 @@ export default function TeachingDiagram({ spec, compact = false }) {
     </section>
   );
 }
-
