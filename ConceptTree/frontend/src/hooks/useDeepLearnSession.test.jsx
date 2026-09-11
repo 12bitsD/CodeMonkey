@@ -2,11 +2,12 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createSessionMock, initializeMock, sendMessageMock, sendCommandMock } = vi.hoisted(() => ({
+const { createSessionMock, initializeMock, sendMessageMock, sendCommandMock, generateIllustrationMock } = vi.hoisted(() => ({
   createSessionMock: vi.fn(),
   initializeMock: vi.fn(),
   sendMessageMock: vi.fn(),
   sendCommandMock: vi.fn(),
+  generateIllustrationMock: vi.fn(),
 }));
 
 vi.mock("../services/deepLearnApi", () => ({
@@ -15,6 +16,7 @@ vi.mock("../services/deepLearnApi", () => ({
     initialize: initializeMock,
     sendMessage: sendMessageMock,
     sendCommand: sendCommandMock,
+    generateIllustration: generateIllustrationMock,
   },
 }));
 
@@ -44,6 +46,7 @@ function Harness() {
     canSendMessage,
     sendMessage,
     sendCommand,
+    generateIllustration,
     uiFlags,
   } = useDeepLearnSession({
     planId: "plan-1",
@@ -57,11 +60,19 @@ function Harness() {
       <span data-testid="commands">{uiFlags.showCommands ? "shown" : "hidden"}</span>
       <span data-testid="message">{messages.map((m) => m.content).join("")}</span>
       <span data-testid="kinds">{messages.map((m) => m.kind).join(",")}</span>
+      <span data-testid="message-ids">{messages.map((m) => m.id).join(",")}</span>
+      <span data-testid="diagram-titles">
+        {messages.filter((m) => m.kind === "diagram").map((m) => m.content.title).join(",")}
+      </span>
+      <span data-testid="image-urls">
+        {messages.filter((m) => m.kind === "dalle_image").map((m) => m.content).join(",")}
+      </span>
       <span data-testid="completed">
         {Object.values(conceptsStatus).filter((status) => ["done", "failed", "skipped"].includes(status)).length}
       </span>
       <button type="button" onClick={() => sendMessage("free text")}>send</button>
       <button type="button" onClick={() => sendCommand("restart")}>restart</button>
+      <button type="button" onClick={() => generateIllustration("offer-1")}>generate illustration</button>
     </div>
   );
 }
@@ -134,6 +145,88 @@ describe("useDeepLearnSession", () => {
     timeoutSpy.mockRestore();
 
     expect(hasThirtySecondTimeout).toBe(false);
+  });
+
+  it("receives validated diagrams and illustration offers as typed messages", async () => {
+    initializeMock.mockResolvedValue(
+      sseResponse([
+        {
+          type: "visual_diagram",
+          id: "diagram-1",
+          spec: { version: 1, title: "导数关系图", layout: "flow", nodes: [], edges: [] },
+          reason: "关系结构",
+        },
+        {
+          type: "illustration_offer",
+          id: "offer-1",
+          caption: "生成空间演示图",
+          reason: "需要观察三维关系",
+        },
+        { type: "done" },
+      ]),
+    );
+
+    render(<Harness />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("kinds")).toHaveTextContent("diagram,illustration_offer");
+    });
+    expect(screen.getByTestId("diagram-titles")).toHaveTextContent("导数关系图");
+  });
+
+  it("generates an offered illustration without restarting the teaching stream", async () => {
+    initializeMock.mockResolvedValue(
+      sseResponse([
+        { type: "illustration_offer", id: "offer-1", caption: "生成演示图", reason: "需要观察" },
+        { type: "done" },
+      ]),
+    );
+    generateIllustrationMock.mockResolvedValue({
+      success: true,
+      data: { id: "image-1", url: "/static/result.png", source_offer_id: "offer-1" },
+    });
+
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByTestId("kinds")).toHaveTextContent("illustration_offer"));
+
+    fireEvent.click(screen.getByRole("button", { name: "generate illustration" }));
+
+    await waitFor(() => expect(screen.getByTestId("kinds")).toHaveTextContent("dalle_image"));
+    expect(screen.getByTestId("image-urls")).toHaveTextContent("/static/result.png");
+    expect(generateIllustrationMock).toHaveBeenCalledWith("session-1", "offer-1");
+  });
+
+  it("preserves persisted offer ids so resumed sessions can generate them", async () => {
+    createSessionMock.mockResolvedValue({
+      data: {
+        session_id: "session-1",
+        state: "QUESTIONING",
+        node_name: "node",
+        node_why: "",
+        what_list: ["concept"],
+        current_concept_index: 0,
+        concepts_status: { 0: "current" },
+        weak_points: [],
+        recent_turns: [{
+          id: "offer-1",
+          role: "assistant",
+          kind: "illustration_offer",
+          content: { caption: "生成演示图" },
+          reason: "需要观察",
+        }],
+      },
+    });
+    generateIllustrationMock.mockResolvedValue({
+      success: true,
+      data: { id: "image-1", url: "/static/resumed.png", source_offer_id: "offer-1" },
+    });
+
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByTestId("message-ids")).toHaveTextContent("offer-1"));
+    fireEvent.click(screen.getByRole("button", { name: "generate illustration" }));
+
+    await waitFor(() => expect(screen.getByTestId("kinds")).toHaveTextContent("dalle_image"));
+    expect(screen.getByTestId("image-urls")).toHaveTextContent("/static/resumed.png");
   });
 
   it("does not send free-text messages while waiting for a command", async () => {

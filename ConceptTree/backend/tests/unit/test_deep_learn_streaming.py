@@ -2,6 +2,7 @@ import pytest
 
 from models_deep_learn import SessionState
 from models_deep_learn import AssessmentOverallOutput, AssessmentPerQuestionOutput, TeachingOutput
+from models_memory import DiagramSpec, VisualDecision
 import services.deep_learn.service as service_module
 from services.deep_learn.service import (
     DeepLearnService,
@@ -183,6 +184,99 @@ async def test_run_teach_persists_questions_for_session_resume(monkeypatch):
         "kind": "questions",
         "content": ["诊断题", "应用题", "变式题"],
     }
+
+
+@pytest.mark.asyncio
+async def test_run_teach_skips_visual_agent_when_hint_is_none(monkeypatch):
+    class FakeDbContext:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *_args):
+            return False
+
+    class FailIfCalled:
+        async def decide(self, **_kwargs):
+            raise AssertionError("visual agent must not run for a none hint")
+
+    service = DeepLearnService()
+
+    async def fake_stream_run(**_kwargs):
+        yield {
+            "type": "done",
+            "output": TeachingOutput(content="纯文字讲解", questions=[], visual_hint="none"),
+        }
+
+    monkeypatch.setattr(service_module, "get_db_context", lambda: FakeDbContext())
+    monkeypatch.setattr(service_module, "update_session", lambda *_args, **_kwargs: None)
+    service.teaching_agent.stream_run = fake_stream_run
+    service.visual_decision = FailIfCalled()
+
+    events = await _collect(
+        service._run_teach(
+            _session(),
+            {"node_name": "节点", "node_why": "", "what_list": ["概念"]},
+            mode="normal",
+        ),
+    )
+
+    assert not any('"type": "visual_diagram"' in event for event in events)
+
+
+@pytest.mark.asyncio
+async def test_run_teach_emits_and_persists_valid_diagram_spec(monkeypatch):
+    class FakeDbContext:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *_args):
+            return False
+
+    diagram = DiagramSpec(
+        version=1,
+        title="概念关系",
+        layout="flow",
+        nodes=[
+            {"id": "input", "title": "输入", "summary": "接收信息", "details": {}},
+            {"id": "output", "title": "输出", "summary": "产生结果", "role": "core", "details": {}},
+        ],
+        edges=[{"source": "input", "target": "output", "relation": "causes", "label": "处理"}],
+    )
+
+    class FakeVisualAgent:
+        async def decide(self, **kwargs):
+            assert kwargs["language"] == "zh-CN"
+            return VisualDecision(visual_type="diagram", diagram=diagram, reason="有因果关系")
+
+    service = DeepLearnService()
+
+    async def fake_stream_run(**_kwargs):
+        yield {
+            "type": "done",
+            "output": TeachingOutput(content="关系讲解", questions=["先回答问题"], visual_hint="relationship"),
+        }
+
+    monkeypatch.setattr(service_module, "get_db_context", lambda: FakeDbContext())
+    monkeypatch.setattr(service_module, "update_session", lambda *_args, **_kwargs: None)
+    service.teaching_agent.stream_run = fake_stream_run
+    service.visual_decision = FakeVisualAgent()
+    session = _session()
+
+    events = await _collect(
+        service._run_teach(
+            session,
+            {"node_name": "节点", "node_why": "", "what_list": ["概念"]},
+            mode="normal",
+            language="zh-CN",
+        ),
+    )
+
+    assert any('"type": "visual_diagram"' in event and '"title": "概念关系"' in event for event in events)
+    question_index = next(index for index, event in enumerate(events) if '"type": "questions"' in event)
+    diagram_index = next(index for index, event in enumerate(events) if '"type": "visual_diagram"' in event)
+    assert question_index < diagram_index
+    diagram_turn = next(turn for turn in session.recent_turns if turn.get("kind") == "diagram")
+    assert diagram_turn["content"]["version"] == 1
 
 
 @pytest.mark.asyncio

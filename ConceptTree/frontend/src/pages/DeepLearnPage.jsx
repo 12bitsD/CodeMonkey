@@ -284,7 +284,7 @@ export default function DeepLearnPage() {
   const {
     session, messages, conceptsStatus, weakPoints, isStreaming,
     isInitializing, isRestarting, canSendMessage, uiFlags, sendMessage, sendCommand, error,
-    pinnedImages, pinImage, unpinImage, noteSuggestion, dismissNoteSuggestion,
+    pinnedImages, pinImage, unpinImage, generateIllustration, noteSuggestion, dismissNoteSuggestion,
     noteId, isGeneratingNote, isCompleted,
   } = useDeepLearnSession({ planId, nodeId, language });
 
@@ -481,6 +481,7 @@ export default function DeepLearnPage() {
               onSendMessage={sendMessage}
               onSendCommand={sendCommand}
               onPinImage={pinImage}
+              onGenerateIllustration={generateIllustration}
               noteHref={noteId ? `/deep-learn/${planId}/${nodeId}/note/${noteId}` : null}
               onBack={() => navigate(`/graph/${planId}`)}
             />

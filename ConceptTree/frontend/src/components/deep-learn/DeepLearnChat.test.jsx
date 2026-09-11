@@ -12,6 +12,55 @@ const baseProps = {
 };
 
 describe("DeepLearnChat", () => {
+  it("requires a click before generating an offered illustration", () => {
+    const onGenerateIllustration = vi.fn();
+    render(
+      <DeepLearnChat
+        {...baseProps}
+        isStreaming={false}
+        messages={[{
+          id: "offer-1",
+          role: "assistant",
+          kind: "illustration_offer",
+          content: { caption: "生成三维坡面演示图" },
+          reason: "需要观察空间关系",
+        }]}
+        onGenerateIllustration={onGenerateIllustration}
+      />,
+    );
+
+    expect(screen.getByText("生成三维坡面演示图")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成演示图" }));
+    expect(onGenerateIllustration).toHaveBeenCalledWith("offer-1");
+  });
+
+  it("renders and pins typed teaching diagrams", () => {
+    const onPinImage = vi.fn();
+    const diagram = {
+      version: 1,
+      title: "导数关系图",
+      layout: "flow",
+      nodes: [
+        { id: "a", title: "割线", summary: "平均变化", details: {} },
+        { id: "b", title: "切线", summary: "瞬时变化", role: "core", details: {} },
+      ],
+      edges: [{ source: "a", target: "b", relation: "prerequisite" }],
+    };
+
+    render(
+      <DeepLearnChat
+        {...baseProps}
+        isStreaming={false}
+        messages={[{ id: "diagram-1", role: "assistant", kind: "diagram", content: diagram }]}
+        onPinImage={onPinImage}
+      />,
+    );
+
+    expect(screen.getByText("导数关系图")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("钉到概念区"));
+    expect(onPinImage).toHaveBeenCalledWith("diagram-1", diagram, "导数关系图", "diagram");
+  });
+
   it("renders markdown inside question cards", () => {
     const { container } = render(
       <DeepLearnChat

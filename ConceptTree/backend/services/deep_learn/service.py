@@ -20,14 +20,15 @@ from models_deep_learn import (
 from models_memory import MemoryEvent
 from services.deep_learn.agents.assessment_overall import AssessmentOverallAgent
 from services.deep_learn.agents.assessment_per_question import AssessmentPerQuestionAgent
-from services.deep_learn.agents.image_trigger import ImageTriggerAgent
 from services.deep_learn.agents.note_generator import NoteGeneratorAgent
 from services.deep_learn.agents.teaching import TeachingAgent
+from services.deep_learn.agents.visual_decision import VisualDecisionAgent
 from services.deep_learn import image_storage
 from services.deep_learn.notes_repo import save_completion_note
 from services.deep_learn.memory.context_builder import MemoryContextBuilder
 from services.deep_learn.memory.update_service import MemoryUpdateService
 from services.deep_learn.session_repo import (
+    append_recent_turn,
     abandon_session,
     create_session,
     get_active_session,
@@ -137,7 +138,7 @@ class DeepLearnService:
         self.assessment_overall = AssessmentOverallAgent()
         self.memory_builder = MemoryContextBuilder()
         self.memory_updater = MemoryUpdateService()
-        self.image_trigger = ImageTriggerAgent()
+        self.visual_decision = VisualDecisionAgent()
         self.note_generator = NoteGeneratorAgent()
         self._localized_node_cache: dict[str, dict] = {}
 
@@ -216,6 +217,69 @@ class DeepLearnService:
         what_list = node_meta.get("what_list", [])
         session = create_session(db, user_id=user_id, node_id=node_id, plan_id=plan_id, what_list=what_list)
         return session, node_meta
+
+    async def generate_illustration(self, session: SessionState, offer_id: str) -> dict:
+        existing = next(
+            (
+                turn for turn in session.recent_turns
+                if turn.get("kind") == "dalle_image"
+                and turn.get("source_offer_id") == offer_id
+            ),
+            None,
+        )
+        if existing:
+            return {
+                "id": existing.get("id"),
+                "url": existing.get("content"),
+                "source_offer_id": offer_id,
+            }
+
+        offer = next(
+            (
+                turn for turn in session.recent_turns
+                if turn.get("kind") == "illustration_offer" and turn.get("id") == offer_id
+            ),
+            None,
+        )
+        if not offer:
+            raise ValueError("illustration offer not found")
+        if (
+            any(turn.get("kind") == "dalle_image" for turn in session.recent_turns)
+            or "[illustration_generated]" in (session.conversation_summary or "")
+        ):
+            raise ValueError("illustration limit reached for this session")
+
+        offer_content = offer.get("content")
+        prompt = offer_content.get("prompt") if isinstance(offer_content, dict) else None
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("illustration offer has no valid prompt")
+
+        image_bytes = await get_llm_client().generate_image(prompt=prompt)
+        url = await image_storage.upload_image(session.user_id, session.id, image_bytes)
+        if not url:
+            raise RuntimeError("illustration storage returned no URL")
+
+        turn = {
+            "id": str(uuid4()),
+            "role": "assistant",
+            "kind": "dalle_image",
+            "content": url,
+            "reason": offer.get("reason", ""),
+            "source_offer_id": offer_id,
+        }
+        with get_db_context() as db:
+            append_recent_turn(
+                db,
+                session.id,
+                session.user_id,
+                turn,
+                mark_illustration_generated=True,
+            )
+        session.recent_turns = (session.recent_turns + [turn])[-8:]
+        session.conversation_summary = (
+            (session.conversation_summary or "") + "[illustration_generated]"
+        )
+        return {"id": turn["id"], "url": url, "source_offer_id": offer_id}
 
     def _fetch_node_meta(self, db: DbSession, node_id: str) -> dict:
         row = db.execute(
@@ -387,12 +451,6 @@ class DeepLearnService:
         localized = node_meta.get("what_list") or []
         return localized if len(localized) == len(session.what_list) else session.what_list
 
-    def _count_images_in_turns(self, session: SessionState) -> int:
-        return sum(
-            1 for m in session.recent_turns
-            if m.get("kind") in ("mermaid", "dalle_image")
-        )
-
     async def _run_teach(
         self, session: SessionState, node_meta: dict, mode: TeachingMode,
         background_tasks: Optional[BackgroundTasks] = None,
@@ -452,45 +510,55 @@ class DeepLearnService:
                 yield _sse("chunk", text=chunk)
                 await asyncio.sleep(0)
 
-        # Image trigger (Phase 2)
-        image_turns: list[dict] = []
-        try:
-            prev_img_count = self._count_images_in_turns(session)
-            trigger = await self.image_trigger.decide(
-                teaching_content=output.content,
-                concept=current_concept,
-                node_name=node_meta["node_name"],
-                previous_image_count=prev_img_count,
-            )
-            if trigger.needs_image:
-                if trigger.image_type == "mermaid" and trigger.mermaid_code:
-                    yield _sse("image_mermaid", code=trigger.mermaid_code)
-                    image_turns.append({
+        # Questions should be usable before the optional visual decision finishes.
+        if output.questions:
+            yield _sse("questions", items=output.questions)
+
+        visual_turns: list[dict] = []
+        if output.visual_hint != "none":
+            try:
+                decision = await self.visual_decision.decide(
+                    teaching_content=output.content,
+                    concept=current_concept,
+                    node_name=node_meta["node_name"],
+                    language=language,
+                )
+                if decision.visual_type == "diagram" and decision.diagram:
+                    diagram_id = str(uuid4())
+                    diagram = decision.diagram.model_dump(mode="json")
+                    yield _sse(
+                        "visual_diagram",
+                        id=diagram_id,
+                        spec=diagram,
+                        reason=decision.reason,
+                    )
+                    visual_turns.append({
+                        "id": diagram_id,
                         "role": "assistant",
-                        "kind": "mermaid",
-                        "content": trigger.mermaid_code,
-                        "reason": trigger.reason,
+                        "kind": "diagram",
+                        "content": diagram,
+                        "reason": decision.reason,
                     })
-                elif trigger.image_type == "dalle" and trigger.dalle_prompt:
-                    img_id = str(uuid4())
-                    yield _sse("image_dalle_pending", id=img_id, reason=trigger.reason)
-                    try:
-                        llm = get_llm_client()
-                        img_bytes = await llm.generate_image(prompt=trigger.dalle_prompt)
-                        url = await image_storage.upload_image(session.user_id, session.id, img_bytes)
-                        yield _sse("image_dalle_done", id=img_id, url=url)
-                        if url:
-                            image_turns.append({
-                                "role": "assistant",
-                                "kind": "dalle_image",
-                                "content": url,
-                                "reason": trigger.reason,
-                            })
-                    except Exception as img_err:
-                        logger.warning("dalle generation failed: %s", img_err)
-                        yield _sse("image_dalle_done", id=img_id, url="")
-        except Exception as e:
-            logger.warning("image_trigger failed (non-fatal): %s", e)
+                elif decision.visual_type == "illustration" and decision.illustration_prompt:
+                    offer_id = str(uuid4())
+                    yield _sse(
+                        "illustration_offer",
+                        id=offer_id,
+                        caption=decision.caption or "",
+                        reason=decision.reason,
+                    )
+                    visual_turns.append({
+                        "id": offer_id,
+                        "role": "assistant",
+                        "kind": "illustration_offer",
+                        "content": {
+                            "caption": decision.caption or "",
+                            "prompt": decision.illustration_prompt,
+                        },
+                        "reason": decision.reason,
+                    })
+            except Exception as error:
+                logger.warning("visual decision failed (non-fatal): %s", error)
 
         # Notes suggestion
         try:
@@ -507,7 +575,7 @@ class DeepLearnService:
                 "kind": "questions",
                 "content": output.questions,
             })
-        assistant_turns.extend(image_turns)
+        assistant_turns.extend(visual_turns)
         new_turns = (session.recent_turns + assistant_turns)[-8:]
         session.recent_turns = new_turns
 
@@ -526,9 +594,6 @@ class DeepLearnService:
 
         yield _sse("state_change", **{"from": "TEACHING", "to": "QUESTIONING"})
         session.state = "QUESTIONING"
-
-        if output.questions:
-            yield _sse("questions", items=output.questions)
 
     async def _run_assessment(
         self, session: SessionState, node_meta: dict, user_answer: str, is_test: bool,

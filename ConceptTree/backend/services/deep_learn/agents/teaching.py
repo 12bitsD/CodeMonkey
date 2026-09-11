@@ -36,7 +36,16 @@ def _format_recent_turns(turns: list[dict]) -> str:
     for t in turns:
         role = "用户" if t.get("role") == "user" else "AI"
         content = t.get("content", "")
-        if t.get("kind") == "questions" and isinstance(content, list):
+        kind = t.get("kind", "text")
+        if kind == "diagram" and isinstance(content, dict):
+            title = str(content.get("title") or "未命名")
+            node_count = len(content.get("nodes") or [])
+            content = f"[知识关系图：{title}，{node_count} 个节点]"
+        elif kind == "mermaid":
+            content = "[旧版知识关系图]"
+        elif kind in ("illustration_offer", "dalle_pending", "dalle_image"):
+            content = "[演示图]"
+        elif kind == "questions" and isinstance(content, list):
             content = "；".join(str(item) for item in content)
         lines.append(f"{role}：{content}")
     return "\n".join(lines)

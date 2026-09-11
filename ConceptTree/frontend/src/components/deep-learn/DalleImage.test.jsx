@@ -29,18 +29,16 @@ describe("DalleImage", () => {
     expect(screen.queryByText("Architecture diagram")).not.toBeInTheDocument();
   });
 
-  it("falls back to a localized architecture diagram when image generation is unavailable", () => {
+  it("shows a localized failure state without fabricating an architecture diagram", () => {
     render(
       <LanguageProvider>
         <DalleImage id="image-1" url="" reason="Gradient checking" />
       </LanguageProvider>,
     );
 
-    expect(screen.getByRole("img", { name: /Learning concept architecture/i })).toBeInTheDocument();
-    expect(screen.getByText("Architecture diagram")).toBeInTheDocument();
-    expect(screen.getByText("Concept")).toBeInTheDocument();
-    expect(screen.getByText("Mechanism")).toBeInTheDocument();
-    expect(screen.getByText("Outcome")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Could not create image");
+    expect(screen.queryByText("Architecture diagram")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mechanism")).not.toBeInTheDocument();
   });
 
   it("does not render the internal image-decision reason in the fallback diagram", () => {
@@ -53,8 +51,8 @@ describe("DalleImage", () => {
       </LanguageProvider>,
     );
 
-    expect(screen.getByRole("img", { name: "学习概念架构图" })).toBeInTheDocument();
-    expect(screen.getByText("学习概念")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("图片生成失败");
+    expect(screen.queryByText("架构图")).not.toBeInTheDocument();
     expect(screen.queryByText(reason)).not.toBeInTheDocument();
   });
 });

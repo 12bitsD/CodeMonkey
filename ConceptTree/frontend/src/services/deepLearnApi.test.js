@@ -45,6 +45,23 @@ describe("deepLearnApi", () => {
     ]);
   });
 
+  it("generates an illustration from a server-side offer id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { url: "/static/result.png" } }),
+      }),
+    );
+
+    await deepLearnApi.generateIllustration("session-1", "offer-1");
+
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("/api/deep-learn/sessions/session-1/illustrations");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({ offer_id: "offer-1" });
+  });
+
   it("creates deep learn notes through the shared notes endpoint", async () => {
     localStorage.getItem.mockReturnValue("token-1");
     vi.stubGlobal(

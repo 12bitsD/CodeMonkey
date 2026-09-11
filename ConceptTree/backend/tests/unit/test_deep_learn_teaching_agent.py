@@ -4,6 +4,7 @@ import services.deep_learn.agents.teaching as teaching_module
 from services.deep_learn.agents.teaching import (
     TeachingAgent,
     _extract_json_string_value,
+    _format_recent_turns,
 )
 
 
@@ -18,6 +19,31 @@ def test_extract_json_string_value_decodes_partial_content():
     full, complete = _extract_json_string_value('{"content":"第一句\\n第二句","questions":[]}', "content")
     assert full == "第一句\n第二句"
     assert complete is True
+
+
+def test_recent_turn_formatter_compacts_visual_payloads():
+    formatted = _format_recent_turns([
+        {
+            "role": "assistant",
+            "kind": "mermaid",
+            "content": "graph LR\nA[概念]-->B[机制]",
+        },
+        {
+            "role": "assistant",
+            "kind": "diagram",
+            "content": {
+                "version": 1,
+                "title": "导数关系",
+                "nodes": [{"id": "a"}, {"id": "b"}],
+                "edges": [{"source": "a", "target": "b"}],
+            },
+        },
+    ])
+
+    assert "graph LR" not in formatted
+    assert "A[概念]-->B[机制]" not in formatted
+    assert "旧版知识关系图" in formatted
+    assert "知识关系图：导数关系，2 个节点" in formatted
 
 
 @pytest.mark.asyncio
@@ -47,3 +73,4 @@ async def test_teaching_agent_stream_run_emits_content_before_done(monkeypatch):
     assert events[1] == {"type": "content", "text": "句。第二句。"}
     assert events[-1]["type"] == "done"
     assert events[-1]["output"].questions == ["诊断题", "应用题", "变式题"]
+    assert events[-1]["output"].visual_hint == "none"

@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { deepLearnApi } from '../services/deepLearnApi';
+import {
+  migratePinnedVisuals,
+  normalizeLegacyVisualMessage,
+} from '../components/deep-learn/diagram/legacyMermaid';
 
 async function consumeSSE(response, onEvent) {
   const reader = response.body.getReader();
@@ -90,9 +94,22 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
         break;
       }
       case 'image_mermaid':
-        setMessages(prev => [...prev, {
+        setMessages(prev => [...prev, normalizeLegacyVisualMessage({
           id: Date.now() + Math.random(),
           role: 'assistant', kind: 'mermaid', content: event.code,
+        })]);
+        break;
+      case 'visual_diagram':
+        setMessages(prev => [...prev, {
+          id: event.id || Date.now() + Math.random(),
+          role: 'assistant', kind: 'diagram', content: event.spec, reason: event.reason,
+        }]);
+        break;
+      case 'illustration_offer':
+        setMessages(prev => [...prev, {
+          id: event.id || Date.now() + Math.random(),
+          role: 'assistant', kind: 'illustration_offer',
+          content: { caption: event.caption }, reason: event.reason,
         }]);
         break;
       case 'state_change':
@@ -274,6 +291,37 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
     }
   }, [isStreaming, streamFrom]);
 
+  const generateIllustration = useCallback(async (offerId) => {
+    if (!sessionIdRef.current) return;
+    setMessages(prev => prev.map(message => {
+      if (message.id !== offerId || message.kind !== 'illustration_offer') return message;
+      return { ...message, kind: 'dalle_pending', offerContent: message.content };
+    }));
+    setError(null);
+    try {
+      const response = await deepLearnApi.generateIllustration(sessionIdRef.current, offerId);
+      const result = response.data;
+      setMessages(prev => prev.map(message => (
+        message.id === offerId
+          ? {
+            ...message,
+            id: result.id || offerId,
+            kind: 'dalle_image',
+            content: result.url,
+            sourceOfferId: offerId,
+          }
+          : message
+      )));
+    } catch (illustrationError) {
+      setMessages(prev => prev.map(message => (
+        (message.id === offerId || message.sourceOfferId === offerId)
+          ? { ...message, id: offerId, kind: 'illustration_offer', content: message.offerContent }
+          : message
+      )));
+      setError(illustrationError.message);
+    }
+  }, []);
+
   useEffect(() => {
     if (!planId || !nodeId) return;
     let cancelled = false;
@@ -307,12 +355,13 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
           await streamFrom(deepLearnApi.initialize(...initializeArgs));
           setIsInitializing(false);
         } else {
-          const restoredMessages = data.recent_turns.map(t => ({
-            id: Date.now() + Math.random(),
+          const restoredMessages = data.recent_turns.map(t => normalizeLegacyVisualMessage({
+            id: t.id || Date.now() + Math.random(),
             role: t.role,
             kind: t.kind || 'text',
             content: t.content,
             reason: t.reason,
+            sourceOfferId: t.source_offer_id,
           }));
           const hasQuestionCard = restoredMessages.some(m => m.kind === 'questions');
           if (data.state === 'QUESTIONING' && !hasQuestionCard) {
@@ -344,7 +393,7 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
     if (!pinnedStorageKey) return;
     try {
       const raw = localStorage.getItem(pinnedStorageKey);
-      setPinnedImages(raw ? JSON.parse(raw) : []);
+      setPinnedImages(migratePinnedVisuals(raw ? JSON.parse(raw) : []));
     } catch (_error) {
       setPinnedImages([]);
     } finally {
@@ -357,9 +406,13 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
     localStorage.setItem(pinnedStorageKey, JSON.stringify(pinnedImages));
   }, [pinnedImages, pinnedStorageKey]);
 
-  const pinImage = useCallback((id, url, caption) => {
+  const pinImage = useCallback((id, content, caption, kind = 'image') => {
     setPinnedImages(prev =>
-      prev.find(p => p.id === id) ? prev : [...prev, { id, url, caption }]
+      prev.find(p => p.id === id)
+        ? prev
+        : [...prev, kind === 'diagram'
+          ? { id, kind, content, caption }
+          : { id, kind: 'image', content, url: content, caption }]
     );
   }, []);
 
@@ -383,6 +436,7 @@ export function useDeepLearnSession({ planId, nodeId, language = null }) {
     uiFlags,
     sendMessage,
     sendCommand,
+    generateIllustration,
     error,
     pinnedImages,
     pinImage,

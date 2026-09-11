@@ -4,7 +4,8 @@ import ChatMarkdownMessage from '../chat/ChatMarkdownMessage';
 import MarkdownContent from '../common/MarkdownContent';
 import CommandBar from './CommandBar';
 import DalleImage from './DalleImage';
-import MermaidDiagram from './MermaidDiagram';
+import TeachingDiagram from './TeachingDiagram';
+import IllustrationOffer from './IllustrationOffer';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 function AssessmentCard({ data }) {
@@ -37,7 +38,9 @@ function QuestionsCard({ items }) {
 function getOutlineTitle(msg, index, t) {
   if (msg.kind === 'questions') return t('deep.outline.question', { count: index + 1 });
   if (msg.kind === 'assessment') return t('deep.outline.feedback', { count: index + 1 });
-  if (msg.kind === 'mermaid') return t('deep.outline.diagram', { count: index + 1 });
+  if (msg.kind === 'diagram') return msg.content?.title || t('deep.outline.diagram', { count: index + 1 });
+  if (msg.kind === 'illustration_offer') return msg.content?.caption || t('deep.outline.image', { count: index + 1 });
+  if (msg.kind === 'legacy_diagram_unavailable') return t('deep.outline.diagram', { count: index + 1 });
   if (msg.kind === 'dalle_image') return t('deep.outline.image', { count: index + 1 });
   if (msg.kind !== 'text') return null;
   const lines = String(msg.content || '')
@@ -61,6 +64,7 @@ export default function DeepLearnChat({
   onSendMessage,
   onSendCommand,
   onPinImage,
+  onGenerateIllustration,
 }) {
   const { t } = useLanguage();
   const [input, setInput] = useState('');
@@ -165,17 +169,36 @@ export default function DeepLearnChat({
               </div>
             );
           }
-          if (msg.kind === 'mermaid') {
+          if (msg.kind === 'diagram') {
             return (
-              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="group relative max-w-[85%]">
-                <MermaidDiagram code={msg.content} />
+              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="group relative max-w-full">
+                <TeachingDiagram spec={msg.content} />
                 <button
-                  onClick={() => onPinImage?.(msg.id, `mermaid:${msg.content}`, t('deep.diagram'))}
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 hover:bg-white shadow opacity-0 group-hover:opacity-100 transition-opacity"
+                  type="button"
+                  onClick={() => onPinImage?.(msg.id, msg.content, msg.content?.title || t('deep.diagram'), 'diagram')}
+                  className="absolute right-3 top-[58px] z-10 rounded-full bg-white/90 p-1.5 shadow opacity-0 transition-opacity hover:bg-white group-hover:opacity-100 focus:opacity-100"
                   title={t('deep.pin')}
                 >
                   <Pin size={14} />
                 </button>
+              </div>
+            );
+          }
+          if (msg.kind === 'legacy_diagram_unavailable') {
+            return (
+              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="max-w-[85%] rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                {t('deep.diagram.legacyUnavailable')}
+              </div>
+            );
+          }
+          if (msg.kind === 'illustration_offer') {
+            return (
+              <div key={msg.id} ref={el => el && messageRefs.current.set(msg.id, el)} className="max-w-[85%]">
+                <IllustrationOffer
+                  id={msg.id}
+                  caption={msg.content?.caption}
+                  onGenerate={onGenerateIllustration}
+                />
               </div>
             );
           }

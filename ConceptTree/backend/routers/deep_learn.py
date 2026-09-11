@@ -12,9 +12,11 @@ from models_deep_learn import (
     CommandRequest,
     CreateSessionData,
     CreateSessionRequest,
+    IllustrationRequest,
     MessageRequest,
 )
 from services.deep_learn.notes_repo import get_completion_note_by_id
+from services.deep_learn.legacy_mermaid import normalize_legacy_visual_turns
 from services.deep_learn.service import DeepLearnService
 from services.deep_learn.session_repo import get_session_by_id
 from utils.auth import get_current_user_id
@@ -94,7 +96,7 @@ async def create_session(
         concepts_status=session.concepts_status,
         weak_points=session.weak_points,
         current_concept_index=session.current_concept_index,
-        recent_turns=session.recent_turns if is_resumed else [],
+        recent_turns=normalize_legacy_visual_turns(session.recent_turns) if is_resumed else [],
     )
     return {"success": True, "data": data.model_dump()}
 
@@ -112,7 +114,9 @@ async def get_session(
     if session.user_id != user_id:
         raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "无权访问"})
     node_meta = _service._fetch_node_meta(db, session.node_id)
-    return {"success": True, "data": {**session.model_dump(), **node_meta}}
+    data = session.model_dump()
+    data["recent_turns"] = normalize_legacy_visual_turns(session.recent_turns)
+    return {"success": True, "data": {**data, **node_meta}}
 
 
 @router.post("/sessions/{session_id}/initialize")
@@ -217,6 +221,33 @@ async def send_command(
             yield event
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+@router.post("/sessions/{session_id}/illustrations")
+async def generate_illustration(
+    session_id: str,
+    req: IllustrationRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: DbSession = Depends(get_db),
+) -> dict:
+    _ensure_deep_learn_schema(db)
+    session = get_session_by_id(db, session_id, user_id)
+    if not session:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "会话不存在"})
+    try:
+        result = await _service.generate_illustration(session, req.offer_id)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ILLUSTRATION_NOT_AVAILABLE", "message": str(error)},
+        ) from error
+    except Exception as error:
+        logger.warning("illustration generation failed: %s", error)
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "ILLUSTRATION_FAILED", "message": "演示图生成失败，请稍后重试"},
+        ) from error
+    return {"success": True, "data": result}
 
 
 @router.get("/notes/{note_id}")

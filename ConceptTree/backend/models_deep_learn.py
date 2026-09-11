@@ -39,14 +39,13 @@ class SessionState(BaseModel):
     test_current_index: int
     test_results: list[dict]
     status: SessionStatus
+    conversation_summary: Optional[str] = None
 
 
 class TeachingOutput(BaseModel):
     content: str
     questions: list[str]
-    needs_image: bool = False
-    image_type: Optional[str] = None
-    mermaid_code: Optional[str] = None
+    visual_hint: Literal["none", "relationship", "illustration"] = "none"
 
 
 class AssessmentPerQuestionOutput(BaseModel):
@@ -96,6 +95,10 @@ class MessageRequest(BaseModel):
 class CommandRequest(BaseModel):
     command: DeepLearnCommand
     language: Literal["en-US", "zh-CN"] = "en-US"
+
+
+class IllustrationRequest(BaseModel):
+    offer_id: str = Field(min_length=1, max_length=64)
 
 
 class NoteGeneratorOutput(BaseModel):
