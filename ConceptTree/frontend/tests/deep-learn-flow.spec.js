@@ -13,6 +13,86 @@ function sse(events) {
 }
 
 test.describe('Deep Learn flow', () => {
+  test('renders an interactive diagram and generates an illustration only after confirmation', async ({ page }) => {
+    let illustrationRequests = 0;
+    await page.addInitScript((token) => {
+      localStorage.setItem('concept_tree_token', token);
+    }, makeFakeToken());
+    await page.route('**/api/user/profile', route => route.fulfill({ json: { success: true, data: {} } }));
+    await page.route('**/api/plans', route => route.fulfill({ json: { success: true, data: [] } }));
+    await page.route('**/api/notes', route => route.fulfill({ json: { success: true, data: [] } }));
+    await page.route('**/api/ai/recommend-next', route => route.fulfill({ json: { success: true, data: {} } }));
+    await page.route('**/api/deep-learn/sessions', route => route.fulfill({
+      json: {
+        success: true,
+        data: {
+          session_id: 's-visual',
+          state: 'QUESTIONING',
+          is_resumed: true,
+          node_name: 'Derivatives',
+          node_why: 'Understand change',
+          what_list: ['Derivative'],
+          concepts_status: { 0: 'current' },
+          weak_points: [],
+          current_concept_index: 0,
+          recent_turns: [
+            {
+              id: 'diagram-1',
+              role: 'assistant',
+              kind: 'diagram',
+              content: {
+                version: 1,
+                title: 'Derivative relationship',
+                layout: 'flow',
+                nodes: [
+                  { id: 'slope', title: 'Slope', summary: 'Average change', role: 'support', details: { key_points: ['Compare two points'] } },
+                  { id: 'derivative', title: 'Derivative', summary: 'Instantaneous change', role: 'core', details: { key_points: ['Take the limit'], example: 'Instantaneous velocity' } },
+                ],
+                edges: [{ source: 'slope', target: 'derivative', relation: 'prerequisite', label: 'limit' }],
+              },
+            },
+            {
+              id: 'offer-1',
+              role: 'assistant',
+              kind: 'illustration_offer',
+              content: { caption: 'Show the tangent touching a curve' },
+            },
+            { id: 'questions-1', role: 'assistant', kind: 'questions', content: ['What does the derivative measure?'] },
+          ],
+        },
+      },
+    }));
+    await page.route('**/api/deep-learn/sessions/s-visual/illustrations', async (route) => {
+      illustrationRequests += 1;
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            id: 'image-1',
+            source_offer_id: 'offer-1',
+            url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4QAAAABJRU5ErkJggg==',
+          },
+        },
+      });
+    });
+
+    await page.goto('/deep-learn/p-e2e/n-e2e');
+
+    await expect(page.getByText('Derivative relationship', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /Derivative：Instantaneous change/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Derivative' })).toContainText('Take the limit');
+
+    const canvas = page.getByTestId('teaching-diagram-canvas');
+    const transformBefore = await canvas.evaluate(element => element.style.transform);
+    await page.getByRole('button', { name: /Zoom in diagram|放大图表/ }).click();
+    await expect(canvas).not.toHaveAttribute('style', transformBefore);
+
+    expect(illustrationRequests).toBe(0);
+    await page.getByRole('button', { name: /Generate demonstration|生成演示图/ }).click();
+    await expect(page.locator('img[src^="data:image/png"]')).toBeVisible();
+    expect(illustrationRequests).toBe(1);
+  });
+
   test('last concept answer shows comprehensive test confirmation directly', async ({ page }) => {
     const commands = [];
 
