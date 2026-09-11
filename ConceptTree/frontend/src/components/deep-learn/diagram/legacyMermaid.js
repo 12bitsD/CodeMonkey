@@ -67,4 +67,3 @@ export function migratePinnedVisuals(items) {
     return spec ? [{ id: item.id, kind: 'diagram', content: spec, caption: item.caption }] : [];
   });
 }
-

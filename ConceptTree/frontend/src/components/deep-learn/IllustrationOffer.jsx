@@ -27,4 +27,3 @@ export default function IllustrationOffer({ id, caption, onGenerate }) {
     </div>
   );
 }
-
