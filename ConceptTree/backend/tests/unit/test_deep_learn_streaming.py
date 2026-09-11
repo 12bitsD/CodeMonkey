@@ -273,8 +273,13 @@ async def test_run_teach_emits_and_persists_valid_diagram_spec(monkeypatch):
 
     assert any('"type": "visual_diagram"' in event and '"title": "概念关系"' in event for event in events)
     question_index = next(index for index, event in enumerate(events) if '"type": "questions"' in event)
+    state_index = next(
+        index for index, event in enumerate(events)
+        if '"type": "state_change"' in event and '"to": "QUESTIONING"' in event
+    )
     diagram_index = next(index for index, event in enumerate(events) if '"type": "visual_diagram"' in event)
     assert question_index < diagram_index
+    assert state_index < diagram_index
     diagram_turn = next(turn for turn in session.recent_turns if turn.get("kind") == "diagram")
     assert diagram_turn["content"]["version"] == 1
 

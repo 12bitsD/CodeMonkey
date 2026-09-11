@@ -73,8 +73,33 @@ describe("TeachingDiagram", () => {
     const canvas = screen.getByTestId("teaching-diagram-canvas");
     const zoomOut = screen.getByRole("button", { name: "缩小图表" });
 
+    expect(canvas.style.transform).toContain("scale(0.32)");
+
     for (let index = 0; index < 10; index += 1) fireEvent.click(zoomOut);
 
     expect(canvas.style.transform).toContain("scale(0.32)");
+  });
+
+  it("closes node details with Escape and restores focus", () => {
+    render(<TeachingDiagram spec={diagram} />);
+    const node = screen.getByRole("button", { name: /导数：无限接近后的瞬时变化率/ });
+    fireEvent.click(node);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "导数" })).not.toBeInTheDocument();
+    expect(node).toHaveFocus();
+  });
+
+  it("supports two-pointer zoom inside the diagram viewport", () => {
+    render(<TeachingDiagram spec={diagram} />);
+    const viewport = screen.getByTestId("teaching-diagram-viewport");
+    const canvas = screen.getByTestId("teaching-diagram-canvas");
+
+    fireEvent.pointerDown(viewport, { pointerId: 1, button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(viewport, { pointerId: 2, button: 0, clientX: 200, clientY: 100 });
+    fireEvent.pointerMove(viewport, { pointerId: 2, clientX: 260, clientY: 100 });
+
+    expect(canvas.style.transform).toContain("scale(1.6)");
   });
 });

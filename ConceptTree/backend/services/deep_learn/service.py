@@ -514,7 +514,33 @@ class DeepLearnService:
         if output.questions:
             yield _sse("questions", items=output.questions)
 
-        visual_turns: list[dict] = []
+        assistant_turns = [{"role": "assistant", "kind": "text", "content": output.content}]
+        if output.questions:
+            assistant_turns.append({
+                "role": "assistant",
+                "kind": "questions",
+                "content": output.questions,
+            })
+        session.recent_turns = (session.recent_turns + assistant_turns)[-8:]
+
+        # Unlock learner input before the optional visual decision starts.
+        cs = dict(session.concepts_status)
+        if cs.get(str(idx), "pending") == "pending":
+            cs[str(idx)] = "current"
+            session.concepts_status = cs
+            yield _sse("concept_update", index=idx, status="current")
+
+        with get_db_context() as db:
+            update_session(
+                db,
+                session.id,
+                state="QUESTIONING",
+                recent_turns=session.recent_turns,
+                concepts_status=session.concepts_status,
+            )
+        yield _sse("state_change", **{"from": "TEACHING", "to": "QUESTIONING"})
+        session.state = "QUESTIONING"
+
         if output.visual_hint != "none":
             try:
                 decision = await self.visual_decision.decide(
@@ -526,28 +552,25 @@ class DeepLearnService:
                 if decision.visual_type == "diagram" and decision.diagram:
                     diagram_id = str(uuid4())
                     diagram = decision.diagram.model_dump(mode="json")
+                    visual_turn = {
+                        "id": diagram_id,
+                        "role": "assistant",
+                        "kind": "diagram",
+                        "content": diagram,
+                        "reason": decision.reason,
+                    }
+                    session.recent_turns = (session.recent_turns + [visual_turn])[-8:]
+                    with get_db_context() as db:
+                        update_session(db, session.id, recent_turns=session.recent_turns)
                     yield _sse(
                         "visual_diagram",
                         id=diagram_id,
                         spec=diagram,
                         reason=decision.reason,
                     )
-                    visual_turns.append({
-                        "id": diagram_id,
-                        "role": "assistant",
-                        "kind": "diagram",
-                        "content": diagram,
-                        "reason": decision.reason,
-                    })
                 elif decision.visual_type == "illustration" and decision.illustration_prompt:
                     offer_id = str(uuid4())
-                    yield _sse(
-                        "illustration_offer",
-                        id=offer_id,
-                        caption=decision.caption or "",
-                        reason=decision.reason,
-                    )
-                    visual_turns.append({
+                    visual_turn = {
                         "id": offer_id,
                         "role": "assistant",
                         "kind": "illustration_offer",
@@ -556,7 +579,16 @@ class DeepLearnService:
                             "prompt": decision.illustration_prompt,
                         },
                         "reason": decision.reason,
-                    })
+                    }
+                    session.recent_turns = (session.recent_turns + [visual_turn])[-8:]
+                    with get_db_context() as db:
+                        update_session(db, session.id, recent_turns=session.recent_turns)
+                    yield _sse(
+                        "illustration_offer",
+                        id=offer_id,
+                        caption=decision.caption or "",
+                        reason=decision.reason,
+                    )
             except Exception as error:
                 logger.warning("visual decision failed (non-fatal): %s", error)
 
@@ -567,33 +599,6 @@ class DeepLearnService:
                 yield _sse("notes_suggestion", snippet=snippet)
         except Exception as e:
             logger.warning("notes_suggestion failed (non-fatal): %s", e)
-
-        assistant_turns = [{"role": "assistant", "kind": "text", "content": output.content}]
-        if output.questions:
-            assistant_turns.append({
-                "role": "assistant",
-                "kind": "questions",
-                "content": output.questions,
-            })
-        assistant_turns.extend(visual_turns)
-        new_turns = (session.recent_turns + assistant_turns)[-8:]
-        session.recent_turns = new_turns
-
-        # Mark current concept as "current" if it's still pending
-        cs = dict(session.concepts_status)
-        if cs.get(str(idx), "pending") == "pending":
-            cs[str(idx)] = "current"
-            session.concepts_status = cs
-            yield _sse("concept_update", index=idx, status="current")
-
-        with get_db_context() as db:
-            update_session(db, session.id,
-                           state="QUESTIONING",
-                           recent_turns=new_turns,
-                           concepts_status=session.concepts_status)
-
-        yield _sse("state_change", **{"from": "TEACHING", "to": "QUESTIONING"})
-        session.state = "QUESTIONING"
 
     async def _run_assessment(
         self, session: SessionState, node_meta: dict, user_answer: str, is_test: bool,

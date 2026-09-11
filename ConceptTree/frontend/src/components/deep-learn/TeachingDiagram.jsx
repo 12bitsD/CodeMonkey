@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Maximize2, Minus, Plus, RotateCcw, X } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
@@ -77,7 +77,9 @@ export default function TeachingDiagram({ spec, compact = false }) {
   const markerId = useId().replaceAll(':', '');
   const viewportRef = useRef(null);
   const dragRef = useRef(null);
-  const [scale, setScale] = useState(1);
+  const pointersRef = useRef(new Map());
+  const nodeRefs = useRef(new Map());
+  const [scale, setScale] = useState(compact ? COMPACT_MIN_SCALE : 1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [selectedId, setSelectedId] = useState(null);
 
@@ -87,6 +89,23 @@ export default function TeachingDiagram({ spec, compact = false }) {
     [positions],
   );
   const selectedNode = spec?.nodes?.find(node => node.id === selectedId) || null;
+
+  const closeDetails = () => {
+    nodeRefs.current.get(selectedId)?.focus();
+    setSelectedId(null);
+  };
+
+  useEffect(() => {
+    if (!selectedId) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        nodeRefs.current.get(selectedId)?.focus();
+        setSelectedId(null);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId]);
 
   if (!isUsableSpec(spec)) {
     return (
@@ -121,21 +140,50 @@ export default function TeachingDiagram({ spec, compact = false }) {
 
   const startDrag = (event) => {
     if (event.button !== 0) return;
-    dragRef.current = { x: event.clientX, y: event.clientY, origin: offset };
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    const points = [...pointersRef.current.values()];
+    if (points.length >= 2) {
+      dragRef.current = {
+        kind: 'pinch',
+        distance: Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y),
+        scale,
+      };
+      return;
+    }
+    dragRef.current = {
+      kind: 'pan',
+      x: event.clientX,
+      y: event.clientY,
+      origin: offset,
+    };
   };
 
   const moveDrag = (event) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
     const drag = dragRef.current;
     if (!drag) return;
+    const points = [...pointersRef.current.values()];
+    if (drag.kind === 'pinch' && points.length >= 2 && drag.distance > 0) {
+      const distance = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+      setScale(clampScale(drag.scale * (distance / drag.distance), minimumScale));
+      return;
+    }
+    if (drag.kind !== 'pan') return;
     setOffset({
       x: drag.origin.x + event.clientX - drag.x,
       y: drag.origin.y + event.clientY - drag.y,
     });
   };
 
-  const stopDrag = () => {
-    dragRef.current = null;
+  const stopDrag = (event) => {
+    pointersRef.current.delete(event.pointerId);
+    const remaining = [...pointersRef.current.values()];
+    dragRef.current = remaining.length === 1
+      ? { kind: 'pan', x: remaining[0].x, y: remaining[0].y, origin: offset }
+      : null;
   };
 
   return (
@@ -160,6 +208,7 @@ export default function TeachingDiagram({ spec, compact = false }) {
         ref={viewportRef}
         data-testid="teaching-diagram-viewport"
         className={`relative cursor-grab overflow-hidden bg-[radial-gradient(circle_at_center,_rgba(24,24,27,0.05)_1px,_transparent_1px)] [background-size:22px_22px] active:cursor-grabbing ${compact ? 'h-[280px]' : 'h-[430px]'}`}
+        style={{ touchAction: 'none' }}
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
         onPointerUp={stopDrag}
@@ -221,6 +270,10 @@ export default function TeachingDiagram({ spec, compact = false }) {
             return (
               <button
                 key={node.id}
+                ref={element => {
+                  if (element) nodeRefs.current.set(node.id, element);
+                  else nodeRefs.current.delete(node.id);
+                }}
                 type="button"
                 aria-label={`${node.title}：${node.summary}`}
                 onPointerDown={event => event.stopPropagation()}
@@ -246,7 +299,7 @@ export default function TeachingDiagram({ spec, compact = false }) {
             aria-label={selectedNode.title}
             className="absolute bottom-3 right-3 z-20 max-h-[calc(100%-24px)] w-[min(330px,calc(100%-24px))] overflow-auto rounded-2xl border border-zinc-200 bg-white/95 p-4 shadow-2xl backdrop-blur"
           >
-            <button type="button" aria-label={t('deep.diagram.closeDetails')} onClick={() => setSelectedId(null)} className="absolute right-3 top-3 rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"><X size={16} /></button>
+            <button type="button" aria-label={t('deep.diagram.closeDetails')} onClick={closeDetails} className="absolute right-3 top-3 rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"><X size={16} /></button>
             <p className="pr-8 text-base font-semibold text-zinc-950">{selectedNode.title}</p>
             <p className="mt-1 text-sm leading-6 text-zinc-600">{selectedNode.summary}</p>
             {selectedNode.details?.key_points?.length > 0 && (
