@@ -46,14 +46,26 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 
 ### 核心功能
 
-| 功能             | 描述                                             |
-| ---------------- | ------------------------------------------------ |
-| **智能目标解析** | AI 分析你的输入，提取学习目标和已有知识背景      |
-| **知识图谱生成** | 创建精确到公式级别的依赖感知学习路径             |
-| **自适应学习**   | 根据你的背景跳过已掌握的内容                     |
-| **进度追踪**     | 每个节点的可视化进度：`未学习 → 已学习 → 已掌握` |
-| **个人笔记**     | 为每个知识节点附加 Markdown 笔记                 |
-| **资源推荐**     | 为每个概念精选学习材料                           |
+| 功能                 | 描述                                                         |
+| -------------------- | ------------------------------------------------------------ |
+| **智能目标解析**     | AI 分析你的输入，提取学习目标和已有知识背景                  |
+| **知识图谱生成**     | 创建精确到公式级别的依赖感知学习路径                         |
+| **深入学习工作台**   | 围绕单个知识点完成讲解、追问、掌握度判断、测验和学习总结     |
+| **交互式教学架构图** | 使用类型化 HTML/SVG 图展示知识关系，支持节点详情、缩放和拖拽 |
+| **按需视觉演示**     | 仅在内容确实需要且学习者确认后调用图像模型，控制延迟与成本   |
+| **自适应学习**       | 根据你的背景、回答和学习记录调整讲解与后续路径               |
+| **进度追踪**         | 每个节点的可视化进度：`未学习 → 已学习 → 已掌握`             |
+| **个人笔记**         | 为每个知识节点附加 Markdown 笔记                             |
+| **资源推荐**         | 为每个概念精选学习材料                                       |
+
+### 深入学习中的教学可视化
+
+- 新生成的关系图使用受约束的 `DiagramSpec` 数据结构，由前端渲染为 HTML 节点和 SVG 连线，不执行 AI 生成的 HTML、JavaScript 或 Mermaid 源码。
+- 支持流程、层级、放射、对比和循环 5 种布局，以及前置、顺序、因果、包含、对比、支持、反馈和相关 8 种关系。
+- 点击知识节点可以查看学习重点、示例和常见误区；画布支持局部缩放、拖拽、双指缩放、适应窗口和重置。
+- 图表钉到侧栏后会切换为窄栏专用布局，并可放大查看；连线没有自定义标签时会显示本地化的关系名称。
+- 历史 Mermaid 消息只转换受支持的安全子集，无法安全转换的旧图会明确提示，不再加载 Mermaid 运行时。
+- 当概念必须依靠具体外观、实验装置或空间现象说明时，系统只展示“生成演示图”选项；学习者点击确认后才调用 OpenRouter 图像模型，每个深入学习会话最多生成一张。
 
 ---
 
@@ -77,14 +89,15 @@ ConceptTree 是一个**学习路径生成器**，能将任何学习目标转化�
 📁 ConceptTree/
 ├── 📁 backend/                ← FastAPI 应用
 │   ├── routers/               ← API 端点
-│   ├── services/              ← 业务逻辑（含 llm/ AI 服务）
+│   ├── services/deep_learn/   ← 深入学习编排、可视化决策与图片存储
+│   ├── services/llm/          ← LLM 与图像模型客户端
 │   ├── utils/                 ← 通用能力
 │   └── tests/                 ← 测试
 └── 📁 frontend/               ← React + Vite 应用
-    ├── pages/                 ← 路由组件
-    ├── components/            ← 可复用 UI
-    ├── services/              ← API 客户端（api.js 唯一入口）
-    ├── contexts/              ← 状态管理（AppContext / AuthContext）
+    ├── src/pages/             ← 路由组件
+    ├── src/components/        ← 可复用 UI（含 deep-learn 教学图）
+    ├── src/services/          ← API 客户端（api.js 唯一入口）
+    ├── src/contexts/          ← 状态管理与中英文文案
     └── tests/                 ← Playwright E2E 测试
 📁 docs/
 ├── 📁 spec/                   ← AI 必读合同（session 开始先读）
@@ -135,11 +148,26 @@ LLM_MODEL=kimi-k3
 LLM_REASONING_EFFORT=low
 ```
 
+如果需要深入学习中的按需视觉演示，再配置 OpenRouter 图像模型：
+
+```env
+IMAGE_PROVIDER=openrouter
+IMAGE_API_KEY=your-openrouter-api-key
+IMAGE_BASE_URL=https://openrouter.ai/api/v1
+IMAGE_MODEL=openai/gpt-5.4-image-2
+IMAGE_TIMEOUT=300
+```
+
+图像配置不是普通教学流程的前置条件。系统会优先使用轻量的交互式教学图，只有学习者点击“生成演示图”后才会调用图像 API。
+
 ### 2. 启动服务
+
+回到仓库根目录后运行：
 
 ```bash
 # 一条命令启动前后端
-./start-dev.sh
+cd ../..
+bash ConceptTree/start-dev.sh
 ```
 
 **就这样。** 前端运行在 `http://localhost:3000`，后端在 `http://localhost:8000`。
@@ -168,22 +196,34 @@ npm install && npm run dev
 
 ## 🚀 部署上线
 
-详见 [部署方案.md](./docs/architecture/部署方案.md)，包含：
+仓库提供完整的 `ConceptTree/docker-compose.yml`，可以在同一个 Compose 项目中运行前端、后端和 PostgreSQL：
 
-- **前端**：Vercel 静态托管
-- **后端**：Docker 容器化，部署到 Render/Railway/Zeabur
-- **数据库**：Supabase PostgreSQL
+```bash
+cd ConceptTree
+cp .env.example .env
+docker compose --env-file .env up -d --build
+```
+
+生产环境请先配置强随机 JWT 密钥、数据库连接、Kimi Key 和可选的 OpenRouter Key。前端与后端端口默认只绑定到 `127.0.0.1`，适合由 Nginx 或其他反向代理统一提供 HTTPS。
+
+更多方案详见 [部署方案.md](./docs/architecture/部署方案.md)，包括：
+
+- **Docker Compose**：前端 Nginx + FastAPI + PostgreSQL
+- **托管前端**：Vercel 静态部署
+- **托管后端**：Render / Railway / Zeabur
+- **云数据库**：Supabase PostgreSQL
 
 ---
 
 ## 🛠️ 技术栈
 
-| 层级        | 技术                            |
-| ----------- | ------------------------------- |
-| **前端**    | React 18 + Vite + Tailwind CSS  |
-| **后端**    | FastAPI + Pydantic              |
-| **数据库**  | SQLite (本地) / Supabase (云端) |
-| **AI 集成** | LLM 驱动的目标解析与图谱生成    |
+| 层级        | 技术                                                |
+| ----------- | --------------------------------------------------- |
+| **前端**    | React 18 + Vite + Tailwind CSS                      |
+| **后端**    | FastAPI + Pydantic                                  |
+| **数据库**  | PostgreSQL / Supabase PostgreSQL                    |
+| **AI 集成** | Kimi K3 文本推理 + OpenRouter 按需生图              |
+| **教学图**  | React HTML 节点 + SVG 连线（类型化 `DiagramSpec`）  |
 
 ---
 
@@ -223,6 +263,15 @@ python -m pytest -q test_docs_sync.py
 
 ## 📝 更新日志
 
+### 2026-09-15
+
+- 深入学习的架构图从 Mermaid 运行时迁移为类型化 HTML/SVG 交互图，支持 5 种布局、8 种关系、节点详情弹窗、局部缩放、拖拽和双指缩放。
+- 增加旧 Mermaid 消息的安全兼容层；只转换受支持的基础图形语法，拒绝不安全或无法确定含义的内容。
+- 优化连线标签和知识点弹窗：关系信息不再被节点遮挡，弹窗可以稳定关闭，无自定义标签时自动显示中英文关系名称。
+- 重做钉图区窄栏适配，使用可读的纵向紧凑布局，并增加独立的放大查看入口。
+- 将昂贵的图像生成移出教学关键路径：普通关系优先渲染交互图，仅在确实需要视觉演示且用户主动确认后调用 OpenRouter 图像模型，每个会话最多生成一张。
+- 完成本轮回归验证：195 项前端单元测试、10 项 Playwright 浏览器流程、前端 lint 与生产构建通过。
+
 ### 2026-04-18
 
 - AI 学习助手接入联网搜索增强：对话支持站内联网搜索、来源展示与更平滑的流式输出顺序，优先展示正文，再补充参考资料。
@@ -261,7 +310,7 @@ python -m pytest -q test_docs_sync.py
 
 ## 📊 项目状态
 
-**MVP 进行中（最后更新：2026-04-18）**
+**MVP 进行中（最后更新：2026-09-15）**
 
 | 组件               | 状态      | 备注                                                     |
 | ------------------ | --------- | -------------------------------------------------------- |
@@ -273,13 +322,16 @@ python -m pytest -q test_docs_sync.py
 | 目标调整 (clarify) | ✅ 已完成 | clarify-goal 携带节点上下文，AI 返回精确 diff           |
 | apply-changes      | ✅ 已完成 | 小幅调整直接修改图谱；大幅变化引导新建                  |
 | AI 学习调度        | ✅ 已完成 | recommend-next：学习历史+画像+LLM；规则引擎兜底         |
+| 深入学习工作台     | ✅ 已完成 | 分概念讲解、追问、测验、完成笔记与学习记忆             |
+| 交互式教学图       | ✅ 已完成 | HTML/SVG 渲染、节点弹窗、关系标签、缩放和钉图区适配     |
+| 按需视觉演示       | ✅ 已完成 | 用户确认后调用 OpenRouter；每个深入学习会话最多一张     |
 | 节点详情展示       | ✅ 已完成 | mastery checklist + resources 卡片 + 搜索更多资源按钮  |
 | 笔记体验           | ✅ 已完成 | 计划筛选/分组/精准跳转节点/删除按钮                    |
 | 进度实时同步       | ✅ 已完成 | 标记节点后首页进度即时更新（AppContext 同步）          |
-| 测试覆盖           | ✅ 已完成 | Vitest 25 + Playwright 4 + 后端单元测试 9              |
+| 测试覆盖           | ✅ 已完成 | Vitest 195 + Playwright 10 + 后端单元/存储测试          |
 | 图谱交互补全       | ✅ 已完成   | 双击切换/用于链接/"保存计划"状态机/离开弹窗/完成庆祝  |
-| 云数据库           | 🔄 可选   | 当前 SQLite，可迁移至 Supabase                          |
-| 移动端支持         | ⏳ 计划中 | 响应式适配                                              |
+| 云数据库           | ✅ 已支持 | PostgreSQL，可连接 Supabase                             |
+| 移动端支持         | 🔄 进行中 | 教学图已支持窄栏和触屏，完整移动端体验继续优化          |
 
 ---
 
