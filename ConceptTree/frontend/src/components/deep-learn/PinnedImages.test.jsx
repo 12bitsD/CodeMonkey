@@ -30,6 +30,9 @@ describe("PinnedImages", () => {
     expect(screen.getAllByText("导数关系图")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: /切线：瞬时变化/ }));
     expect(screen.getByRole("dialog", { name: "切线" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "放大查看" }));
+    expect(screen.getByRole("button", { name: "关闭大图" })).toBeInTheDocument();
   });
 
   it("opens pinned images in an enlarged preview", () => {

@@ -63,6 +63,16 @@ export default function PinnedImages({ pinned = [], onUnpin }) {
                 </span>
               </div>
             )}
+            {img.kind === 'diagram' && (
+              <button
+                type="button"
+                aria-label={t('deep.image.openPreview')}
+                onClick={() => openPreview(img)}
+                className="absolute right-9 top-1.5 z-30 rounded-full bg-white/90 p-1 text-zinc-600 shadow hover:bg-white"
+              >
+                <Maximize2 size={14} />
+              </button>
+            )}
             <button
               type="button"
               aria-label={t('deep.image.unpin')}
