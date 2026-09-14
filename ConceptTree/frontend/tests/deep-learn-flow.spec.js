@@ -79,8 +79,17 @@ test.describe('Deep Learn flow', () => {
     await page.goto('/deep-learn/p-e2e/n-e2e');
 
     await expect(page.getByText('Derivative relationship', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: /Derivative：Instantaneous change/ }).click();
+    const derivativeNode = page.getByRole('button', { name: /Derivative：Instantaneous change/ });
+    await derivativeNode.click();
     await expect(page.getByRole('dialog', { name: 'Derivative' })).toContainText('Take the limit');
+    await page.getByRole('button', { name: /Close knowledge point details|关闭知识点详情/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Derivative' })).toBeHidden();
+
+    const edgeLabelBox = await page.locator('svg text').filter({ hasText: 'limit' }).boundingBox();
+    const nodeBox = await derivativeNode.boundingBox();
+    expect(edgeLabelBox).not.toBeNull();
+    expect(nodeBox).not.toBeNull();
+    expect(edgeLabelBox.y + edgeLabelBox.height).toBeLessThan(nodeBox.y);
 
     const canvas = page.getByTestId('teaching-diagram-canvas');
     const transformBefore = await canvas.evaluate(element => element.style.transform);
@@ -91,6 +100,13 @@ test.describe('Deep Learn flow', () => {
     await page.getByRole('button', { name: /Generate demonstration|生成演示图/ }).click();
     await expect(page.locator('img[src^="data:image/png"]')).toBeVisible();
     expect(illustrationRequests).toBe(1);
+
+    await page.getByText('Derivative relationship', { exact: true }).first().hover();
+    await page.getByTitle(/Pin to concepts|钉到概念区/).first().click();
+    const compactTitle = page.getByText('Derivative relationship', { exact: true }).last();
+    await expect(compactTitle).toBeVisible();
+    const compactTitleBox = await compactTitle.boundingBox();
+    expect(compactTitleBox.width).toBeGreaterThan(120);
   });
 
   test('last concept answer shows comprehensive test confirmation directly', async ({ page }) => {

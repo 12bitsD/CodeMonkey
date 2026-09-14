@@ -10,7 +10,12 @@ import {
 } from './diagram/layoutDiagram';
 
 const MIN_SCALE = 0.6;
-const COMPACT_MIN_SCALE = 0.32;
+const COMPACT_MIN_SCALE = 0.7;
+const COMPACT_SCALE = 0.85;
+const COMPACT_CANVAS_WIDTH = 240;
+const COMPACT_NODE_WIDTH = 184;
+const COMPACT_NODE_HEIGHT = 68;
+const COMPACT_NODE_GAP = 105;
 const MAX_SCALE = 1.8;
 const SCALE_STEP = 0.15;
 
@@ -36,13 +41,13 @@ const clampScale = (value, minimum = MIN_SCALE) => (
   Math.min(MAX_SCALE, Math.max(minimum, Number(value.toFixed(2))))
 );
 
-function edgeAnchors(from, to) {
+function edgeAnchors(from, to, nodeWidth, nodeHeight) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   if (dx === 0 && dy === 0) return { from, to };
   const boundaryRatio = 1 / Math.max(
-    Math.abs(dx) / (DIAGRAM_NODE_WIDTH / 2),
-    Math.abs(dy) / (DIAGRAM_NODE_HEIGHT / 2),
+    Math.abs(dx) / (nodeWidth / 2),
+    Math.abs(dy) / (nodeHeight / 2),
   );
   const insetX = dx * boundaryRatio;
   const insetY = dy * boundaryRatio;
@@ -64,6 +69,25 @@ function edgePath(from, to, style) {
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
 }
 
+function edgeLabelPosition(from, to, nodeWidth, nodeHeight, compact) {
+  if (compact) {
+    return {
+      x: (from.x + to.x) / 2,
+      y: (from.y + to.y) / 2,
+    };
+  }
+  const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
+  return horizontal
+    ? {
+      x: (from.x + to.x) / 2,
+      y: (from.y + to.y) / 2 - nodeHeight / 2 - 18,
+    }
+    : {
+      x: (from.x + to.x) / 2 + nodeWidth / 2 + 18,
+      y: (from.y + to.y) / 2,
+    };
+}
+
 function isUsableSpec(spec) {
   if (!spec || spec.version !== 1 || !Array.isArray(spec.nodes) || !Array.isArray(spec.edges)) return false;
   if (spec.nodes.length < 2 || spec.nodes.length > 8 || spec.edges.length > 12) return false;
@@ -79,11 +103,25 @@ export default function TeachingDiagram({ spec, compact = false }) {
   const dragRef = useRef(null);
   const pointersRef = useRef(new Map());
   const nodeRefs = useRef(new Map());
-  const [scale, setScale] = useState(compact ? COMPACT_MIN_SCALE : 1);
+  const [scale, setScale] = useState(compact ? COMPACT_SCALE : 1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [selectedId, setSelectedId] = useState(null);
 
-  const positions = useMemo(() => layoutDiagram(spec), [spec]);
+  const canvasWidth = compact ? COMPACT_CANVAS_WIDTH : DIAGRAM_CANVAS_WIDTH;
+  const canvasHeight = compact
+    ? Math.max(260, (spec?.nodes?.length || 0) * COMPACT_NODE_GAP + 28)
+    : DIAGRAM_CANVAS_HEIGHT;
+  const nodeWidth = compact ? COMPACT_NODE_WIDTH : DIAGRAM_NODE_WIDTH;
+  const nodeHeight = compact ? COMPACT_NODE_HEIGHT : DIAGRAM_NODE_HEIGHT;
+  const positions = useMemo(() => (
+    compact
+      ? (spec?.nodes || []).map((node, index) => ({
+        id: node.id,
+        x: COMPACT_CANVAS_WIDTH / 2,
+        y: 48 + index * COMPACT_NODE_GAP,
+      }))
+      : layoutDiagram(spec)
+  ), [compact, spec]);
   const positionById = useMemo(
     () => Object.fromEntries(positions.map(position => [position.id, position])),
     [positions],
@@ -125,8 +163,8 @@ export default function TeachingDiagram({ spec, compact = false }) {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const next = Math.min(
-      (viewport.clientWidth - 24) / DIAGRAM_CANVAS_WIDTH,
-      (viewport.clientHeight - 24) / DIAGRAM_CANVAS_HEIGHT,
+      (viewport.clientWidth - 24) / canvasWidth,
+      (viewport.clientHeight - 24) / canvasHeight,
       1,
     );
     setOffset({ x: 0, y: 0 });
@@ -134,7 +172,7 @@ export default function TeachingDiagram({ spec, compact = false }) {
   };
 
   const resetDiagram = () => {
-    setScale(1);
+    setScale(compact ? COMPACT_SCALE : 1);
     setOffset({ x: 0, y: 0 });
   };
 
@@ -187,27 +225,31 @@ export default function TeachingDiagram({ spec, compact = false }) {
   };
 
   return (
-    <section className="my-3 overflow-hidden rounded-2xl border border-zinc-200 bg-[#fbfbfa] shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-200/80 px-4 py-3">
+    <section className={compact
+      ? 'overflow-hidden bg-[#fbfbfa]'
+      : 'my-3 overflow-hidden rounded-2xl border border-zinc-200 bg-[#fbfbfa] shadow-sm'}>
+      <div className={`flex items-center justify-between gap-3 border-b border-zinc-200/80 ${compact ? 'px-3 py-3 pr-16' : 'px-4 py-3'}`}>
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            {t('deep.diagram.interactive')}
-          </p>
-          <h3 className="truncate text-sm font-semibold text-zinc-900">{spec.title}</h3>
+          {!compact && (
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+              {t('deep.diagram.interactive')}
+            </p>
+          )}
+          <h3 className={`${compact ? 'line-clamp-2 leading-5' : 'truncate'} text-sm font-semibold text-zinc-900`}>{spec.title}</h3>
         </div>
-        <div className="flex shrink-0 items-center gap-1 rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
+        {!compact && <div className="flex shrink-0 items-center gap-1 rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
           <button type="button" aria-label={t('deep.diagram.zoomOut')} onClick={() => updateScale(value => value - SCALE_STEP)} className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100"><Minus size={14} /></button>
           <span className="w-10 text-center text-[10px] tabular-nums text-zinc-500">{Math.round(scale * 100)}%</span>
           <button type="button" aria-label={t('deep.diagram.zoomIn')} onClick={() => updateScale(value => value + SCALE_STEP)} className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100"><Plus size={14} /></button>
           <button type="button" aria-label={t('deep.diagram.fit')} onClick={fitDiagram} className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100"><Maximize2 size={14} /></button>
           <button type="button" aria-label={t('deep.diagram.reset')} onClick={resetDiagram} className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100"><RotateCcw size={14} /></button>
-        </div>
+        </div>}
       </div>
 
       <div
         ref={viewportRef}
         data-testid="teaching-diagram-viewport"
-        className={`relative cursor-grab overflow-hidden bg-[radial-gradient(circle_at_center,_rgba(24,24,27,0.05)_1px,_transparent_1px)] [background-size:22px_22px] active:cursor-grabbing ${compact ? 'h-[280px]' : 'h-[430px]'}`}
+        className={`relative cursor-grab overflow-hidden bg-[radial-gradient(circle_at_center,_rgba(24,24,27,0.05)_1px,_transparent_1px)] [background-size:22px_22px] active:cursor-grabbing ${compact ? 'h-[340px]' : 'h-[430px]'}`}
         style={{ touchAction: 'none' }}
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
@@ -221,12 +263,14 @@ export default function TeachingDiagram({ spec, compact = false }) {
       >
         <div
           data-testid="teaching-diagram-canvas"
-          className="absolute left-1/2 top-1/2"
+          className={`absolute left-1/2 ${compact ? 'top-0' : 'top-1/2'}`}
           style={{
-            width: DIAGRAM_CANVAS_WIDTH,
-            height: DIAGRAM_CANVAS_HEIGHT,
-            transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
-            transformOrigin: 'center',
+            width: canvasWidth,
+            height: canvasHeight,
+            transform: compact
+              ? `translate(calc(-50% + ${offset.x}px), ${offset.y}px) scale(${scale})`
+              : `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
+            transformOrigin: compact ? 'top center' : 'center',
           }}
         >
           <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
@@ -240,9 +284,10 @@ export default function TeachingDiagram({ spec, compact = false }) {
               const to = positionById[edge.target];
               const style = edgeStyle[edge.relation] || edgeStyle.related;
               if (!from || !to) return null;
-              const anchors = edgeAnchors(from, to);
-              const labelX = (from.x + to.x) / 2;
-              const labelY = (from.y + to.y) / 2 - 9;
+              const anchors = edgeAnchors(from, to, nodeWidth, nodeHeight);
+              const labelPosition = edgeLabelPosition(from, to, nodeWidth, nodeHeight, compact);
+              const displayLabel = edge.label || t(`deep.diagram.relation.${edge.relation}`);
+              const labelWidth = Math.min(168, Math.max(72, [...displayLabel].length * 12 + 24));
               return (
                 <g key={`${edge.source}-${edge.target}-${index}`}>
                   <path
@@ -254,10 +299,11 @@ export default function TeachingDiagram({ spec, compact = false }) {
                     markerStart={style.both ? `url(#${markerId}-end)` : undefined}
                     markerEnd={`url(#${markerId}-end)`}
                   />
-                  {edge.label && (
-                    <g transform={`translate(${labelX} ${labelY})`}>
-                      <rect x="-42" y="-10" width="84" height="20" rx="10" fill="#fbfbfa" />
-                      <text textAnchor="middle" dominantBaseline="middle" className="fill-zinc-500 text-[11px]">{edge.label}</text>
+                  {displayLabel && (
+                    <g transform={`translate(${labelPosition.x} ${labelPosition.y})`}>
+                      <title>{displayLabel}</title>
+                      <rect x={-labelWidth / 2} y="-13" width={labelWidth} height="26" rx="13" fill="#fff" stroke="#d4d4d8" />
+                      <text textAnchor="middle" dominantBaseline="middle" className="fill-zinc-700 text-[12px] font-medium">{displayLabel}</text>
                     </g>
                   )}
                 </g>
@@ -278,16 +324,16 @@ export default function TeachingDiagram({ spec, compact = false }) {
                 aria-label={`${node.title}：${node.summary}`}
                 onPointerDown={event => event.stopPropagation()}
                 onClick={() => setSelectedId(node.id)}
-                className={`absolute flex flex-col items-start justify-center rounded-2xl border px-4 py-3 text-left transition duration-200 hover:-translate-y-1 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 ${roleClasses[node.role] || roleClasses.support}`}
+                className={`absolute flex flex-col items-start justify-center rounded-2xl border text-left transition duration-200 hover:-translate-y-1 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 ${compact ? 'px-3 py-2' : 'px-4 py-3'} ${roleClasses[node.role] || roleClasses.support}`}
                 style={{
-                  width: DIAGRAM_NODE_WIDTH,
-                  height: DIAGRAM_NODE_HEIGHT,
-                  left: position.x - DIAGRAM_NODE_WIDTH / 2,
-                  top: position.y - DIAGRAM_NODE_HEIGHT / 2,
+                  width: nodeWidth,
+                  height: nodeHeight,
+                  left: position.x - nodeWidth / 2,
+                  top: position.y - nodeHeight / 2,
                 }}
               >
-                <span className="mb-1 text-sm font-semibold leading-tight">{node.title}</span>
-                <span className="line-clamp-2 text-[11px] leading-4 text-zinc-500">{node.summary}</span>
+                <span className={`${compact ? 'text-xs' : 'text-sm'} mb-1 font-semibold leading-tight`}>{node.title}</span>
+                <span className={`${compact ? 'text-[10px] leading-3.5' : 'text-[11px] leading-4'} line-clamp-2 text-zinc-500`}>{node.summary}</span>
               </button>
             );
           })}
@@ -297,6 +343,7 @@ export default function TeachingDiagram({ spec, compact = false }) {
           <div
             role="dialog"
             aria-label={selectedNode.title}
+            onPointerDown={event => event.stopPropagation()}
             className="absolute bottom-3 right-3 z-20 max-h-[calc(100%-24px)] w-[min(330px,calc(100%-24px))] overflow-auto rounded-2xl border border-zinc-200 bg-white/95 p-4 shadow-2xl backdrop-blur"
           >
             <button type="button" aria-label={t('deep.diagram.closeDetails')} onClick={closeDetails} className="absolute right-3 top-3 rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"><X size={16} /></button>

@@ -68,16 +68,12 @@ describe("TeachingDiagram", () => {
       .toBe('M 208 240 L 692 240');
   });
 
-  it("allows compact pinned diagrams to fit narrow panels", () => {
+  it("keeps compact pinned diagrams readable without the full toolbar", () => {
     render(<TeachingDiagram spec={diagram} compact />);
     const canvas = screen.getByTestId("teaching-diagram-canvas");
-    const zoomOut = screen.getByRole("button", { name: "缩小图表" });
 
-    expect(canvas.style.transform).toContain("scale(0.32)");
-
-    for (let index = 0; index < 10; index += 1) fireEvent.click(zoomOut);
-
-    expect(canvas.style.transform).toContain("scale(0.32)");
+    expect(canvas.style.transform).toContain("scale(0.85)");
+    expect(screen.queryByRole("button", { name: "缩小图表" })).not.toBeInTheDocument();
   });
 
   it("closes node details with Escape and restores focus", () => {
@@ -101,5 +97,16 @@ describe("TeachingDiagram", () => {
     fireEvent.pointerMove(viewport, { pointerId: 2, clientX: 260, clientY: 100 });
 
     expect(canvas.style.transform).toContain("scale(1.6)");
+  });
+
+  it("shows the semantic relation when an edge has no custom label", () => {
+    const unlabeled = {
+      ...diagram,
+      edges: [{ source: "slope", target: "derivative", relation: "prerequisite" }],
+    };
+
+    const { container } = render(<TeachingDiagram spec={unlabeled} />);
+
+    expect(container.querySelector("svg text")).toHaveTextContent("前置关系");
   });
 });
