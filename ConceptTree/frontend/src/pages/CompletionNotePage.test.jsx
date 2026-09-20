@@ -17,13 +17,17 @@ describe("CompletionNotePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    Object.defineProperty(window, "print", {
+    Object.defineProperty(URL, "createObjectURL", {
+      value: vi.fn(() => "blob:completion-note"),
+      writable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
       value: vi.fn(),
       writable: true,
     });
   });
 
-  it("loads the completion note and exports through the browser print dialog", async () => {
+  it("loads the completion note and exports a standalone HTML document", async () => {
     localStorage.setItem("concept_tree_token", "token-1");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -45,9 +49,13 @@ describe("CompletionNotePage", () => {
       headers: { Authorization: "Bearer token-1" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /导出 PDF/ }));
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    fireEvent.click(screen.getByRole("button", { name: /导出 HTML/ }));
 
-    expect(window.print).toHaveBeenCalledTimes(1);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:completion-note");
+    clickSpy.mockRestore();
   });
 
   it("keeps the toolbar out of printed output and can return to the learning page", async () => {

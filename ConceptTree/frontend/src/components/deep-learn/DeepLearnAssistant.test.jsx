@@ -25,8 +25,8 @@ function createFile(name, content, type = "text/markdown") {
 describe("DeepLearnAssistant file attachments", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStreamMock.mockImplementation(async (_messages, _context, onChunk) => {
-      onChunk("ok");
+    chatStreamMock.mockImplementation(async (_messages, _context, options) => {
+      options.onChunk("ok");
       return "ok";
     });
   });
@@ -67,5 +67,31 @@ describe("DeepLearnAssistant file attachments", () => {
 
     expect(await screen.findByText("目前只支持添加 .md 文件，PDF 会在后续版本支持。")).toBeInTheDocument();
     expect(chatStreamMock).not.toHaveBeenCalled();
+  });
+
+  it("saves the completed assistant conversation as a note", async () => {
+    const onSaveSummary = vi.fn().mockResolvedValue({ saved: true });
+    render(
+      <DeepLearnAssistant
+        nodeName="AI Native"
+        nodeWhy="practice"
+        onSaveSummary={onSaveSummary}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("要求后续变更"), {
+      target: { value: "解释反向传播" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("ok")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "总结并保存到笔记" }));
+
+    await waitFor(() => expect(onSaveSummary).toHaveBeenCalledTimes(1));
+    expect(onSaveSummary.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ role: "user", displayContent: "解释反向传播" }),
+      { role: "assistant", content: "ok" },
+    ]);
+    expect(await screen.findByRole("button", { name: "已保存到笔记" })).toBeDisabled();
   });
 });

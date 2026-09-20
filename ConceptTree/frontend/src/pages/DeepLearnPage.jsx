@@ -12,6 +12,8 @@ import NotesSuggestionToast from '../components/deep-learn/NotesSuggestionToast'
 import MarkdownContent from '../components/common/MarkdownContent';
 import LanguageToggle from '../components/common/LanguageToggle';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useToast } from '../contexts/ToastContext';
+import { saveChatSummaryToNotes } from '../utils/noteCapture';
 
 const MIN_LEFT_WIDTH = 220;
 const MAX_LEFT_WIDTH = 420;
@@ -275,6 +277,7 @@ export default function DeepLearnPage() {
   const navigate = useNavigate();
   const { language, t } = useLanguage();
   const { allNotes, actions: noteActions } = useNoteContext();
+  const toast = useToast();
   const layoutRef = useRef(null);
   const resizeRef = useRef(null);
   const [paneWidths, setPaneWidths] = useState({
@@ -323,6 +326,19 @@ export default function DeepLearnPage() {
     setRestartConfirmOpen(false);
     sendCommand('restart');
   }, [sendCommand]);
+
+  const handleSaveAssistantSummary = useCallback((assistantMessages) => (
+    saveChatSummaryToNotes({
+      messages: assistantMessages,
+      nodeName: session?.nodeName,
+      existingNotes: nodeNotes,
+      planId,
+      nodeId,
+      selectedNodeId: nodeId,
+      noteActions,
+      toast,
+    })
+  ), [nodeId, nodeNotes, noteActions, planId, session?.nodeName, toast]);
 
   const getMaxWidth = useCallback((side, widths = paneWidths) => {
     const totalWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth || 1440;
@@ -510,7 +526,11 @@ export default function DeepLearnPage() {
               onClose={() => setSelectedNoteId(null)}
             />
           ) : (
-            <DeepLearnAssistant nodeName={session.nodeName} nodeWhy={session.nodeWhy} />
+            <DeepLearnAssistant
+              nodeName={session.nodeName}
+              nodeWhy={session.nodeWhy}
+              onSaveSummary={handleSaveAssistantSummary}
+            />
           )}
         </div>
       </div>

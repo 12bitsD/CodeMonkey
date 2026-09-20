@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DeepLearnPage from "./DeepLearnPage.jsx";
 
-const { deleteNoteMock, navigateMock, useDeepLearnSessionMock, useNoteContextMock } = vi.hoisted(() => ({
+const { deleteNoteMock, navigateMock, useDeepLearnSessionMock, useNoteContextMock, toastMock } = vi.hoisted(() => ({
   deleteNoteMock: vi.fn(),
   navigateMock: vi.fn(),
   useDeepLearnSessionMock: vi.fn(),
   useNoteContextMock: vi.fn(),
+  toastMock: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -22,6 +23,10 @@ vi.mock("../hooks/useDeepLearnSession", () => ({
 
 vi.mock("../contexts/NoteContext", () => ({
   useNoteContext: useNoteContextMock,
+}));
+
+vi.mock("../contexts/ToastContext", () => ({
+  useToast: () => toastMock,
 }));
 
 describe("DeepLearnPage", () => {

@@ -9,6 +9,23 @@ const authHeaders = () => {
 const normalizeApiLanguage = (language) =>
   language === 'zh-CN' ? 'zh-CN' : 'en-US';
 
+async function apiError(response, fallbackMessage) {
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // Some upstream failures return an empty or non-JSON response.
+  }
+  const detail = payload?.detail || payload?.error || payload;
+  const message = typeof detail === 'string'
+    ? detail
+    : detail?.message || fallbackMessage;
+  const error = new Error(message);
+  error.code = detail?.code || 'REQUEST_FAILED';
+  error.status = response.status;
+  return error;
+}
+
 export const deepLearnApi = {
   createSession: async ({ nodeId, planId, language = null }) => {
     const res = await fetch(buildApiUrl('/deep-learn/sessions'), {
@@ -67,7 +84,9 @@ export const deepLearnApi = {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ offer_id: offerId }),
     });
-    if (!res.ok) throw new Error(`generateIllustration failed: ${res.status}`);
+    if (!res.ok) {
+      throw await apiError(res, `generateIllustration failed: ${res.status}`);
+    }
     return res.json();
   },
 };
