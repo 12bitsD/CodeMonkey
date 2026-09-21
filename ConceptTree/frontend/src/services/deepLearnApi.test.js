@@ -62,6 +62,30 @@ describe("deepLearnApi", () => {
     expect(JSON.parse(options.body)).toEqual({ offer_id: "offer-1" });
   });
 
+  it("preserves the safe server error when illustration generation fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        json: async () => ({
+          detail: {
+            code: "IMAGE_RATE_LIMITED",
+            message: "图像服务请求过于频繁，请稍后重试",
+          },
+        }),
+      }),
+    );
+
+    await expect(
+      deepLearnApi.generateIllustration("session-1", "offer-1"),
+    ).rejects.toMatchObject({
+      message: "图像服务请求过于频繁，请稍后重试",
+      code: "IMAGE_RATE_LIMITED",
+      status: 429,
+    });
+  });
+
   it("creates deep learn notes through the shared notes endpoint", async () => {
     localStorage.getItem.mockReturnValue("token-1");
     vi.stubGlobal(

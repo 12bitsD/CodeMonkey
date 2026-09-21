@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, FileDown } from 'lucide-react';
 import MarkdownContent from '../components/common/MarkdownContent';
 import { buildApiUrl } from '../config/api';
 import { tokenManager } from '../services/api';
 import LanguageToggle from '../components/common/LanguageToggle';
 import { useLanguage } from '../contexts/LanguageContext';
 import completionIllustration from '../assets/illustrations/completion-path.jpg';
+import { buildCompletionHtmlDocument, downloadHtmlDocument } from '../utils/completionHtml';
 
 export default function CompletionNotePage() {
   const { planId, nodeId, noteId } = useParams();
@@ -15,6 +16,7 @@ export default function CompletionNotePage() {
   const [note, setNote] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const contentRef = useRef(null);
 
   useEffect(() => {
     const fetchNote = async () => {
@@ -56,6 +58,21 @@ export default function CompletionNotePage() {
     );
   }
 
+  const generatedLabel = t('completion.generated', {
+    date: new Date(note.created_at).toLocaleDateString(language === 'zh-CN' ? 'zh-CN' : 'en-US'),
+  });
+
+  const exportHtml = () => {
+    const html = buildCompletionHtmlDocument({
+      title: t('completion.title'),
+      contentHtml: contentRef.current?.innerHTML || '',
+      generatedLabel,
+      language,
+    });
+    const safeNodeId = String(nodeId || note.node_id || note.id || 'note').replace(/[^a-zA-Z0-9_-]/g, '-');
+    downloadHtmlDocument(html, `learning-note-${safeNodeId}.html`);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--color-canvas)]">
       {/* Print-hidden controls */}
@@ -70,10 +87,10 @@ export default function CompletionNotePage() {
         <span className="flex-1 text-sm font-semibold text-zinc-700">{t('completion.title')}</span>
         <LanguageToggle className="hidden sm:inline-flex" />
         <button
-          onClick={() => window.print()}
+          onClick={exportHtml}
           className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-zinc-900 px-3 py-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 transition-colors"
         >
-          <Printer className="w-3.5 h-3.5" />
+          <FileDown className="w-3.5 h-3.5" />
           {t('completion.export')}
         </button>
       </div>
@@ -89,11 +106,11 @@ export default function CompletionNotePage() {
           <p className="notion-section-label">LearningMaster</p>
           <h1 className="mt-2 text-3xl font-bold tracking-[-0.03em] text-[#202020]">{t('completion.title')}</h1>
         </div>
-        <div className="note-zhihu">
+        <div ref={contentRef} className="note-zhihu">
           <MarkdownContent content={note.content} />
         </div>
         <p className="mt-12 text-xs text-zinc-400 print:hidden">
-          {t('completion.generated', { date: new Date(note.created_at).toLocaleDateString(language === 'zh-CN' ? 'zh-CN' : 'en-US') })}
+          {generatedLabel}
         </p>
       </article>
     </div>

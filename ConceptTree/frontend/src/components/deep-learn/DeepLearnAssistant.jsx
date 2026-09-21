@@ -12,6 +12,7 @@ import {
   RefreshCcw,
   Send,
   Sparkles,
+  Check,
 } from 'lucide-react';
 import ChatMarkdownMessage from '../chat/ChatMarkdownMessage';
 import { aiApi } from '../../services/api';
@@ -48,7 +49,7 @@ function buildAttachedMarkdownPrompt(text, files, t) {
   return `${t('assistant.prompt.files')}\n\n${fileBlocks}\n\n${t('assistant.prompt.request')}\n${text || t('assistant.prompt.fallback')}`;
 }
 
-export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
+export default function DeepLearnAssistant({ nodeName, nodeWhy, onSaveSummary }) {
   const { language, t } = useLanguage();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -59,6 +60,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
   const [browserInput, setBrowserInput] = useState('');
   const [browserUrl, setBrowserUrl] = useState('');
   const [browserKey, setBrowserKey] = useState(0);
+  const [summaryState, setSummaryState] = useState('idle');
   const fileInputRef = useRef(null);
   const chatScrollRef = useRef(null);
   const streamRef = useRef({ content: '' });
@@ -73,10 +75,10 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
     scrollToBottom();
   }, [messages, loading]);
 
-  const flushAssistant = () => {
+  const flushAssistant = (patch = {}) => {
     setMessages(prev => prev.map((msg, index) => (
       index === prev.length - 1 && msg.role === 'assistant'
-        ? { ...msg, content: streamRef.current.content }
+        ? { ...msg, content: streamRef.current.content, ...patch }
         : msg
     )));
   };
@@ -99,6 +101,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
     setAttachedFiles([]);
     setFileError('');
     setLoading(true);
+    setSummaryState('idle');
 
     try {
       await aiApi.chatStream(
@@ -118,7 +121,7 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
       }
     } catch (_err) {
       streamRef.current.content = t('assistant.failed');
-      flushAssistant();
+      flushAssistant({ failed: true });
     } finally {
       setLoading(false);
     }
@@ -170,6 +173,26 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
     const nextUrl = normalizeUrl(browserInput);
     if (!nextUrl) return;
     setBrowserUrl(nextUrl);
+  };
+
+  const canSaveSummary = !loading && messages.some(
+    message => message.role === 'assistant' && !message.failed && String(message.content || '').trim(),
+  );
+
+  const saveSummary = async () => {
+    if (!onSaveSummary || !canSaveSummary || summaryState === 'saving') return;
+    setSummaryState('saving');
+    try {
+      const result = await onSaveSummary(messages);
+      setSummaryState(result?.saved ? 'saved' : 'idle');
+    } catch (_error) {
+      setSummaryState('idle');
+    }
+  };
+
+  const clearMessages = () => {
+    setMessages([]);
+    setSummaryState('idle');
   };
 
   return (
@@ -232,13 +255,39 @@ export default function DeepLearnAssistant({ nodeName, nodeWhy }) {
               <p className="text-xs font-bold text-zinc-900">{t('assistant.title')}</p>
               <p className="truncate text-[10px] text-zinc-400">{nodeName || t('assistant.currentConcept')}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setMessages([])}
-              className="ml-auto text-[11px] text-zinc-300 transition-colors hover:text-zinc-500"
-            >
-              {t('assistant.clear')}
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {onSaveSummary && canSaveSummary && (
+                <button
+                  type="button"
+                  onClick={saveSummary}
+                  disabled={summaryState === 'saving' || summaryState === 'saved'}
+                  aria-label={t(summaryState === 'saved' ? 'assistant.summary.saved' : 'assistant.summary.save')}
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-teal-100 bg-teal-50 px-2 text-[10px] font-semibold text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-default disabled:opacity-70"
+                >
+                  {summaryState === 'saving' ? (
+                    <Loader size={11} className="animate-spin" />
+                  ) : summaryState === 'saved' ? (
+                    <Check size={11} />
+                  ) : (
+                    <FileText size={11} />
+                  )}
+                  {t(
+                    summaryState === 'saving'
+                      ? 'assistant.summary.saving'
+                      : summaryState === 'saved'
+                        ? 'assistant.summary.saved'
+                        : 'assistant.summary.save',
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={clearMessages}
+                className="text-[11px] text-zinc-300 transition-colors hover:text-zinc-500"
+              >
+                {t('assistant.clear')}
+              </button>
+            </div>
           </div>
 
           <div ref={chatScrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">

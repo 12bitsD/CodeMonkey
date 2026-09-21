@@ -31,6 +31,47 @@ _DEEP_LEARN_SCHEMA_READY = False
 _DEEP_LEARN_SCHEMA_LOCK = Lock()
 
 
+def _illustration_failure_detail(error: Exception) -> dict[str, str]:
+    """Map provider/storage failures to safe, actionable client messages."""
+    status_code = getattr(error, "status_code", None)
+    error_text = str(error).lower()
+    if status_code in (401, 403):
+        return {
+            "code": "IMAGE_AUTH_FAILED",
+            "message": "图像服务认证失败，请联系管理员检查 API Key",
+        }
+    if (
+        status_code == 402
+        or "insufficient credit" in error_text
+        or "insufficient balance" in error_text
+    ):
+        return {
+            "code": "IMAGE_CREDIT_EXHAUSTED",
+            "message": "图像服务余额不足，请联系管理员充值后重试",
+        }
+    if status_code == 429 or "rate limit" in error_text:
+        return {
+            "code": "IMAGE_RATE_LIMITED",
+            "message": "图像服务请求过于频繁，请稍后重试",
+        }
+    if status_code in (408, 504) or "timeout" in error_text or "timed out" in error_text:
+        return {
+            "code": "IMAGE_TIMEOUT",
+            "message": "图像生成超时，请重试",
+        }
+    if "storage" in error_text or "upload" in error_text or "permission denied" in error_text:
+        return {
+            "code": "IMAGE_STORAGE_FAILED",
+            "message": "图像已生成，但保存失败，请联系管理员检查存储配置",
+        }
+    if "no image" in error_text or "image data" in error_text:
+        return {
+            "code": "IMAGE_RESPONSE_INVALID",
+            "message": "图像服务未返回有效图片，请重试",
+        }
+    return {"code": "ILLUSTRATION_FAILED", "message": "演示图生成失败，请稍后重试"}
+
+
 def _ensure_deep_learn_schema(db: DbSession) -> None:
     global _DEEP_LEARN_SCHEMA_READY
     if _DEEP_LEARN_SCHEMA_READY:
@@ -245,7 +286,7 @@ async def generate_illustration(
         logger.warning("illustration generation failed: %s", error)
         raise HTTPException(
             status_code=502,
-            detail={"code": "ILLUSTRATION_FAILED", "message": "演示图生成失败，请稍后重试"},
+            detail=_illustration_failure_detail(error),
         ) from error
     return {"success": True, "data": result}
 
