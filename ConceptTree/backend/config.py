@@ -51,9 +51,6 @@ class Settings:
     ADMIN_TRACE_RETENTION_DAYS: int = int(
         _get_env("ADMIN_TRACE_RETENTION_DAYS", "30")
     )
-    ADMIN_HTTP_TRACE_SAMPLE_RATE: float = float(
-        _get_env("ADMIN_HTTP_TRACE_SAMPLE_RATE", "0.1")
-    )
 
     CORS_ORIGINS_RAW: str = _get_env("CORS_ORIGINS", "")
     CORS_ALLOW_CREDENTIALS: bool = _get_bool_env(

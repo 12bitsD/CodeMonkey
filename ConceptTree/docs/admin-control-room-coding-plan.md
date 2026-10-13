@@ -1,5 +1,25 @@
 # Admin Control Room Coding Plan
 
+## Implementation status — 2026-10-14
+
+Backend phase implemented on `feat/admin-control-room-backend`:
+
+- Administrator schema, RLS hardening, role verification, password re-entry,
+  short-lived cookie elevation, and immediate role revocation checks.
+- Overview, time-series, users, sessions, paginated traces, AI usage, and
+  system-health APIs under `/api/admin/*`.
+- Masked email output, bounded filters/pagination, audited sensitive reads,
+  redacted LLM/session trace metadata, and 30-day trace retention.
+- Public detailed metrics removed; coarse `/health` and `/health/db` retained.
+- Deployment and first-admin bootstrap runbook recorded separately.
+
+Still deferred by product decision:
+
+- Hidden React dashboard and charts.
+- Provider/model pricing catalog. Token usage is recorded now; cost responses
+  explicitly report whether verified pricing data is available.
+- Mutating administrator actions such as suspension, deletion, or impersonation.
+
 ## Objective
 
 Build a hidden, read-only administrator control room for product analytics, user and learning-session inspection, persistent session traces, AI usage/cost visibility, system health, and audited access. The public application must not expose an admin navigation entry. Authorization is enforced by the backend, never by route secrecy.
@@ -96,7 +116,6 @@ Configuration:
 ADMIN_SESSION_TTL_MINUTES=30
 ADMIN_COOKIE_SECURE=true
 ADMIN_TRACE_RETENTION_DAYS=30
-ADMIN_HTTP_TRACE_SAMPLE_RATE=0.1
 ```
 
 ## Backend endpoints
@@ -123,9 +142,10 @@ Lists use bounded cursor pagination. Email addresses are masked by default. Resp
 
 - Record session create/resume, initialization, state changes, messages, commands, tests, completion, abandonment, and failures.
 - Record AI provider/model, latency, token usage, retries, error codes, and cost estimates.
+- Cost totals must expose whether pricing data is available; missing pricing must not be presented as a verified zero-cost result.
 - Record image-decision, image-generation, and image-storage stages separately.
 - Store only redacted previews and structural metadata by default.
-- AI calls and errors are recorded at 100%; successful generic HTTP requests may be sampled at 10%.
+- Deep-learning interactions, AI calls, and relevant failures are recorded for their session.
 - Trace persistence is best effort and must never fail the learner's main request.
 - Trace details default to 30-day retention; aggregates may be retained longer.
 
@@ -161,4 +181,3 @@ Lists use bounded cursor pagination. Email addresses are masked by default. Resp
 4. Configure admin cookie/session environment values.
 5. Deploy the backend only and verify admin endpoints.
 6. Implement and deploy the hidden frontend dashboard in a later phase.
-
