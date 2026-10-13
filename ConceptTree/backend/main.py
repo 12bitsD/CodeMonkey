@@ -21,10 +21,10 @@ from database import SchemaNotReadyError, close_connection_pool, get_db_context
 from routers import admin, ai, auth, deep_learn, graph, notes, plans, stats, user
 from utils.limiter import limiter
 from utils.observability import (
-    get_metrics_snapshot,
     record_db_error,
     record_request,
 )
+from services.admin.tracing import start_trace_buffer, stop_trace_buffer
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,12 @@ _openapi_url = "/openapi.json" if settings.DEBUG else None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
-    close_connection_pool()
+    start_trace_buffer()
+    try:
+        yield
+    finally:
+        stop_trace_buffer()
+        close_connection_pool()
 
 app = FastAPI(
     title="LearningMaster API",
@@ -325,11 +329,6 @@ def database_health_check():
 
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
     return {"status": "ok", "database": "ok", "latencyMs": latency_ms}
-
-
-@app.get("/health/metrics")
-def health_metrics():
-    return {"status": "ok", "metrics": get_metrics_snapshot()}
 
 
 @app.get("/")

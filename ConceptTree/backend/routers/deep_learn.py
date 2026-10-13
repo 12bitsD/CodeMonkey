@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from threading import Lock
 from typing import Literal
 
@@ -20,6 +21,7 @@ from services.deep_learn.legacy_mermaid import normalize_legacy_visual_turns
 from services.deep_learn.service import DeepLearnService
 from services.deep_learn.session_repo import get_session_by_id
 from utils.auth import get_current_user_id
+from services.admin.tracing import emit_trace_event, trace_scope
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +114,7 @@ def _ensure_deep_learn_schema(db: DbSession) -> None:
 @router.post("/sessions")
 async def create_session(
     req: CreateSessionRequest,
+    http_request: Request,
     user_id: str = Depends(get_current_user_id),
     db: DbSession = Depends(get_db),
 ) -> dict:
@@ -125,7 +128,17 @@ async def create_session(
     session, node_meta = await _service.get_or_create_session(
         db=db, user_id=user_id, node_id=req.node_id, plan_id=req.plan_id,
     )
-    node_meta = await _service.localize_node_meta(node_meta, req.language)
+    with trace_scope(
+        session_id=session.id,
+        user_id=user_id,
+        request_id=getattr(http_request.state, "request_id", None),
+    ):
+        node_meta = await _service.localize_node_meta(node_meta, req.language)
+        emit_trace_event(
+            event_type="session",
+            event_name="resume" if session.state != "INITIALIZING" else "create",
+            attributes={"language": req.language, "state": session.state},
+        )
     is_resumed = session.state != "INITIALIZING"
     data = CreateSessionData(
         session_id=session.id,
@@ -181,15 +194,38 @@ async def initialize(
     node_meta = await _service.localize_node_meta(node_meta, language)
 
     async def gen():
-        async for event in _service.stream_initialize(
-            session,
-            node_meta,
-            background_tasks=background_tasks,
-            language=language,
+        started = time.monotonic()
+        status = "ok"
+        error_code = None
+        with trace_scope(
+            session_id=session.id,
+            user_id=user_id,
+            request_id=getattr(http_request.state, "request_id", None),
         ):
-            if await http_request.is_disconnected():
-                return
-            yield event
+            try:
+                async for event in _service.stream_initialize(
+                    session,
+                    node_meta,
+                    background_tasks=background_tasks,
+                    language=language,
+                ):
+                    if await http_request.is_disconnected():
+                        status = "disconnected"
+                        return
+                    yield event
+            except Exception as error:
+                status = "error"
+                error_code = type(error).__name__
+                raise
+            finally:
+                emit_trace_event(
+                    event_type="interaction",
+                    event_name="initialize",
+                    status=status,
+                    duration_ms=round((time.monotonic() - started) * 1000, 2),
+                    error_code=error_code,
+                    attributes={"language": language},
+                )
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=SSE_HEADERS)
 
@@ -215,16 +251,39 @@ async def send_message(
     node_meta = await _service.localize_node_meta(node_meta, req.language)
 
     async def gen():
-        async for event in _service.stream_message(
-            session,
-            node_meta,
-            req.content,
-            background_tasks=background_tasks,
-            language=req.language,
+        started = time.monotonic()
+        status = "ok"
+        error_code = None
+        with trace_scope(
+            session_id=session.id,
+            user_id=user_id,
+            request_id=getattr(http_request.state, "request_id", None),
         ):
-            if await http_request.is_disconnected():
-                return
-            yield event
+            try:
+                async for event in _service.stream_message(
+                    session,
+                    node_meta,
+                    req.content,
+                    background_tasks=background_tasks,
+                    language=req.language,
+                ):
+                    if await http_request.is_disconnected():
+                        status = "disconnected"
+                        return
+                    yield event
+            except Exception as error:
+                status = "error"
+                error_code = type(error).__name__
+                raise
+            finally:
+                emit_trace_event(
+                    event_type="interaction",
+                    event_name="message",
+                    status=status,
+                    duration_ms=round((time.monotonic() - started) * 1000, 2),
+                    error_code=error_code,
+                    attributes={"language": req.language, "contentLength": len(req.content)},
+                )
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=SSE_HEADERS)
 
@@ -250,16 +309,39 @@ async def send_command(
     node_meta = await _service.localize_node_meta(node_meta, req.language)
 
     async def gen():
-        async for event in _service.stream_command(
-            session,
-            node_meta,
-            req.command,
-            background_tasks=background_tasks,
-            language=req.language,
+        started = time.monotonic()
+        status = "ok"
+        error_code = None
+        with trace_scope(
+            session_id=session.id,
+            user_id=user_id,
+            request_id=getattr(http_request.state, "request_id", None),
         ):
-            if await http_request.is_disconnected():
-                return
-            yield event
+            try:
+                async for event in _service.stream_command(
+                    session,
+                    node_meta,
+                    req.command,
+                    background_tasks=background_tasks,
+                    language=req.language,
+                ):
+                    if await http_request.is_disconnected():
+                        status = "disconnected"
+                        return
+                    yield event
+            except Exception as error:
+                status = "error"
+                error_code = type(error).__name__
+                raise
+            finally:
+                emit_trace_event(
+                    event_type="interaction",
+                    event_name="command",
+                    status=status,
+                    duration_ms=round((time.monotonic() - started) * 1000, 2),
+                    error_code=error_code,
+                    attributes={"language": req.language, "command": req.command},
+                )
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=SSE_HEADERS)
 
@@ -268,6 +350,7 @@ async def send_command(
 async def generate_illustration(
     session_id: str,
     req: IllustrationRequest,
+    http_request: Request,
     user_id: str = Depends(get_current_user_id),
     db: DbSession = Depends(get_db),
 ) -> dict:
@@ -275,18 +358,51 @@ async def generate_illustration(
     session = get_session_by_id(db, session_id, user_id)
     if not session:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "会话不存在"})
+    started = time.monotonic()
     try:
-        result = await _service.generate_illustration(session, req.offer_id)
+        with trace_scope(
+            session_id=session.id,
+            user_id=user_id,
+            request_id=getattr(http_request.state, "request_id", None),
+        ):
+            result = await _service.generate_illustration(session, req.offer_id)
+            emit_trace_event(
+                event_type="interaction",
+                event_name="illustration",
+                duration_ms=round((time.monotonic() - started) * 1000, 2),
+                attributes={"offerId": req.offer_id},
+            )
     except ValueError as error:
+        emit_trace_event(
+            event_type="interaction",
+            event_name="illustration",
+            status="error",
+            session_id=session.id,
+            user_id=user_id,
+            request_id=getattr(http_request.state, "request_id", None),
+            duration_ms=round((time.monotonic() - started) * 1000, 2),
+            error_code="ILLUSTRATION_NOT_AVAILABLE",
+        )
         raise HTTPException(
             status_code=409,
             detail={"code": "ILLUSTRATION_NOT_AVAILABLE", "message": str(error)},
         ) from error
     except Exception as error:
         logger.warning("illustration generation failed: %s", error)
+        detail = _illustration_failure_detail(error)
+        emit_trace_event(
+            event_type="interaction",
+            event_name="illustration",
+            status="error",
+            session_id=session.id,
+            user_id=user_id,
+            request_id=getattr(http_request.state, "request_id", None),
+            duration_ms=round((time.monotonic() - started) * 1000, 2),
+            error_code=detail["code"],
+        )
         raise HTTPException(
             status_code=502,
-            detail=_illustration_failure_detail(error),
+            detail=detail,
         ) from error
     return {"success": True, "data": result}
 
