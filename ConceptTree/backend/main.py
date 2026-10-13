@@ -18,7 +18,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from config import get_cors_origins, get_cors_allow_credentials, settings
 from database import SchemaNotReadyError, close_connection_pool, get_db_context
-from routers import ai, auth, deep_learn, graph, notes, plans, stats, user
+from routers import admin, ai, auth, deep_learn, graph, notes, plans, stats, user
 from utils.limiter import limiter
 from utils.observability import (
     get_metrics_snapshot,
@@ -115,6 +115,7 @@ app.include_router(notes.router)
 app.include_router(stats.router)
 app.include_router(ai.router)
 app.include_router(deep_learn.router)
+app.include_router(admin.router)
 
 
 def _default_error_code(status_code: int) -> str:
