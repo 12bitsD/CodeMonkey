@@ -65,6 +65,7 @@ app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "st
 @app.middleware("http")
 async def request_observability_and_security_headers(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request.state.request_id = request_id
     started = time.perf_counter()
     response = await call_next(request)
     duration_ms = (time.perf_counter() - started) * 1000
