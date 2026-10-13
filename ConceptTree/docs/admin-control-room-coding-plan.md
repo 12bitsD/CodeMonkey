@@ -2,7 +2,7 @@
 
 ## Implementation status — 2026-10-14
 
-Backend phase implemented on `feat/admin-control-room-backend`:
+Backend and hidden dashboard phases implemented on `feat/admin-control-room-backend`:
 
 - Administrator schema, RLS hardening, role verification, password re-entry,
   short-lived cookie elevation, and immediate role revocation checks.
@@ -12,10 +12,14 @@ Backend phase implemented on `feat/admin-control-room-backend`:
   redacted LLM/session trace metadata, and 30-day trace retention.
 - Public detailed metrics removed; coarse `/health` and `/health/db` retained.
 - Deployment and first-admin bootstrap runbook recorded separately.
+- Hidden `/admin` React dashboard with password re-entry, icon-rail navigation,
+  overview metrics, user inspection, session trace inspection, AI usage, and
+  system-health views.
+- Responsive mobile navigation, bounded filters and pagination, lazy loading,
+  and honest empty/error/cost-unavailable states.
 
 Still deferred by product decision:
 
-- Hidden React dashboard and charts.
 - Provider/model pricing catalog. Token usage is recorded now; cost responses
   explicitly report whether verified pricing data is available.
 - Mutating administrator actions such as suspension, deletion, or impersonation.
@@ -24,7 +28,9 @@ Still deferred by product decision:
 
 Build a hidden, read-only administrator control room for product analytics, user and learning-session inspection, persistent session traces, AI usage/cost visibility, system health, and audited access. The public application must not expose an admin navigation entry. Authorization is enforced by the backend, never by route secrecy.
 
-Frontend dashboard implementation is intentionally deferred. This plan records its information architecture and visual direction so the backend contracts can be built first.
+The dashboard is implemented as a lazy-loaded, hidden route. It is isolated from
+the learner application data provider so opening the control room does not load
+plans, notes, or unrelated public-app state.
 
 ## Scope
 
@@ -37,11 +43,10 @@ Frontend dashboard implementation is intentionally deferred. This plan records i
 - Administrator access audit logs.
 - RLS hardening for every new table.
 - Backend tests and deployment documentation.
-- Dashboard UX specification.
+- Hidden dashboard implementation and UX specification.
 
 ### Deferred
 
-- Admin React pages and charts.
 - User deletion, suspension, impersonation, or content mutation.
 - Bulk actions and quick actions.
 - Automatic production migration or deployment.
@@ -159,6 +164,7 @@ Lists use bounded cursor pagination. Email addresses are masked by default. Resp
 6. **feat: persist deep-learning session traces**
 7. **feat: expose AI usage and system health**
 8. **test: harden admin isolation, auditing, and trace failure behavior**
+9. **feat: add hidden administrator dashboard and analytics views**
 
 ## Verification criteria
 
@@ -172,6 +178,9 @@ Lists use bounded cursor pagination. Email addresses are masked by default. Resp
 - Public `/health` remains available while detailed metrics are admin-only.
 - New tables pass RLS/revocation tests.
 - Relevant backend tests pass before any migration is proposed for production.
+- The dashboard is absent from public navigation, lazy-loaded at `/admin`, and
+  keeps the learner login intact when the elevated administrator cookie expires.
+- Desktop and mobile layouts remain readable without a charting dependency.
 
 ## Deployment order
 
@@ -180,4 +189,5 @@ Lists use bounded cursor pagination. Email addresses are masked by default. Resp
 3. Grant the first administrator role explicitly.
 4. Configure admin cookie/session environment values.
 5. Deploy the backend only and verify admin endpoints.
-6. Implement and deploy the hidden frontend dashboard in a later phase.
+6. Deploy the hidden frontend dashboard and verify it against the deployed
+   administrator API with an explicitly granted administrator account.
