@@ -2,7 +2,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from services.admin.analytics import _decode_cursor, _encode_cursor, get_overview, mask_email
+from services.admin.analytics import (
+    _decode_cursor,
+    _encode_cursor,
+    get_ai_usage,
+    get_overview,
+    mask_email,
+)
 
 
 class _Result:
@@ -10,6 +16,9 @@ class _Result:
         self._row = row
 
     def fetchone(self):
+        return self._row
+
+    def fetchall(self):
         return self._row
 
 
@@ -54,6 +63,7 @@ def test_overview_calculates_completion_rate_and_numeric_cost():
             "trace_errors": 1,
             "total_tokens": 1200,
             "estimated_cost_usd": "1.250000",
+            "cost_tracking_available": True,
             "active_users": 6,
         }
     )
@@ -62,6 +72,35 @@ def test_overview_calculates_completion_rate_and_numeric_cost():
 
     result = get_overview(db, start, end)
 
-    assert result["completion_rate"] == 0.75
-    assert result["estimated_cost_usd"] == 1.25
-    assert len(db.calls[0][1]) == 22
+    assert result["completionRate"] == 0.75
+    assert result["estimatedCostUsd"] == 1.25
+    assert result["costTrackingAvailable"] is True
+    assert len(db.calls[0][1]) == 24
+
+
+@pytest.mark.no_db
+def test_ai_usage_does_not_claim_cost_data_when_pricing_is_missing():
+    db = _Db(
+        [
+            {
+                "provider": "kimi",
+                "model": "kimi-k3",
+                "calls": 2,
+                "errors": 0,
+                "priced_calls": 0,
+                "input_tokens": 120,
+                "output_tokens": 80,
+                "estimated_cost_usd": "0",
+                "avg_duration_ms": "250.5",
+            }
+        ]
+    )
+
+    result = get_ai_usage(
+        db,
+        datetime(2026, 10, 1, tzinfo=timezone.utc),
+        datetime(2026, 10, 8, tzinfo=timezone.utc),
+    )
+
+    assert result["models"][0]["costTrackingAvailable"] is False
+    assert result["models"][0]["estimatedCostUsd"] == 0

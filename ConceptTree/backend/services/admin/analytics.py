@@ -57,6 +57,8 @@ def get_overview(db: DbSession, start: datetime, end: datetime) -> dict[str, Any
              FROM session_trace_events WHERE created_at >= ? AND created_at < ?) AS total_tokens,
           (SELECT COALESCE(SUM(estimated_cost_usd), 0)
              FROM session_trace_events WHERE created_at >= ? AND created_at < ?) AS estimated_cost_usd,
+          (SELECT COUNT(estimated_cost_usd) > 0
+             FROM session_trace_events WHERE created_at >= ? AND created_at < ?) AS cost_tracking_available,
           (SELECT COUNT(DISTINCT user_id) FROM (
              SELECT user_id FROM learning_sessions WHERE created_at >= ? AND created_at < ?
              UNION
@@ -73,15 +75,29 @@ def get_overview(db: DbSession, start: datetime, end: datetime) -> dict[str, Any
             start, end,
             start, end,
             start, end,
+            start, end,
             start, end, start, end,
         ),
     ).fetchone()
     values = dict(row or {})
     started = int(values.get("deep_sessions") or 0)
     completed = int(values.get("completed_sessions") or 0)
-    values["completion_rate"] = round(completed / started, 4) if started else 0
-    values["estimated_cost_usd"] = float(values.get("estimated_cost_usd") or 0)
-    return values
+    return {
+        "totalUsers": int(values.get("total_users") or 0),
+        "newUsers": int(values.get("new_users") or 0),
+        "plansCreated": int(values.get("plans_created") or 0),
+        "activePlans": int(values.get("active_plans") or 0),
+        "learningEvents": int(values.get("learning_events") or 0),
+        "deepSessions": started,
+        "completedSessions": completed,
+        "notesCreated": int(values.get("notes_created") or 0),
+        "traceErrors": int(values.get("trace_errors") or 0),
+        "totalTokens": int(values.get("total_tokens") or 0),
+        "estimatedCostUsd": float(values.get("estimated_cost_usd") or 0),
+        "costTrackingAvailable": bool(values.get("cost_tracking_available")),
+        "activeUsers": int(values.get("active_users") or 0),
+        "completionRate": round(completed / started, 4) if started else 0,
+    }
 
 
 def get_timeseries(db: DbSession, start: datetime, end: datetime) -> list[dict[str, Any]]:
@@ -108,29 +124,50 @@ def get_timeseries(db: DbSession, start: datetime, end: datetime) -> list[dict[s
         """,
         (start, end, start, end, start, end),
     ).fetchall()
-    return [dict(row) for row in rows]
+    return [
+        {
+            "day": row["day"],
+            "activeUsers": int(row["active_users"] or 0),
+            "deepSessions": int(row["deep_sessions"] or 0),
+        }
+        for row in rows
+    ]
 
 
-def list_users(db: DbSession, *, limit: int, cursor: str | None) -> dict[str, Any]:
+def list_users(
+    db: DbSession,
+    *,
+    limit: int,
+    cursor: str | None,
+    query: str | None,
+) -> dict[str, Any]:
     decoded = _decode_cursor(cursor)
     cursor_time, cursor_id = decoded if decoded else (None, None)
+    normalized_query = query.strip() if query and query.strip() else None
     rows = db.execute(
         """
         SELECT users.id, users.email, users.created_at,
-               COUNT(DISTINCT plans.id) AS plan_count,
-               COUNT(DISTINCT deep_learn_sessions.id) AS deep_session_count,
-               COUNT(DISTINCT notes.id) AS note_count,
-               MAX(deep_learn_sessions.updated_at) AS last_active_at
+               (SELECT COUNT(*) FROM plans WHERE plans.user_id = users.id) AS plan_count,
+               (SELECT COUNT(*) FROM deep_learn_sessions
+                  WHERE deep_learn_sessions.user_id = users.id) AS deep_session_count,
+               (SELECT COUNT(*) FROM notes WHERE notes.user_id = users.id) AS note_count,
+               (SELECT MAX(updated_at) FROM deep_learn_sessions
+                  WHERE deep_learn_sessions.user_id = users.id) AS last_active_at
         FROM users
-        LEFT JOIN plans ON plans.user_id = users.id
-        LEFT JOIN deep_learn_sessions ON deep_learn_sessions.user_id = users.id
-        LEFT JOIN notes ON notes.user_id = users.id
-        WHERE (? IS NULL OR (users.created_at, users.id) < (?::timestamptz, ?))
-        GROUP BY users.id, users.email, users.created_at
+        WHERE (? IS NULL OR users.email ILIKE '%' || ? || '%' OR users.id = ?)
+          AND (? IS NULL OR (users.created_at, users.id) < (?::timestamptz, ?))
         ORDER BY users.created_at DESC, users.id DESC
         LIMIT ?
         """,
-        (cursor_time, cursor_time, cursor_id, limit + 1),
+        (
+            normalized_query,
+            normalized_query,
+            normalized_query,
+            cursor_time,
+            cursor_time,
+            cursor_id,
+            limit + 1,
+        ),
     ).fetchall()
     has_more = len(rows) > limit
     visible = rows[:limit]
@@ -188,7 +225,15 @@ def get_user_detail(db: DbSession, user_id: str) -> dict[str, Any] | None:
     }
 
 
-def list_sessions(db: DbSession, *, limit: int, cursor: str | None) -> dict[str, Any]:
+def list_sessions(
+    db: DbSession,
+    *,
+    limit: int,
+    cursor: str | None,
+    user_id: str | None,
+    status: str | None,
+    state: str | None,
+) -> dict[str, Any]:
     decoded = _decode_cursor(cursor)
     cursor_time, cursor_id = decoded if decoded else (None, None)
     rows = db.execute(
@@ -202,11 +247,25 @@ def list_sessions(db: DbSession, *, limit: int, cursor: str | None) -> dict[str,
         JOIN users ON users.id = sessions.user_id
         JOIN plans ON plans.id = sessions.plan_id
         JOIN nodes ON nodes.id = sessions.node_id
-        WHERE (? IS NULL OR (sessions.created_at, sessions.id) < (?::timestamptz, ?))
+        WHERE (? IS NULL OR sessions.user_id = ?)
+          AND (? IS NULL OR sessions.status = ?)
+          AND (? IS NULL OR sessions.state = ?)
+          AND (? IS NULL OR (sessions.created_at, sessions.id) < (?::timestamptz, ?))
         ORDER BY sessions.created_at DESC, sessions.id DESC
         LIMIT ?
         """,
-        (cursor_time, cursor_time, cursor_id, limit + 1),
+        (
+            user_id,
+            user_id,
+            status,
+            status,
+            state,
+            state,
+            cursor_time,
+            cursor_time,
+            cursor_id,
+            limit + 1,
+        ),
     ).fetchall()
     has_more = len(rows) > limit
     visible = rows[:limit]
@@ -281,6 +340,7 @@ def get_ai_usage(db: DbSession, start: datetime, end: datetime) -> dict[str, Any
         """
         SELECT provider, model, COUNT(*) AS calls,
                COUNT(*) FILTER (WHERE status = 'error') AS errors,
+               COUNT(estimated_cost_usd) AS priced_calls,
                COALESCE(SUM(input_tokens), 0) AS input_tokens,
                COALESCE(SUM(output_tokens), 0) AS output_tokens,
                COALESCE(SUM(estimated_cost_usd), 0) AS estimated_cost_usd,
@@ -295,9 +355,15 @@ def get_ai_usage(db: DbSession, start: datetime, end: datetime) -> dict[str, Any
     return {
         "models": [
             {
-                **dict(row),
-                "estimated_cost_usd": float(row["estimated_cost_usd"] or 0),
-                "avg_duration_ms": round(float(row["avg_duration_ms"] or 0), 2),
+                "provider": row["provider"],
+                "model": row["model"],
+                "calls": int(row["calls"] or 0),
+                "errors": int(row["errors"] or 0),
+                "inputTokens": int(row["input_tokens"] or 0),
+                "outputTokens": int(row["output_tokens"] or 0),
+                "estimatedCostUsd": float(row["estimated_cost_usd"] or 0),
+                "avgDurationMs": round(float(row["avg_duration_ms"] or 0), 2),
+                "costTrackingAvailable": int(row["priced_calls"] or 0) > 0,
             }
             for row in rows
         ]

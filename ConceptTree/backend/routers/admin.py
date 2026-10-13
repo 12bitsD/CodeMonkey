@@ -25,6 +25,7 @@ from services.admin.analytics import (
     list_users,
 )
 from services.admin.audit import record_admin_read
+from services.admin.tracing import list_session_trace
 from utils.auth import add_token_to_blacklist, get_current_user_id
 from utils.limiter import limiter
 from utils.observability import get_metrics_snapshot
@@ -140,17 +141,18 @@ def admin_users(
     request: Request,
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = None,
+    query: str | None = Query(default=None, max_length=200),
     admin_user_id: str = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
-    data = list_users(db, limit=limit, cursor=cursor)
+    data = list_users(db, limit=limit, cursor=cursor, query=query)
     record_admin_read(
         db,
         admin_user_id=admin_user_id,
         action="users.list",
         resource_type="user",
         request_id=_audit_request_id(request),
-        metadata={"limit": limit},
+        metadata={"limit": limit, "searched": bool(query)},
     )
     return {"success": True, "data": data}
 
@@ -181,17 +183,32 @@ def admin_sessions(
     request: Request,
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = None,
+    user_id: str | None = Query(default=None, max_length=128),
+    status: str | None = Query(default=None, max_length=64),
+    state: str | None = Query(default=None, max_length=64),
     admin_user_id: str = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
-    data = list_sessions(db, limit=limit, cursor=cursor)
+    data = list_sessions(
+        db,
+        limit=limit,
+        cursor=cursor,
+        user_id=user_id,
+        status=status,
+        state=state,
+    )
     record_admin_read(
         db,
         admin_user_id=admin_user_id,
         action="sessions.list",
         resource_type="session",
         request_id=_audit_request_id(request),
-        metadata={"limit": limit},
+        metadata={
+            "limit": limit,
+            "userId": user_id,
+            "status": status,
+            "state": state,
+        },
     )
     return {"success": True, "data": data}
 
@@ -217,6 +234,30 @@ def admin_session_detail(
     return {"success": True, "data": data}
 
 
+@router.get("/sessions/{session_id}/trace")
+def admin_session_trace(
+    session_id: str,
+    request: Request,
+    limit: int = Query(default=200, ge=1, le=500),
+    cursor: str | None = None,
+    admin_user_id: str = Depends(require_admin),
+    db: DbSession = Depends(get_db),
+):
+    session = get_session_detail(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "会话不存在"})
+    events = list_session_trace(db, session_id, limit=limit, cursor=cursor)
+    record_admin_read(
+        db,
+        admin_user_id=admin_user_id,
+        action="session_trace.read",
+        resource_type="session_trace",
+        resource_id=session_id,
+        request_id=_audit_request_id(request),
+    )
+    return {"success": True, "data": {"session": session, **events}}
+
+
 @router.get("/ai-usage")
 def admin_ai_usage(
     request: Request,
@@ -238,5 +279,17 @@ def admin_ai_usage(
 
 
 @router.get("/system-health")
-def admin_system_health(admin_user_id: str = Depends(require_admin)):
-    return {"success": True, "data": get_metrics_snapshot()}
+def admin_system_health(
+    request: Request,
+    admin_user_id: str = Depends(require_admin),
+    db: DbSession = Depends(get_db),
+):
+    data = get_metrics_snapshot()
+    record_admin_read(
+        db,
+        admin_user_id=admin_user_id,
+        action="system_health.read",
+        resource_type="system_health",
+        request_id=_audit_request_id(request),
+    )
+    return {"success": True, "data": data}

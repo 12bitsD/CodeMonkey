@@ -71,28 +71,30 @@ def test_health_db_reports_degraded_without_crashing(monkeypatch):
 
     with TestClient(main.app) as client:
         response = client.get("/health/db")
-        metrics = client.get("/health/metrics")
 
     body = response.json()
     assert response.status_code == 200
     assert body["status"] == "degraded"
     assert body["database"] == "unavailable"
-    assert metrics.json()["metrics"]["dbErrorCounts"]["DATABASE_UNAVAILABLE"] == 1
+    from utils.observability import get_metrics_snapshot
+
+    assert get_metrics_snapshot()["dbErrorCounts"]["DATABASE_UNAVAILABLE"] == 1
 
 
 @pytest.mark.no_db
-def test_health_metrics_include_request_counters():
+def test_internal_metrics_are_not_public_and_still_count_requests():
     from main import app
-    from utils.observability import reset_observability_for_tests
+    from utils.observability import get_metrics_snapshot, reset_observability_for_tests
 
     reset_observability_for_tests()
 
     with TestClient(app) as client:
         response = client.get("/health", headers={"X-Request-ID": "test-request-id"})
-        metrics = client.get("/health/metrics")
+        public_metrics = client.get("/health/metrics")
 
     assert response.headers["x-request-id"] == "test-request-id"
-    request_metrics = metrics.json()["metrics"]["requests"]
+    assert public_metrics.status_code == 404
+    request_metrics = get_metrics_snapshot()["requests"]
     assert request_metrics["GET /health"]["count"] >= 1
     assert request_metrics["GET /health"]["avgLatencyMs"] >= 0
 
@@ -233,14 +235,16 @@ def test_schema_readiness_reports_missing_columns():
 
 @pytest.mark.no_db
 def test_schema_not_ready_errors_return_recoverable_json():
-    from database import SchemaNotReadyError
-    from main import app
+    import main
 
-    @app.get("/__test_schema_not_ready")
+    @main.app.get("/__test_schema_not_ready")
     def _raise_schema_error():
-        raise SchemaNotReadyError(["nodes.target_end_date"])
+        # Use the class registered by the already-loaded app. Some earlier tests
+        # intentionally reload the database module, which creates a distinct
+        # exception class object despite the same import path.
+        raise main.SchemaNotReadyError(["nodes.target_end_date"])
 
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(main.app, raise_server_exceptions=False) as client:
         response = client.get("/__test_schema_not_ready")
 
     assert response.status_code == 503
