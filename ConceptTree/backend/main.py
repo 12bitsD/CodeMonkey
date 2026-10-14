@@ -18,13 +18,13 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from config import get_cors_origins, get_cors_allow_credentials, settings
 from database import SchemaNotReadyError, close_connection_pool, get_db_context
-from routers import ai, auth, deep_learn, graph, notes, plans, stats, user
+from routers import admin, ai, auth, deep_learn, graph, notes, plans, stats, user
 from utils.limiter import limiter
 from utils.observability import (
-    get_metrics_snapshot,
     record_db_error,
     record_request,
 )
+from services.admin.tracing import start_trace_buffer, stop_trace_buffer
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,12 @@ _openapi_url = "/openapi.json" if settings.DEBUG else None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
-    close_connection_pool()
+    start_trace_buffer()
+    try:
+        yield
+    finally:
+        stop_trace_buffer()
+        close_connection_pool()
 
 app = FastAPI(
     title="LearningMaster API",
@@ -65,6 +69,7 @@ app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "st
 @app.middleware("http")
 async def request_observability_and_security_headers(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request.state.request_id = request_id
     started = time.perf_counter()
     response = await call_next(request)
     duration_ms = (time.perf_counter() - started) * 1000
@@ -115,6 +120,7 @@ app.include_router(notes.router)
 app.include_router(stats.router)
 app.include_router(ai.router)
 app.include_router(deep_learn.router)
+app.include_router(admin.router)
 
 
 def _default_error_code(status_code: int) -> str:
@@ -323,11 +329,6 @@ def database_health_check():
 
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
     return {"status": "ok", "database": "ok", "latencyMs": latency_ms}
-
-
-@app.get("/health/metrics")
-def health_metrics():
-    return {"status": "ok", "metrics": get_metrics_snapshot()}
 
 
 @app.get("/")

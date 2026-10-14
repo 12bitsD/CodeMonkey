@@ -7,6 +7,7 @@ import time
 from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from config import settings
+from services.admin.tracing import emit_trace_event
 from .providers import (
     OpenAICompatibleProvider,
     LLMMessage,
@@ -83,10 +84,33 @@ class UnifiedLLMClient:
         if not self.image or not self.image.is_available():
             raise LLMServiceError("Image provider not available")
 
-        return await self.image.generate_image(
-            prompt=prompt,
-            model=settings.IMAGE_MODEL,
-        )
+        started = time.monotonic()
+        try:
+            image = await self.image.generate_image(
+                prompt=prompt,
+                model=settings.IMAGE_MODEL,
+            )
+            emit_trace_event(
+                event_type="image",
+                event_name="generate",
+                provider=settings.IMAGE_PROVIDER,
+                model=settings.IMAGE_MODEL,
+                duration_ms=round((time.monotonic() - started) * 1000, 2),
+                attributes={"bytes": len(image), "promptLength": len(prompt)},
+            )
+            return image
+        except Exception as error:
+            emit_trace_event(
+                event_type="image",
+                event_name="generate",
+                status="error",
+                provider=settings.IMAGE_PROVIDER,
+                model=settings.IMAGE_MODEL,
+                duration_ms=round((time.monotonic() - started) * 1000, 2),
+                error_code=type(error).__name__,
+                attributes={"promptLength": len(prompt)},
+            )
+            raise
 
     async def chat(
         self,
@@ -155,6 +179,29 @@ class UnifiedLLMClient:
                     attempt,
                     duration_ms,
                 )
+                usage = response.usage or {}
+                emit_trace_event(
+                    event_type="llm",
+                    event_name="chat",
+                    provider=(
+                        settings.LLM_FALLBACK_PROVIDER
+                        if provider is self.fallback
+                        else settings.LLM_PROVIDER
+                    ),
+                    model=(
+                        model
+                        or (
+                            settings.LLM_FALLBACK_MODEL
+                            if provider is self.fallback
+                            else settings.LLM_MODEL
+                        )
+                    ),
+                    duration_ms=duration_ms,
+                    input_tokens=usage.get("prompt_tokens"),
+                    output_tokens=usage.get("completion_tokens"),
+                    retry_count=attempt,
+                    attributes={"responseFormat": bool(response_format)},
+                )
                 return response
 
             except (LLMTimeoutError, LLMProviderError) as e:
@@ -166,6 +213,27 @@ class UnifiedLLMClient:
                     attempt,
                     duration_ms,
                     e,
+                )
+                emit_trace_event(
+                    event_type="llm",
+                    event_name="chat",
+                    status="error",
+                    provider=(
+                        settings.LLM_FALLBACK_PROVIDER
+                        if provider is self.fallback
+                        else settings.LLM_PROVIDER
+                    ),
+                    model=(
+                        model
+                        or (
+                            settings.LLM_FALLBACK_MODEL
+                            if provider is self.fallback
+                            else settings.LLM_MODEL
+                        )
+                    ),
+                    duration_ms=duration_ms,
+                    retry_count=attempt,
+                    error_code=type(e).__name__,
                 )
                 last_error = e
                 if _is_non_retryable_provider_error(e):
@@ -224,6 +292,8 @@ class UnifiedLLMClient:
 
         for index, (provider_name, provider) in enumerate(providers):
             emitted_any_chunk = False
+            output_characters = 0
+            started = time.monotonic()
             try:
                 async for chunk in provider.chat_stream(
                     messages=messages,
@@ -232,9 +302,52 @@ class UnifiedLLMClient:
                     model=model,
                 ):
                     emitted_any_chunk = True
+                    output_characters += len(chunk)
                     yield chunk
+                emit_trace_event(
+                    event_type="llm",
+                    event_name="chat_stream",
+                    provider=(
+                        settings.LLM_FALLBACK_PROVIDER
+                        if provider is self.fallback
+                        else settings.LLM_PROVIDER
+                    ),
+                    model=(
+                        model
+                        or (
+                            settings.LLM_FALLBACK_MODEL
+                            if provider is self.fallback
+                            else settings.LLM_MODEL
+                        )
+                    ),
+                    duration_ms=round((time.monotonic() - started) * 1000, 2),
+                    retry_count=index,
+                    attributes={"outputCharacters": output_characters},
+                )
                 return
             except (LLMTimeoutError, LLMProviderError) as error:
+                emit_trace_event(
+                    event_type="llm",
+                    event_name="chat_stream",
+                    status="error",
+                    provider=(
+                        settings.LLM_FALLBACK_PROVIDER
+                        if provider is self.fallback
+                        else settings.LLM_PROVIDER
+                    ),
+                    model=(
+                        model
+                        or (
+                            settings.LLM_FALLBACK_MODEL
+                            if provider is self.fallback
+                            else settings.LLM_MODEL
+                        )
+                    ),
+                    duration_ms=round((time.monotonic() - started) * 1000, 2),
+                    retry_count=index,
+                    error_code=type(error).__name__,
+                    attributes={"emittedOutput": emitted_any_chunk},
+                )
                 last_error = error
 
                 has_next_provider = index < len(providers) - 1

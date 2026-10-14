@@ -98,8 +98,9 @@ def reset_database(request):
                 cur.execute(search_path_sql)
                 cur.execute(
                     (
-                        "TRUNCATE TABLE idempotency_keys, notes, learning_sessions, edges, "
-                        "nodes, plans, user_profiles, users "
+                        "TRUNCATE TABLE admin_audit_logs, session_trace_events, user_roles, "
+                        "idempotency_keys, notes, learning_sessions, edges, nodes, plans, "
+                        "user_profiles, users "
                         "RESTART IDENTITY CASCADE"
                     )
                 )

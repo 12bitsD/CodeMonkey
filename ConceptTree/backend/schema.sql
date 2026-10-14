@@ -122,6 +122,55 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  granted_by TEXT,
+  PRIMARY KEY (user_id, role),
+  CONSTRAINT user_roles_role_check CHECK (role IN ('admin')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_trace_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  request_id TEXT,
+  event_type TEXT NOT NULL,
+  event_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ok',
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  duration_ms DOUBLE PRECISION,
+  provider TEXT,
+  model TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  estimated_cost_usd NUMERIC(14, 6),
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  error_code TEXT,
+  attributes JSONB NOT NULL DEFAULT '{}'::jsonb,
+  redacted_input TEXT,
+  redacted_output TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  FOREIGN KEY (session_id) REFERENCES deep_learn_sessions(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_user_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT,
+  request_id TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  FOREIGN KEY (admin_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_plans_user_status_access
 ON plans(user_id, status, last_access_at DESC);
 
@@ -145,6 +194,21 @@ ON deep_learn_sessions(user_id, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_user_created
 ON idempotency_keys(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_roles_role_user
+ON user_roles(role, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_trace_events_session_created
+ON session_trace_events(session_id, created_at, id);
+
+CREATE INDEX IF NOT EXISTS idx_trace_events_user_created
+ON session_trace_events(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_trace_events_type_created
+ON session_trace_events(event_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_actor_created
+ON admin_audit_logs(admin_user_id, created_at DESC);
 
 -- ─── Sprint 2 迁移：F1/F3 新增字段 ───────────────────────────────────────────
 -- 学习目的（explore=了解领域 / apply=项目能用 / master=系统精通）
@@ -188,6 +252,9 @@ ALTER TABLE learning_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deep_learn_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_trace_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_audit_logs ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE users FORCE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles FORCE ROW LEVEL SECURITY;
@@ -198,20 +265,26 @@ ALTER TABLE learning_sessions FORCE ROW LEVEL SECURITY;
 ALTER TABLE deep_learn_sessions FORCE ROW LEVEL SECURITY;
 ALTER TABLE notes FORCE ROW LEVEL SECURITY;
 ALTER TABLE idempotency_keys FORCE ROW LEVEL SECURITY;
+ALTER TABLE user_roles FORCE ROW LEVEL SECURITY;
+ALTER TABLE session_trace_events FORCE ROW LEVEL SECURITY;
+ALTER TABLE admin_audit_logs FORCE ROW LEVEL SECURITY;
 
 REVOKE ALL PRIVILEGES ON TABLE users, user_profiles, plans, nodes, edges, learning_sessions, notes, idempotency_keys FROM PUBLIC;
 REVOKE ALL PRIVILEGES ON TABLE deep_learn_sessions FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON TABLE user_roles, session_trace_events, admin_audit_logs FROM PUBLIC;
 
 DO $$
 BEGIN
   IF to_regrole('anon') IS NOT NULL THEN
     EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE users, user_profiles, plans, nodes, edges, learning_sessions, notes, idempotency_keys FROM anon';
     EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE deep_learn_sessions FROM anon';
+    EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE user_roles, session_trace_events, admin_audit_logs FROM anon';
   END IF;
 
   IF to_regrole('authenticated') IS NOT NULL THEN
     EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE users, user_profiles, plans, nodes, edges, learning_sessions, notes, idempotency_keys FROM authenticated';
     EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE deep_learn_sessions FROM authenticated';
+    EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE user_roles, session_trace_events, admin_audit_logs FROM authenticated';
   END IF;
 END
 $$;

@@ -50,11 +50,17 @@ const notifyAuthExpired = () => {
   }
 };
 
-const fetchApi = async (endpoint, options = {}) => {
+export const fetchApi = async (endpoint, options = {}) => {
+  const {
+    preserveSessionOnUnauthorized = false,
+    suppressErrorLog = false,
+    ...fetchOptions
+  } = options;
+
   try {
     const headers = {
       "Content-Type": "application/json",
-      ...options.headers,
+      ...fetchOptions.headers,
     };
 
     const token = tokenManager.get();
@@ -63,10 +69,10 @@ const fetchApi = async (endpoint, options = {}) => {
     }
 
     const res = await fetch(buildApiUrl(endpoint), {
-      ...options,
+      ...fetchOptions,
       headers,
     });
-    if (res.status === 401) {
+    if (res.status === 401 && !preserveSessionOnUnauthorized) {
       notifyAuthExpired();
     }
     const raw = await res.text();
@@ -95,7 +101,7 @@ const fetchApi = async (endpoint, options = {}) => {
     }
 
     if (!json.success) {
-      if (res.status === 401) {
+      if (res.status === 401 && !preserveSessionOnUnauthorized) {
         notifyAuthExpired();
       }
       throw new ApiError({
@@ -108,7 +114,9 @@ const fetchApi = async (endpoint, options = {}) => {
     }
     return json.data;
   } catch (err) {
-    console.error(`API Call Failed: ${endpoint}`, err);
+    if (!suppressErrorLog) {
+      console.error(`API Call Failed: ${endpoint}`, err);
+    }
     if (err instanceof ApiError) {
       throw err;
     }

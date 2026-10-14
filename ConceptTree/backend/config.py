@@ -44,6 +44,14 @@ class Settings:
     JWT_ALGORITHM: str = _get_env("JWT_ALGORITHM", "HS256")
     JWT_EXPIRE_DAYS: int = int(_get_env("JWT_EXPIRE_DAYS", "7"))
 
+    ADMIN_SESSION_TTL_MINUTES: int = int(
+        _get_env("ADMIN_SESSION_TTL_MINUTES", "30")
+    )
+    ADMIN_COOKIE_SECURE: bool = _get_bool_env("ADMIN_COOKIE_SECURE", True)
+    ADMIN_TRACE_RETENTION_DAYS: int = int(
+        _get_env("ADMIN_TRACE_RETENTION_DAYS", "30")
+    )
+
     CORS_ORIGINS_RAW: str = _get_env("CORS_ORIGINS", "")
     CORS_ALLOW_CREDENTIALS: bool = _get_bool_env(
         "CORS_ALLOW_CREDENTIALS",
