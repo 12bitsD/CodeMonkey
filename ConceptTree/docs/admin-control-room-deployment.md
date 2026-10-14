@@ -1,7 +1,8 @@
-# Admin Control Room Backend Deployment
+# Admin Control Room Deployment
 
-This runbook deploys the hidden administrator backend only. It does not add a
-public navigation entry or deploy the deferred React dashboard.
+This runbook deploys the administrator backend and the hidden React dashboard.
+The dashboard remains available only by directly visiting `/admin`; no public
+navigation entry is added.
 
 ## Safety boundaries
 
@@ -9,7 +10,8 @@ public navigation entry or deploy the deferred React dashboard.
   command explicitly says otherwise.
 - Do not edit nginx, PostgreSQL/Supabase project settings, or unrelated Docker
   services.
-- Back up `.env` and tag the currently running backend image before replacement.
+- Back up `.env` and tag the currently running backend and frontend images
+  before replacement.
 - Apply the database migration before starting the new backend image.
 - Never paste API keys, passwords, JWTs, or database URLs into logs or chat.
 
@@ -41,8 +43,12 @@ cp -p .env ".env.backup.$DEPLOY_ID"
 CURRENT_BACKEND_IMAGE="$(docker inspect concepttree-backend --format '{{.Image}}')"
 docker image tag "$CURRENT_BACKEND_IMAGE" "concepttree-backend:rollback-$DEPLOY_ID"
 
+CURRENT_FRONTEND_IMAGE="$(docker inspect concepttree-frontend --format '{{.Image}}')"
+docker image tag "$CURRENT_FRONTEND_IMAGE" "concepttree-frontend:rollback-$DEPLOY_ID"
+
 echo "deploy_id=$DEPLOY_ID"
 docker image inspect "concepttree-backend:rollback-$DEPLOY_ID" --format 'rollback_image={{.Id}}'
+docker image inspect "concepttree-frontend:rollback-$DEPLOY_ID" --format 'rollback_image={{.Id}}'
 ```
 
 Keep this shell open so `DEPLOY_ID` remains available for rollback.
@@ -79,15 +85,16 @@ docker compose --env-file .env config --quiet && echo "compose config ok"
 Use `ADMIN_COOKIE_SECURE=false` only for local HTTP development. Production
 HTTPS must keep it `true`.
 
-## 5. Build the new backend image without replacing the running container
+## 5. Build the new images without replacing running containers
 
 ```bash
 cd /root/CodeMonkey/ConceptTree
 COMPOSE_PARALLEL_LIMIT=1 docker compose --env-file .env build backend
+COMPOSE_PARALLEL_LIMIT=1 docker compose --env-file .env build frontend
 ```
 
-The old backend container continues running from its immutable image ID during
-this build.
+The old containers continue running from their immutable image IDs during the
+builds. Building one service at a time limits resource pressure on the server.
 
 ## 6. Apply the idempotent migration
 
@@ -144,7 +151,7 @@ join users u on u.id = r.user_id
 where r.role = 'admin';
 ```
 
-## 8. Replace only the backend
+## 8. Replace and verify only the backend
 
 ```bash
 cd /root/CodeMonkey/ConceptTree
@@ -152,9 +159,9 @@ docker compose --env-file .env up -d --no-deps backend
 ```
 
 This leaves the frontend, PostgreSQL container, nginx, and other websites
-untouched.
+untouched while the new backend is verified.
 
-## 9. Verify
+## 9. Verify the backend
 
 ```bash
 timeout 60 bash -c 'until curl -fsS http://127.0.0.1:8000/health; do sleep 2; done'
@@ -174,12 +181,44 @@ Security checks:
 - Admin elevation requires the existing account token plus password re-entry.
 - Session, trace, AI-usage, and system-health reads create audit records.
 
-The hidden frontend route is deferred, so browser-based elevation is not part
-of this backend-only deployment.
+Do not continue to the frontend switch if any backend verification fails.
 
-## 10. Backend rollback
+## 10. Replace and verify only the frontend
 
-Only use this if the new backend fails verification:
+```bash
+cd /root/CodeMonkey/ConceptTree
+docker compose --env-file .env up -d --no-deps frontend
+
+timeout 60 bash -c 'until curl -fsS http://127.0.0.1:18080/ >/dev/null; do sleep 2; done'
+curl -fsS -o /dev/null -w 'local_frontend_status=%{http_code}\n' http://127.0.0.1:18080/
+curl -fsS -o /dev/null -w 'public_site_status=%{http_code}\n' https://codemonkey666.space/
+docker compose ps frontend backend postgres
+docker compose logs --since=10m --tail=100 frontend
+```
+
+Then sign in with the explicitly granted administrator account and visit:
+
+```text
+https://codemonkey666.space/admin
+```
+
+Verify password re-entry, overview, users, sessions/traces, AI usage, system
+health, mobile layout, and the lock action. Confirm that no administrator link
+appears in the public learner navigation.
+
+## 11. Rollback
+
+If only the frontend fails, roll back only the frontend:
+
+```bash
+cd /root/CodeMonkey/ConceptTree
+docker compose stop frontend
+docker tag "concepttree-frontend:rollback-$DEPLOY_ID" concepttree-frontend:latest
+docker compose --env-file .env up -d --no-deps --force-recreate frontend
+curl -fsS http://127.0.0.1:18080/ >/dev/null && echo "frontend rollback ok"
+```
+
+If the backend fails verification, roll back only the backend:
 
 ```bash
 cd /root/CodeMonkey/ConceptTree
